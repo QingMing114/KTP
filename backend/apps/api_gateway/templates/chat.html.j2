@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }}</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --paper: rgba(255, 251, 244, 0.92);
+      --ink: #1c2a2a;
+      --muted: #5f6b6b;
+      --line: rgba(36, 53, 53, 0.14);
+      --accent: #1f6f5f;
+      --accent-strong: #124d43;
+      --accent-soft: rgba(31, 111, 95, 0.1);
+      --warm: #c66a2b;
+      --shadow: rgba(23, 33, 33, 0.14);
+      --user: #f0d8bc;
+      --assistant: #ecf3ef;
+      --danger: #b14e3a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(198, 106, 43, 0.18), transparent 26%),
+        radial-gradient(circle at bottom right, rgba(31, 111, 95, 0.16), transparent 24%),
+        linear-gradient(180deg, #f7f1e8 0%, #efe7db 100%);
+      min-height: 100vh;
+    }
+    .shell {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+      gap: 20px;
+    }
+    .panel {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      box-shadow: 0 16px 40px var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .sidebar {
+      padding: 22px;
+      align-self: start;
+      position: sticky;
+      top: 20px;
+    }
+    .title {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.05;
+      font-family: "STZhongsong", "Songti SC", "Noto Serif CJK SC", serif;
+    }
+    .subtitle {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .meta {
+      margin-top: 18px;
+      padding: 14px;
+      background: rgba(255,255,255,0.62);
+      border: 1px solid var(--line);
+    }
+    .meta strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .meta-value {
+      font-size: 13px;
+      word-break: break-all;
+    }
+    .field {
+      margin-top: 16px;
+    }
+    .field label {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.9);
+      color: var(--ink);
+      padding: 11px 12px;
+      font: inherit;
+    }
+    .field textarea {
+      min-height: 128px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+    .checkbox {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+      font-size: 14px;
+    }
+    .checkbox input { width: auto; }
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+      flex-wrap: wrap;
+    }
+    button {
+      border: 0;
+      cursor: pointer;
+      padding: 11px 14px;
+      font: inherit;
+      transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: 0.55; cursor: wait; transform: none; }
+    .primary {
+      background: var(--accent);
+      color: white;
+      flex: 1 1 180px;
+    }
+    .secondary {
+      background: #efe2d0;
+      color: var(--ink);
+      flex: 1 1 120px;
+    }
+    .chat {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: calc(100vh - 48px);
+    }
+    .hero {
+      padding: 24px 26px 18px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(120deg, rgba(255,251,244,0.92), rgba(241,232,218,0.92));
+    }
+    .hero-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .hero h2 {
+      margin: 0;
+      font-size: 24px;
+      font-family: "STZhongsong", "Songti SC", "Noto Serif CJK SC", serif;
+    }
+    .badges {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.66);
+      font-size: 12px;
+    }
+    .messages {
+      padding: 22px 26px 28px;
+      overflow: auto;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+    .empty {
+      padding: 28px;
+      border: 1px dashed var(--line);
+      color: var(--muted);
+      background: rgba(255,255,255,0.42);
+      line-height: 1.8;
+    }
+    .msg {
+      border: 1px solid var(--line);
+      padding: 16px 18px;
+      box-shadow: 0 8px 18px rgba(24, 36, 36, 0.08);
+    }
+    .msg.user { background: var(--user); }
+    .msg.assistant { background: var(--assistant); }
+    .msg-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .msg-role {
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .msg-meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .msg-body {
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.75;
+    }
+    .artifact-list {
+      margin-top: 14px;
+      display: grid;
+      gap: 8px;
+    }
+    .artifact {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.7);
+      font-size: 13px;
+    }
+    .artifact a {
+      color: var(--accent-strong);
+      text-decoration: none;
+    }
+    .artifact a:hover {
+      text-decoration: underline;
+    }
+    details {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.66);
+      padding: 10px 12px;
+    }
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+    pre {
+      margin: 10px 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--ink);
+    }
+    .status {
+      margin-top: 12px;
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .status.error { color: var(--danger); }
+    .session-head {
+      margin-top: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .session-head strong {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .session-refresh {
+      padding: 7px 10px;
+      background: rgba(255,255,255,0.66);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      font-size: 12px;
+    }
+    .session-list {
+      margin-top: 10px;
+      display: grid;
+      gap: 8px;
+      max-height: 320px;
+      overflow: auto;
+    }
+    .session-item {
+      width: 100%;
+      text-align: left;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.75);
+      padding: 11px 12px;
+    }
+    .session-item.active {
+      border-color: var(--accent);
+      background: rgba(31, 111, 95, 0.11);
+    }
+    .session-title {
+      display: block;
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
+    .session-meta {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .session-empty {
+      padding: 14px;
+      border: 1px dashed var(--line);
+      color: var(--muted);
+      background: rgba(255,255,255,0.42);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    @media (max-width: 1080px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        position: static;
+      }
+      .chat {
+        min-height: unset;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="panel sidebar">
+      <h1 class="title">{{ page_title }}</h1>
+      <p class="subtitle">一个直接连接 <code>{{ chat_endpoint }}</code> 的浏览器对话框。可测普通遥感问答，也可测任务工作流，并自动维护多轮会话 <code>conversation_id</code>。</p>
+
+      <div class="meta">
+        <strong>当前会话</strong>
+        <div class="meta-value" id="conversation-id">尚未创建</div>
+      </div>
+
+      <div class="field">
+        <label for="user-id">用户标识</label>
+        <input id="user-id" type="text" placeholder="如 demo-user-001">
+      </div>
+
+      <div class="field">
+        <label for="mode">路由模式</label>
+        <select id="mode">
+          <option value="auto">auto 自动调度</option>
+          <option value="agent">agent 大模型直聊/自调度</option>
+          <option value="qa">qa 知识问答</option>
+          <option value="workflow">workflow 任务工作流</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="region">区域</label>
+        <input id="region" type="text" placeholder="如 henan">
+      </div>
+
+      <div class="field">
+        <label for="crop-type">对象 / 作物</label>
+        <input id="crop-type" type="text" placeholder="如 wheat">
+      </div>
+
+      <div class="field">
+        <label for="task-type">任务类型</label>
+        <input id="task-type" type="text" placeholder="如 crop_health_detection">
+      </div>
+
+      <div class="field">
+        <label for="image-path">影像路径</label>
+        <input id="image-path" type="text" placeholder="/path/to/image.tif">
+      </div>
+
+      <label class="checkbox">
+        <input id="use-mock" type="checkbox">
+        <span>workflow 使用 mock 推理</span>
+      </label>
+
+      <div class="field">
+        <label for="message">消息</label>
+        <textarea id="message" placeholder="例如：&#10;1. NDVI 和 EVI 有什么区别？&#10;2. 请分析河南小麦长势，并生成报告和置信度说明。"></textarea>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="send-btn">发送到 /chat</button>
+        <button class="secondary" id="reset-btn" type="button">新会话</button>
+      </div>
+
+      <div class="session-head">
+        <strong>会话列表</strong>
+        <button class="session-refresh" id="refresh-sessions-btn" type="button">刷新</button>
+      </div>
+      <div class="session-list" id="session-list">
+        <div class="session-empty">输入用户标识后可查看该用户的历史会话。</div>
+      </div>
+
+      <div class="status" id="status"></div>
+    </aside>
+
+    <main class="panel chat">
+      <section class="hero">
+        <div class="hero-row">
+          <h2>对话记录</h2>
+          <div class="badges">
+            <span class="badge" id="badge-mode">模式：agent</span>
+            <span class="badge" id="badge-history">历史轮数：0</span>
+          </div>
+        </div>
+      </section>
+      <section class="messages" id="messages">
+        <div class="empty" id="empty-state">
+          这里会显示消息与返回结果。<br>
+          如果是 workflow 请求，页面会展示路由原因、会话编号、报告/可视化入口以及原始 JSON。
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const storageKey = "ktp-chat-ui-state-v2";
+      const userStorageKey = "ktp-chat-ui-user-v1";
+      const chatEndpoint = {{ chat_endpoint|tojson }};
+      const conversationListEndpoint = {{ conversation_list_endpoint|tojson }};
+      const conversationDetailEndpointBase = {{ conversation_detail_endpoint_base|tojson }};
+
+      const state = {
+        conversationId: null,
+        messages: [],
+        conversations: [],
+        pending: false,
+      };
+
+      const $conversationId = document.getElementById("conversation-id");
+      const $userId = document.getElementById("user-id");
+      const $mode = document.getElementById("mode");
+      const $region = document.getElementById("region");
+      const $cropType = document.getElementById("crop-type");
+      const $taskType = document.getElementById("task-type");
+      const $imagePath = document.getElementById("image-path");
+      const $useMock = document.getElementById("use-mock");
+      const $message = document.getElementById("message");
+      const $send = document.getElementById("send-btn");
+      const $reset = document.getElementById("reset-btn");
+      const $status = document.getElementById("status");
+      const $messages = document.getElementById("messages");
+      const $empty = document.getElementById("empty-state");
+      const $badgeMode = document.getElementById("badge-mode");
+      const $badgeHistory = document.getElementById("badge-history");
+      const $sessionList = document.getElementById("session-list");
+      const $refreshSessions = document.getElementById("refresh-sessions-btn");
+
+      function resolvedUserId() {
+        return ($userId.value || "").trim() || "anonymous";
+      }
+
+      function loadState() {
+        try {
+          const raw = sessionStorage.getItem(storageKey);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            state.conversationId = parsed.conversationId || null;
+            state.messages = Array.isArray(parsed.messages) ? parsed.messages : [];
+            $mode.value = parsed.form?.mode || "agent";
+            $region.value = parsed.form?.region || "";
+            $cropType.value = parsed.form?.cropType || "";
+            $taskType.value = parsed.form?.taskType || "";
+            $imagePath.value = parsed.form?.imagePath || "";
+            $useMock.checked = Boolean(parsed.form?.useMock);
+          } else {
+            $mode.value = "agent";
+          }
+        } catch (_) {
+          sessionStorage.removeItem(storageKey);
+        }
+        try {
+          const savedUserId = localStorage.getItem(userStorageKey);
+          $userId.value = savedUserId || "";
+        } catch (_) {
+          localStorage.removeItem(userStorageKey);
+        }
+      }
+
+      function saveState() {
+        sessionStorage.setItem(storageKey, JSON.stringify({
+          conversationId: state.conversationId,
+          messages: state.messages,
+          form: {
+            mode: $mode.value,
+            region: $region.value,
+            cropType: $cropType.value,
+            taskType: $taskType.value,
+            imagePath: $imagePath.value,
+            useMock: $useMock.checked,
+          },
+        }));
+        localStorage.setItem(userStorageKey, resolvedUserId());
+      }
+
+      function setStatus(text, isError = false) {
+        $status.textContent = text || "";
+        $status.className = isError ? "status error" : "status";
+      }
+
+      function setPending(pending) {
+        state.pending = pending;
+        $send.disabled = pending;
+        $reset.disabled = pending;
+        $message.disabled = pending;
+      }
+
+      function updateHeader() {
+        $conversationId.textContent = state.conversationId || "尚未创建";
+        const lastAssistant = [...state.messages].reverse().find((item) => item.role === "assistant");
+        $badgeMode.textContent = "模式：" + (lastAssistant?.payload?.mode || $mode.value);
+        $badgeHistory.textContent = "历史轮数：" + String(lastAssistant?.payload?.history_turn_count || 0);
+      }
+
+      function renderConversationList() {
+        if (!state.conversations.length) {
+          $sessionList.innerHTML = `<div class="session-empty">当前用户还没有历史会话。</div>`;
+          return;
+        }
+        $sessionList.innerHTML = state.conversations.map((item) => `
+          <button
+            class="session-item ${item.conversation_id === state.conversationId ? "active" : ""}"
+            type="button"
+            data-conversation-id="${escapeHtml(item.conversation_id)}"
+          >
+            <span class="session-title">${escapeHtml(item.title)}</span>
+            <span class="session-meta">模式：${escapeHtml(item.last_mode)} ｜ 轮数：${escapeHtml(String(item.turn_count))}</span>
+            <span class="session-meta">${escapeHtml(item.last_message_preview || "")}</span>
+          </button>
+        `).join("");
+        [...$sessionList.querySelectorAll(".session-item")].forEach((button) => {
+          button.addEventListener("click", () => {
+            const conversationId = button.dataset.conversationId;
+            if (conversationId) {
+              void loadConversationDetail(conversationId);
+            }
+          });
+        });
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text ?? "";
+        return div.innerHTML;
+      }
+
+      function buildArtifacts(payload) {
+        if (!payload || payload.mode !== "workflow") return "";
+        const items = [];
+        if (payload.report_result?.report_uri) {
+          items.push(`
+            <div class="artifact">
+              <strong>报告</strong><br>
+              <a href="/workflow/${encodeURIComponent(payload.request_id)}/report" target="_blank" rel="noreferrer">打开报告预览</a><br>
+              <span>${escapeHtml(payload.report_result.report_uri)}</span>
+            </div>
+          `);
+        }
+        if (payload.visualization_result?.visualization_uri) {
+          items.push(`
+            <div class="artifact">
+              <strong>可视化</strong><br>
+              <a href="/workflow/${encodeURIComponent(payload.request_id)}/visualization" target="_blank" rel="noreferrer">打开可视化预览</a><br>
+              <span>${escapeHtml(payload.visualization_result.visualization_uri)}</span>
+            </div>
+          `);
+        }
+        if (!items.length) return "";
+        return `<div class="artifact-list">${items.join("")}</div>`;
+      }
+
+      function renderMessages() {
+        if (!state.messages.length) {
+          $empty.style.display = "block";
+          $messages.innerHTML = "";
+          $messages.appendChild($empty);
+          updateHeader();
+          return;
+        }
+        $messages.innerHTML = state.messages.map((item) => {
+          const meta = item.payload
+            ? `模式：${escapeHtml(item.payload.mode || "-")} ｜ 路由：${escapeHtml(item.payload.route_reason || "-")} ｜ 请求：${escapeHtml(item.payload.request_id || "-")}`
+            : item.meta || "";
+          const raw = item.payload
+            ? `<details><summary>查看原始返回</summary><pre>${escapeHtml(JSON.stringify(item.payload, null, 2))}</pre></details>`
+            : "";
+          return `
+            <article class="msg ${item.role}">
+              <div class="msg-head">
+                <div class="msg-role">${item.role === "user" ? "用户" : "系统"}</div>
+                <div class="msg-meta">${meta}</div>
+              </div>
+              <div class="msg-body">${escapeHtml(item.content)}</div>
+              ${item.role === "assistant" ? buildArtifacts(item.payload) : ""}
+              ${raw}
+            </article>
+          `;
+        }).join("");
+        updateHeader();
+      }
+
+      function appendUserMessage(text) {
+        state.messages.push({
+          role: "user",
+          content: text,
+          meta: `会话：${state.conversationId || "新建中"}`,
+        });
+        saveState();
+        renderMessages();
+      }
+
+      function appendAssistantMessage(payload) {
+        state.conversationId = payload.conversation_id || state.conversationId;
+        state.messages.push({
+          role: "assistant",
+          content: payload.answer || payload.message || "无返回内容",
+          payload,
+        });
+        saveState();
+        renderMessages();
+      }
+
+      function normalizeConversationMessages(messages) {
+        return (Array.isArray(messages) ? messages : []).map((item) => ({
+          role: item.role,
+          content: item.content,
+          meta: item.response_payload
+            ? `模式：${item.mode || "-"} ｜ 路由：${item.route_reason || "-"} ｜ 请求：${item.request_id || "-"}`
+            : `请求：${item.request_id || "-"} ｜ 用户：${resolvedUserId()}`,
+          payload: item.response_payload || null,
+        }));
+      }
+
+      async function fetchConversationList() {
+        const userId = resolvedUserId();
+        const url = `${conversationListEndpoint}?user_id=${encodeURIComponent(userId)}&limit=50`;
+        try {
+          const response = await fetch(url);
+          const payload = await response.json();
+          state.conversations = Array.isArray(payload.conversations) ? payload.conversations : [];
+          renderConversationList();
+        } catch (error) {
+          state.conversations = [];
+          renderConversationList();
+          const message = error instanceof Error ? error.message : String(error);
+          setStatus(`读取会话列表失败：${message}`, true);
+        }
+      }
+
+      async function loadConversationDetail(conversationId) {
+        if (state.pending) return;
+        setPending(true);
+        setStatus(`正在加载会话 ${conversationId} ...`);
+        const userId = resolvedUserId();
+        const url = `${conversationDetailEndpointBase}/${encodeURIComponent(conversationId)}?user_id=${encodeURIComponent(userId)}`;
+        try {
+          const response = await fetch(url);
+          const payload = await response.json();
+          state.conversationId = payload.conversation_id || conversationId;
+          state.messages = normalizeConversationMessages(payload.messages);
+          saveState();
+          renderMessages();
+          renderConversationList();
+          setStatus(`已载入会话 ${state.conversationId}`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          setStatus(`读取会话详情失败：${message}`, true);
+        } finally {
+          setPending(false);
+        }
+      }
+
+      function buildPayload() {
+        const payload = {
+          request_id: `chat-ui-${Date.now()}`,
+          message: $message.value.trim(),
+          mode: $mode.value,
+          user_id: resolvedUserId(),
+          extra_params: {},
+        };
+        if (state.conversationId) {
+          payload.conversation_id = state.conversationId;
+        }
+        if ($region.value.trim()) {
+          payload.region = $region.value.trim();
+        }
+        if ($cropType.value.trim()) {
+          payload.crop_type = $cropType.value.trim();
+        }
+        if ($taskType.value.trim()) {
+          payload.task_type = $taskType.value.trim();
+        }
+        if ($imagePath.value.trim()) {
+          payload.image_path = $imagePath.value.trim();
+        }
+        if ($useMock.checked) {
+          payload.use_mock = true;
+        }
+        return payload;
+      }
+
+      async function sendMessage() {
+        const text = $message.value.trim();
+        if (!text || state.pending) {
+          return;
+        }
+        const payload = buildPayload();
+        appendUserMessage(text);
+        setPending(true);
+        setStatus("正在请求 /chat ...");
+        $message.value = "";
+        try {
+          const response = await fetch(chatEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          });
+          const result = await response.json();
+          appendAssistantMessage(result);
+          await fetchConversationList();
+          if (!response.ok || !result.success) {
+            setStatus(result.message || "请求失败", true);
+            return;
+          }
+          setStatus(`完成：${result.mode} ｜ 会话 ${result.conversation_id}`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          setStatus(`网络请求失败：${message}`, true);
+        } finally {
+          setPending(false);
+        }
+      }
+
+      function resetConversation() {
+        state.conversationId = null;
+        state.messages = [];
+        saveState();
+        renderMessages();
+        renderConversationList();
+        setStatus("已清空当前会话。");
+      }
+
+      $send.addEventListener("click", () => {
+        void sendMessage();
+      });
+
+      $reset.addEventListener("click", () => {
+        resetConversation();
+      });
+
+      $refreshSessions.addEventListener("click", () => {
+        void fetchConversationList();
+      });
+
+      $message.addEventListener("keydown", (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+          event.preventDefault();
+          void sendMessage();
+        }
+      });
+
+      [$mode, $region, $cropType, $taskType, $imagePath, $useMock].forEach((element) => {
+        element.addEventListener("change", saveState);
+      });
+      $userId.addEventListener("change", () => {
+        resetConversation();
+        saveState();
+        void fetchConversationList();
+      });
+
+      loadState();
+      renderMessages();
+      updateHeader();
+      renderConversationList();
+      void fetchConversationList();
+    })();
+  </script>
+</body>
+</html>

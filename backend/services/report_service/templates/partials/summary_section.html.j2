@@ -1,0 +1,11 @@
+<section class="section">
+  <h2>摘要</h2>
+  <p>{{ request.summary.overview }}</p>
+  {% if request.summary.key_findings %}
+  <ul>
+    {% for finding in request.summary.key_findings %}
+    <li>{{ finding }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>

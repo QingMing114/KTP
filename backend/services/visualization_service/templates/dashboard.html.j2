@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --paper: #f5f0e7;
+      --ink: #1d2928;
+      --muted: #596868;
+      --panel: #fffdf7;
+      --line: #dbcdb9;
+      --accent: #bc6c25;
+      --accent-soft: #eac696;
+      --ok: #2d6a4f;
+      --warn: #b75d2d;
+      --idle: #7b8b8b;
+      --shadow: rgba(45, 53, 52, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      background:
+        radial-gradient(circle at top left, rgba(234, 198, 150, 0.45), transparent 30%),
+        linear-gradient(180deg, #f9f4ea 0%, #efe6d8 100%);
+    }
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+    .hero {
+      padding: 28px;
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(255,253,247,0.98), rgba(245,235,219,0.96));
+      box-shadow: 0 18px 40px var(--shadow);
+    }
+    .hero h1 {
+      margin: 0 0 8px 0;
+      font-size: 34px;
+      line-height: 1.1;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .pill {
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 6px 12px;
+      background: rgba(255,255,255,0.72);
+      font-size: 13px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 18px;
+      margin-top: 20px;
+    }
+    .card {
+      grid-column: span 12;
+      padding: 20px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 10px 24px var(--shadow);
+    }
+    .card h2 {
+      margin: 0 0 14px 0;
+      font-size: 21px;
+    }
+    .meta-grid, .stage-grid, .artifact-grid, .metric-grid, .legend-grid {
+      display: grid;
+      gap: 14px;
+    }
+    .meta-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .stage-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+    .artifact-grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    .metric-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .legend-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .meta-card, .stage-card, .metric-card, .artifact-card, .legend-card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.84);
+    }
+    .meta-card strong, .metric-card strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .stage-card .status {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #fff;
+    }
+    .stage-card .duration {
+      display: inline-block;
+      margin-left: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .status.done { background: var(--ok); }
+    .status.triggered { background: var(--warn); }
+    .status.failed { background: #8d3740; }
+    .status.skipped, .status.missing { background: var(--idle); }
+    .artifact-card img {
+      width: 100%;
+      display: block;
+      border: 1px solid var(--line);
+      background: #f1ede5;
+      aspect-ratio: 1 / 1;
+      object-fit: contain;
+      margin-bottom: 12px;
+    }
+    .artifact-card .empty {
+      display: grid;
+      place-items: center;
+      min-height: 220px;
+      border: 1px dashed var(--line);
+      color: var(--muted);
+      background: #faf6ee;
+      margin-bottom: 12px;
+    }
+    .warning-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #7a2f14;
+    }
+    .legend-card .swatch {
+      width: 18px;
+      height: 18px;
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 8px;
+      border: 1px solid rgba(0,0,0,0.18);
+    }
+    .legend-card .target {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      font-size: 12px;
+    }
+    .report-frame {
+      width: 100%;
+      min-height: 720px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+    th, td {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f0e6d8;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    code, pre {
+      font-family: "Courier Prime", "Courier New", monospace;
+    }
+    pre {
+      overflow: auto;
+      padding: 16px;
+      border: 1px solid var(--line);
+      background: #f8f3ea;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    details summary {
+      cursor: pointer;
+      font-weight: bold;
+      margin-bottom: 12px;
+    }
+    .muted {
+      color: var(--muted);
+    }
+    @media (min-width: 900px) {
+      .overview-card { grid-column: span 7; }
+      .warnings-card { grid-column: span 5; }
+      .request-card { grid-column: span 5; }
+      .metrics-card { grid-column: span 7; }
+      .json-card { grid-column: span 6; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>{{ title }}</h1>
+      <p>生成时间：{{ generated_at }}。该看板记录了一次完整工作流运行，包括请求意图、执行阶段、中间产物和最终输出。</p>
+      <div class="pill-row">
+        <span class="pill">请求编号：{{ request.request_id }}</span>
+        <span class="pill">状态：{{ display.workflow_status }}</span>
+        <span class="pill">任务类型：{{ display.task_type }}</span>
+        <span class="pill">区域：{{ display.region }}</span>
+        <span class="pill">对象类型：{{ display.crop_type }}</span>
+        <span class="pill">是否使用 Mock：{{ display.use_mock }}</span>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="card overview-card">
+        <h2>工作流输入</h2>
+        <div class="meta-grid">
+          <div class="meta-card"><strong>用户请求</strong>{{ request.user_query }}</div>
+          <div class="meta-card"><strong>图像路径</strong>{{ request.image_path or "未提供" }}</div>
+          <div class="meta-card"><strong>模型</strong>{{ request.model_name or "未提供" }} / {{ request.model_version or "未提供" }}</div>
+          <div class="meta-card"><strong>产物地址</strong>{{ request.artifact_uri or "未提供" }}</div>
+          <div class="meta-card"><strong>训练状态</strong>{{ "已触发" if request.training_triggered else "未触发" }}</div>
+          <div class="meta-card"><strong>生成报告</strong>{{ (request.report_result or {}).get("report_uri", "未提供") }}</div>
+        </div>
+      </section>
+
+      <section class="card warnings-card">
+        <h2>告警信息</h2>
+        {% if warnings %}
+          <ul class="warning-list">
+            {% for warning in warnings %}
+              <li>{{ warning }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="muted">本次工作流未附带任何告警。</p>
+        {% endif %}
+      </section>
+
+      <section class="card">
+        <h2>执行时间线</h2>
+        <div class="stage-grid">
+          {% for stage in stage_cards %}
+            <div class="stage-card">
+              <span class="status {{ stage.status_class }}">{{ stage.status_label }}</span>
+              <span class="duration">{{ stage.duration_label }}</span>
+              <div><strong>{{ stage.label }}</strong></div>
+              <div class="muted">{{ stage.detail }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>产物总览</h2>
+        <div class="artifact-grid">
+          {% for artifact in artifacts %}
+            <div class="artifact-card">
+              {% if inline_previews.get(artifact.artifact_key) %}
+                <img src="{{ inline_previews[artifact.artifact_key] }}" alt="{{ artifact.title }}">
+              {% else %}
+                <div class="empty">{{ artifact.note or "无可用预览" }}</div>
+              {% endif %}
+              <div><strong>{{ artifact.title }}</strong></div>
+              <div class="muted">类型：{{ artifact.artifact_kind }}</div>
+              <div class="muted">来源：{{ artifact.source_uri or "未提供" }}</div>
+              {% if artifact.preview_uri %}
+                <div class="muted">预览：{{ artifact.preview_uri }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="card request-card">
+        <h2>推理与置信度</h2>
+        <div class="metric-grid">
+          {% if request.task_type == "lai_inversion" %}
+          <div class="metric-card"><strong>LAI 值</strong>{{ (request.inference_result or {}).get("affected_area", "未提供") }}</div>
+          {% else %}
+          <div class="metric-card"><strong>受影响面积</strong>{{ (request.inference_result or {}).get("affected_area", "未提供") }}</div>
+          {% endif %}
+          <div class="metric-card"><strong>推理置信度</strong>{{ (request.inference_result or {}).get("confidence", "未提供") }}</div>
+          <div class="metric-card"><strong>最终置信度</strong>{{ (request.confidence_result or {}).get("final_confidence", "未提供") }}</div>
+          <div class="metric-card"><strong>最终等级</strong>{{ (request.confidence_result or {}).get("final_label", "未提供") }}</div>
+        </div>
+      </section>
+
+      <section class="card metrics-card">
+        <h2>模型元数据</h2>
+        <div class="metric-grid">
+          <div class="metric-card"><strong>模型编号</strong>{{ request.model_id or "未提供" }}</div>
+          <div class="metric-card"><strong>模型状态</strong>{{ request.model_status or "未提供" }}</div>
+          <div class="metric-card"><strong>描述</strong>{{ request.model_description or "未提供" }}</div>
+          <div class="metric-card"><strong>产物地址</strong>{{ request.artifact_uri or "未提供" }}</div>
+          {% for metric in model_metric_cards %}
+            <div class="metric-card"><strong>{{ metric.label }}</strong>{{ metric.value }}</div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>知识 / 报告 / 训练</h2>
+        <div class="metric-grid">
+          <div class="metric-card"><strong>知识来源数</strong>{{ ((request.rag_result or {}).get("sources", [])) | length }}</div>
+          <div class="metric-card"><strong>检索摘要</strong>{{ (request.rag_result or {}).get("summary", "未提供") }}</div>
+          <div class="metric-card"><strong>报告标题</strong>{{ (request.report_result or {}).get("title", "未提供") }}</div>
+          <div class="metric-card"><strong>训练后端</strong>{{ request.training_backend or "未提供" }}</div>
+          <div class="metric-card"><strong>训练工作流</strong>{{ request.training_workflow_id or request.training_job_id or "未提供" }}</div>
+          <div class="metric-card"><strong>任务队列</strong>{{ request.training_task_queue or "未提供" }}</div>
+        </div>
+      </section>
+
+      {% if class_legend %}
+      <section class="card">
+        <h2>类别图例</h2>
+        <div class="legend-grid">
+          {% for item in class_legend %}
+            <div class="legend-card">
+              <div>
+                <span class="swatch" style="background: {{ item.color_hex }};"></span>
+                <strong>{{ item.label }}</strong>
+                {% if item.target %}
+                  <span class="target">目标类别</span>
+                {% endif %}
+              </div>
+              <div class="muted">类别值 {{ item.class_value }}</div>
+              <div class="muted">像素数 {{ item.count }} | 占比 {{ item.ratio }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      {% if (request.inference_result or {}).get("class_distribution") %}
+      <section class="card">
+        <h2>类别分布</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>类别值</th>
+              <th>类别标签</th>
+              <th>像素数</th>
+              <th>占比</th>
+              <th>平均置信度</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in request.inference_result.class_distribution %}
+            <tr>
+              <td>{{ item.class_value }}</td>
+              <td>{{ item.label or request.inference_result.class_labels.get(item.class_value|string, "未提供") }}</td>
+              <td>{{ item.count }}</td>
+              <td>{{ item.ratio }}</td>
+              <td>{{ item.mean_confidence if item.mean_confidence is not none else "未提供" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      {% endif %}
+
+      {% if embedded_report_html %}
+      <section class="card">
+        <h2>内嵌报告预览</h2>
+        <iframe
+          class="report-frame"
+          title="内嵌报告预览"
+          srcdoc="{{ embedded_report_html }}"
+        ></iframe>
+      </section>
+      {% endif %}
+
+      <section class="card json-card">
+        <h2>请求快照</h2>
+        <details open>
+          <summary>结构化请求</summary>
+          <pre>{{ request_json }}</pre>
+        </details>
+      </section>
+
+      <section class="card json-card">
+        <h2>最终状态快照</h2>
+        <details open>
+          <summary>工作流最终状态</summary>
+          <pre>{{ final_state_json }}</pre>
+        </details>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

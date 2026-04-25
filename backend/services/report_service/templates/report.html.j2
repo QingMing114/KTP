@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>{{ request.title }}</title>
+  <style>
+    body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; margin: 32px; color: #1d2a35; background: #f7f8fa; }
+    .page { max-width: 980px; margin: 0 auto; background: #ffffff; padding: 32px; border: 1px solid #dde3ea; }
+    h1, h2, h3 { color: #16324f; }
+    .meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+    .meta-card { background: #f3f6f9; border: 1px solid #d6e0ea; padding: 12px; }
+    .section { margin-bottom: 28px; }
+    .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; background: #e3eef8; margin-right: 8px; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border: 1px solid #dde3ea; padding: 8px 10px; text-align: left; vertical-align: top; }
+    .muted { color: #607080; font-size: 13px; }
+    ul { margin-top: 8px; }
+    code { background: #eef2f6; padding: 2px 4px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>{{ request.title }}</h1>
+    <p class="muted">生成时间：{{ generated_at }}</p>
+
+    <div class="meta-grid">
+      <div class="meta-card"><strong>请求编号</strong><br>{{ request.request_id }}</div>
+      <div class="meta-card"><strong>区域</strong><br>{{ request.region or "未提供" }}</div>
+      <div class="meta-card"><strong>对象类型</strong><br>{{ request.crop_type or "未提供" }}</div>
+      <div class="meta-card"><strong>任务类型</strong><br>{{ request.task_type or "未提供" }}</div>
+      <div class="meta-card"><strong>用户请求</strong><br>{{ request.user_query }}</div>
+      <div class="meta-card"><strong>图表数据</strong><br>{{ chart_context.confidence_series | length }} 项置信度指标</div>
+    </div>
+
+    {% include "partials/summary_section.html.j2" %}
+    {% include "partials/inference_section.html.j2" %}
+    {% include "partials/rag_section.html.j2" %}
+    {% include "partials/confidence_section.html.j2" %}
+  </div>
+</body>
+</html>

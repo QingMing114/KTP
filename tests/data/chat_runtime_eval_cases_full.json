@@ -1,0 +1,87 @@
+[
+  {
+    "name": "agent_direct_general_knowledge",
+    "category": "routing",
+    "objective": "验证 agent 模式下通用知识问题走 direct answer。",
+    "message": "NDVI 和 EVI 有什么区别？",
+    "mode": "agent",
+    "expected_mode": "agent",
+    "expected_success": true,
+    "expected_route_reason_contains": [
+      "chat_graph:direct_answer"
+    ]
+  },
+  {
+    "name": "auto_direct_general_knowledge",
+    "category": "routing",
+    "objective": "验证 auto 模式在 runtime-first 下也会由 agent runtime 直接回答通用问题。",
+    "message": "请介绍一下 VSCode 是什么。",
+    "mode": "auto",
+    "expected_mode": "agent",
+    "expected_success": true,
+    "expected_route_reason_contains": [
+      "chat_graph:direct_answer"
+    ]
+  },
+  {
+    "name": "agent_workflow_report_confidence",
+    "category": "workflow",
+    "objective": "验证 agent 模式可触发 workflow 工具并要求报告和置信度。",
+    "message": "请分析河北省小麦病害情况，并生成报告和置信度说明。",
+    "mode": "agent",
+    "expected_mode": "workflow",
+    "expected_route_reason_contains": [
+      "chat_graph:workflow"
+    ]
+  },
+  {
+    "name": "auto_workflow_report_confidence",
+    "category": "workflow",
+    "objective": "验证 auto 模式在 runtime-first 下会自调度到 workflow。",
+    "message": "请分析河北省小麦病害情况，并生成报告和置信度说明。",
+    "mode": "auto",
+    "expected_mode": "workflow",
+    "expected_route_reason_contains": [
+      "chat_graph:workflow"
+    ]
+  },
+  {
+    "name": "explicit_qa_case",
+    "category": "explicit_mode",
+    "objective": "验证显式 qa 模式仍可用。",
+    "message": "NDVI 和 EVI 有什么区别？",
+    "mode": "qa",
+    "expected_mode": "qa",
+    "expected_success": true
+  },
+  {
+    "name": "explicit_workflow_case",
+    "category": "explicit_mode",
+    "objective": "验证显式 workflow 模式仍可用。",
+    "message": "请分析河北省小麦病害情况，并生成报告和置信度说明。",
+    "mode": "workflow",
+    "expected_mode": "workflow"
+  },
+  {
+    "name": "agent_rag_grounded_question",
+    "category": "rag",
+    "objective": "验证包含知识库/资料要求的问题由 runtime 决定走 RAG 工具。",
+    "message": "请根据知识库资料说明 NDVI 和 EVI 的区别，并给出来源。",
+    "mode": "agent",
+    "expected_mode": "qa",
+    "expected_route_reason_contains": [
+      "chat_graph:rag_qa"
+    ]
+  },
+  {
+    "name": "region_crop_normalization_workflow",
+    "category": "normalization",
+    "objective": "验证中文 region/crop 提示可触发结构化 workflow 路由。",
+    "message": "帮我分析河北小麦病害，并生成报告。",
+    "mode": "agent",
+    "expected_mode": "workflow",
+    "expected_route_reason_contains": [
+      "chat_graph:workflow"
+    ]
+  }
+]

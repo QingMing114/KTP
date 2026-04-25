@@ -1,0 +1,18 @@
+[
+  {
+    "name": "workflow_report_case",
+    "message": "请分析河北省小麦病害情况，并生成报告和置信度说明。",
+    "mode": "agent",
+    "expected_mode": "workflow",
+    "expected_route_reason_contains": [
+      "chat_graph:workflow"
+    ]
+  },
+  {
+    "name": "explicit_qa_case",
+    "message": "NDVI 和 EVI 有什么区别？",
+    "mode": "qa",
+    "expected_mode": "qa",
+    "expected_success": true
+  }
+]

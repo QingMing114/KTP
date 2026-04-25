@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "remote-sensing-multi-agent"
+version = "0.1.0"
+description = "Scaffold for a modular remote sensing multi-agent system."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "faiss-cpu>=1.8,<2.0",
+  "httpx>=0.28,<1.0",
+  "jinja2>=3.1,<4.0",
+  "joblib>=1.4,<2.0",
+  "langgraph>=0.2,<1.0",
+  "numpy>=1.26,<3.0",
+  "pillow>=10.4,<12.0",
+  "pydantic>=2.9,<3.0",
+  "pydantic-settings>=2.6,<3.0",
+  "python-dotenv>=1.0,<2.0",
+  "rasterio>=1.4,<2.0",
+  "scikit-image>=0.24,<1.0",
+  "scikit-learn>=1.6,<1.7",
+  "scipy>=1.13,<2.0",
+  "psycopg[binary]>=3.2,<4.0",
+  "sqlalchemy>=2.0,<3.0",
+  "temporalio>=1.8,<2.0",
+  "tqdm>=4.66,<5.0",
+  "uvicorn[standard]>=0.32,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+  "apps*",
+  "agents*",
+  "services*",
+  "ml*",
+  "shared*",
+  "infra*",
+  "v2*",
+  "scripts*",
+  "tests*",
+]
+exclude = ["docs*", "prompts*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "v2/tests"]

@@ -1,0 +1,15 @@
+<section class="section">
+  <h2>置信度评估</h2>
+  {% if request.confidence %}
+  <table>
+    <tr><th>图像置信度</th><td>{{ request.confidence.image_confidence }}</td></tr>
+    <tr><th>文本置信度</th><td>{{ request.confidence.text_confidence }}</td></tr>
+    <tr><th>流程置信度</th><td>{{ request.confidence.workflow_confidence }}</td></tr>
+    <tr><th>最终置信度</th><td>{{ request.confidence.final_confidence }} ({{ request.confidence.final_label }})</td></tr>
+    <tr><th>说明</th><td>{{ request.confidence.explanation }}</td></tr>
+    <tr><th>告警</th><td>{{ request.confidence.warnings | join("; ") if request.confidence.warnings else "无" }}</td></tr>
+  </table>
+  {% else %}
+  <p class="muted">当前流程阶段尚未生成置信度评估。</p>
+  {% endif %}
+</section>

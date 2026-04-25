@@ -1,0 +1,21 @@
+<section class="section">
+  <h2>推理结果</h2>
+  {% if request.inference %}
+  <div class="pill">{{ request.inference.model_name }}</div>
+  <div class="pill">{{ request.inference.model_version }}</div>
+  <table>
+    {% if request.task_type == "lai_inversion" %}
+    <tr><th>LAI 值</th><td>{{ request.inference.affected_area }}</td></tr>
+    {% else %}
+    <tr><th>受影响面积</th><td>{{ request.inference.affected_area }}</td></tr>
+    {% endif %}
+    <tr><th>置信度</th><td>{{ request.inference.confidence }}</td></tr>
+    <tr><th>阳性覆盖率</th><td>{{ request.inference.positive_ratio if request.inference.positive_ratio is not none else "未提供" }}</td></tr>
+    <tr><th>掩膜地址</th><td><code>{{ request.inference.mask_uri }}</code></td></tr>
+    <tr><th>多边形数量</th><td>{{ request.inference.polygons | length }}</td></tr>
+    <tr><th>告警</th><td>{{ request.inference.warnings | join("; ") if request.inference.warnings else "无" }}</td></tr>
+  </table>
+  {% else %}
+  <p class="muted">当前报告没有可用的推理输出。</p>
+  {% endif %}
+</section>

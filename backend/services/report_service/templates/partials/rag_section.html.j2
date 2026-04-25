@@ -1,0 +1,13 @@
+<section class="section">
+  <h2>知识检索</h2>
+  {% if request.rag %}
+  <p>{{ request.rag.summary }}</p>
+  <ul>
+    {% for source in request.rag.sources %}
+    <li><code>{{ source }}</code></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">当前报告未附带检索上下文。</p>
+  {% endif %}
+</section>
