@@ -188,7 +188,7 @@ class AssistantMessageV2(BaseModel):
 class RunSummary(BaseModel):
     run_id: str
     session_id: str
-    status: Literal["completed", "abstained", "failed"]
+    status: Literal["completed", "abstained", "failed", "running"]
     input_message: str | None = None
 
 
@@ -226,7 +226,7 @@ class RunEventV2(BaseModel):
     assistant_part: AssistantMessagePartV2 | None = None
     assistant_message: AssistantMessageV2 | None = None
     output_message: str | None = None
-    run_status: Literal["completed", "abstained", "failed"] | None = None
+    run_status: Literal["completed", "abstained", "failed", "running"] | None = None
     run: RunDetail | None = None
 
 
@@ -279,3 +279,24 @@ class DomainPackSummary(BaseModel):
     status: str
     description: str
     entry_tools: list[str] = Field(default_factory=list)
+
+
+class UserRecord(BaseModel):
+    user_id: str
+    password_hash: str
+    role: str = "user"
+    created_at: str = ""
+    last_login: str | None = None
+
+
+class PublicUserRecord(BaseModel):
+    user_id: str
+    role: str = "user"
+    created_at: str = ""
+    last_login: str | None = None
+
+
+class AuthTokenPayload(BaseModel):
+    user_id: str
+    role: str = "user"
+    exp: float = 0

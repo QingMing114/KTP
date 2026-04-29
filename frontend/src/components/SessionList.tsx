@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useAppContext } from '../context/AppContext'
-import { MessageSquare, Loader2, Trash2, AlertTriangle, Pencil, Check, X } from 'lucide-react'
+import { MessageSquare, Loader2, Trash2, AlertTriangle, Pencil, Check, X, Search } from 'lucide-react'
 import { escapeHtml, formatRelativeTime } from '../utils'
 import * as api from '../services/api'
 
@@ -80,6 +80,7 @@ const SessionList: React.FC = () => {
   const [editValue, setEditValue] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [multiSelectMode, setMultiSelectMode] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -213,6 +214,26 @@ const SessionList: React.FC = () => {
 
   return (
     <>
+      <div className="px-2.5 mb-2">
+        <div className="relative">
+          <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-stone-300" />
+          <input
+            type="text"
+            placeholder="搜索会话..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full text-[12px] bg-stone-100 border border-stone-200/60 rounded-lg pl-7 pr-2 py-1.5 outline-none focus:border-stone-300 focus:bg-white transition-colors placeholder:text-stone-300"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-stone-300 hover:text-stone-500"
+            >
+              <X size={10} />
+            </button>
+          )}
+        </div>
+      </div>
       <div className="flex items-center justify-between px-2.5 mb-2">
         {multiSelectMode ? (
           <>
@@ -257,7 +278,9 @@ const SessionList: React.FC = () => {
       </div>
 
       <div className="space-y-0.5">
-        {state.sessions.map((session) => {
+        {state.sessions
+          .filter(s => !searchQuery || (s.title || '').toLowerCase().includes(searchQuery.toLowerCase()))
+          .map((session) => {
           const active = session.session_id === state.selectedSessionId
           const relTime = formatRelativeTime(session.updated_at || session.created_at)
           return (
@@ -273,7 +296,7 @@ const SessionList: React.FC = () => {
               }}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && (multiSelectMode ? handleToggleSelect(session.session_id) : selectSession(session.session_id))}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (multiSelectMode ? handleToggleSelect(session.session_id) : selectSession(session.session_id))}
             >
               {multiSelectMode && (
                 <input
@@ -343,7 +366,7 @@ const SessionList: React.FC = () => {
                         title="删除会话"
                         aria-label={`删除会话 ${session.title}`}
                         tabIndex={0}
-                        onKeyDown={(e) => e.key === 'Enter' && handleDeleteClick(session.session_id, e)}
+                        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleDeleteClick(session.session_id, e)}
                       >
                         <Trash2 size={11} />
                       </span>

@@ -123,7 +123,7 @@ export interface Run {
   session_id?: string;
   input_message: string;
   output_message?: string;
-  status: "completed" | "failed" | "streaming" | "pending";
+  status: "completed" | "failed" | "running" | "streaming" | "pending";
   created_at?: string;
   session_message_index?: number;
   assistant_message?: {
@@ -177,6 +177,7 @@ export interface ThinkingStep {
   toolOutput?: string;
   toolStatus?: string;
   artifacts?: Artifact[];
+  artifact?: Artifact;
 }
 
 export interface PendingRun {
@@ -226,6 +227,43 @@ export interface ReplayResponse {
   status: string;
   output_message?: string;
   replay_diff?: Record<string, unknown>;
+}
+
+export interface PluginToolEndpoint {
+  adapter: 'http_api'
+  url: string
+  method: 'GET' | 'POST'
+  headers?: Record<string, string>
+  timeout?: number
+}
+
+export interface PluginToolSpec {
+  name: string
+  display_name: string
+  description: string
+  category: string
+  pack_name: string
+  usage_hint?: string
+  input_schema: Record<string, string>
+  safety_level: 'safe' | 'caution' | 'dangerous'
+  endpoint: PluginToolEndpoint
+  enabled: boolean
+}
+
+export interface PluginToolTestResult {
+  success?: boolean
+  status: string
+  summary: string
+  message?: string
+  data?: unknown
+  payload?: unknown
+  artifacts?: Array<{
+    pack_name: string
+    artifact_type: string
+    title: string
+    content?: string
+    uri?: string
+  }>
 }
 
 export interface AppState {

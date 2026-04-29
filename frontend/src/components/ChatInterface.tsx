@@ -1,8 +1,8 @@
-import React, { useRef, useEffect, useState, useCallback, useLayoutEffect } from 'react'
+import React, { useRef, useEffect, useState, useCallback, useLayoutEffect, useMemo } from 'react'
 import { useAppContext } from '../context/AppContext'
 import { useArtifactClick } from '../hooks/useArtifactClick'
 import { Link } from 'react-router-dom'
-import { Bot, ExternalLink, X, Sparkles, AlertTriangle, ArrowUp, StopCircle, Paperclip, Loader2, RefreshCw, ArrowDown, Download, Keyboard } from 'lucide-react'
+import { Bot, ExternalLink, X, Sparkles, AlertTriangle, ArrowUp, StopCircle, Paperclip, Loader2, RefreshCw, ArrowDown, Download, Keyboard, MessageSquare, Zap } from 'lucide-react'
 import { escapeHtml, buildArtifactOpenHref, isMockArtifact, getArtifactLabel } from '../utils'
 import { SessionMessage, Run, RunPart, ThinkingStep, PendingRun, Attachment, Tool } from '../types'
 import MarkdownRenderer from './MarkdownRenderer'
@@ -30,6 +30,9 @@ const CATEGORY_EMOJIS: Record<string, string> = {
   visualization: "📈",
   conversation: "💬",
   debug: "🔧",
+  remote_sensing: "🛰️",
+  crop_simulation: "🌾",
+  web: "🌐",
 }
 
 function getDynamicShortcuts(tools: Tool[]): { emoji: string; title: string; desc: string; prompt: string }[] {
@@ -41,8 +44,7 @@ function getDynamicShortcuts(tools: Tool[]): { emoji: string; title: string; des
   const selected = webTools.slice(0, 3)
   if (selected.length === 0) {
     return [
-      { emoji: "🔬", title: "斑秃识别", desc: "上传 TIF 影像检测斑秃区域", prompt: "请帮我进行斑秃识别分析" },
-      { emoji: "🌿", title: "LAI 反演", desc: "PROSAIL 模型叶面积指数反演", prompt: "请帮我进行LAI反演分析，使用PROSAIL模型反演叶面积指数" },
+      { emoji: "💬", title: "开始对话", desc: "向 KTP 助手提问", prompt: "你好，请介绍一下你能做什么" },
     ]
   }
   return selected.map(t => ({
@@ -65,6 +67,7 @@ const ChatInterface: React.FC = () => {
     addAttachment,
     clearError,
     refreshAll,
+    setConversationMode,
   } = useAppContext()
 
   const { artifactError, handleArtifactClick, clearArtifactError } = useArtifactClick()
@@ -91,7 +94,11 @@ const ChatInterface: React.FC = () => {
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+      if (distanceFromBottom < 200) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      }
     }
   }, [messageCount, pendingPartsCount, thinkingStepsCount])
 
@@ -185,15 +192,31 @@ const ChatInterface: React.FC = () => {
     const messages = state.sessionMessages
     if (messages.length === 0) return
     const lines = messages.map(m => {
-      const role = m.role === 'user' ? '**You**' : '**KTP**'
-      return `${role}:\n\n${m.content}\n`
+      const role = m.role === 'user' ? '**用户**' : '**KTP**'
+      let content = m.content
+      if (m.thinkingSteps && m.thinkingSteps.length > 0) {
+        const stepsText = m.thinkingSteps
+          .map(s => `  - [${s.type}] ${s.label}${s.detail ? ': ' + s.detail : ''}`)
+          .join('\n')
+        content += `\n\n<details><summary>思考过程 (${m.thinkingSteps.length}步)</summary>\n\n${stepsText}\n\n</details>`
+      }
+      if (m.parts && m.parts.length > 0) {
+        const toolParts = m.parts.filter((p: RunPart) => p.type === 'tool_call' || p.type === 'tool_result')
+        if (toolParts.length > 0) {
+          const toolsText = toolParts
+            .map((p: RunPart) => `  - [${p.type}] ${p.tool_invocation?.display_name || p.tool_invocation?.tool_name || '工具'}${p.text ? ': ' + p.text.slice(0, 200) : ''}`)
+            .join('\n')
+          content += `\n\n<details><summary>工具调用 (${toolParts.length}次)</summary>\n\n${toolsText}\n\n</details>`
+        }
+      }
+      return `${role}:\n\n${content}\n`
     })
-    const text = `# KTP Conversation\n\n${lines.join('\n---\n\n')}`
+    const text = `# KTP 对话记录\n\n导出时间: ${new Date().toLocaleString('zh-CN')}\n\n${lines.join('\n---\n\n')}`
     const blob = new Blob([text], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `ktp-conversation-${new Date().toISOString().slice(0, 10)}.md`
+    a.download = `ktp-chat-${new Date().toISOString().slice(0, 10)}.md`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -233,6 +256,7 @@ const ChatInterface: React.FC = () => {
             disabled={uploading}
             className="ml-3 mb-2.5 p-1.5 rounded-lg text-stone-300 hover:text-stone-500 hover:bg-stone-100 transition-colors shrink-0"
             title="上传文件"
+            aria-label="上传文件"
           >
             {uploading ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
           </button>
@@ -268,7 +292,22 @@ const ChatInterface: React.FC = () => {
           )}
         </div>
         <div className="flex items-center justify-between mt-2">
-          <p className="text-[11px] text-stone-300">KTP 可能会犯错，请核实重要信息。</p>
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] text-stone-300">KTP 可能会犯错，请核实重要信息。</p>
+            <button
+              type="button"
+              onClick={() => setConversationMode(state.conversationMode === 'chat' ? 'task' : 'chat')}
+              className={`text-[11px] px-1.5 py-0.5 rounded transition-colors flex items-center gap-1 ${
+                state.conversationMode === 'task'
+                  ? 'text-amber-600 bg-amber-50 border border-amber-200/60'
+                  : 'text-stone-300 hover:text-stone-500'
+              }`}
+              title={state.conversationMode === 'task' ? '任务模式：优先调用分析工具' : '聊天模式：优先直接回答'}
+            >
+              {state.conversationMode === 'task' ? <Zap size={10} /> : <MessageSquare size={10} />}
+              {state.conversationMode === 'task' ? '任务' : '聊天'}
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             {state.sessionMessages.length > 0 && (
               <button
@@ -294,7 +333,7 @@ const ChatInterface: React.FC = () => {
     )
   }
 
-  function renderSessionMessages() {
+  const messagePairs = useMemo(() => {
     const messages = state.sessionMessages.filter(m => m.role === 'user' || m.role === 'assistant')
     const pairs: { user: SessionMessage; assistant?: SessionMessage; key: string }[] = []
     let i = 0
@@ -323,6 +362,12 @@ const ChatInterface: React.FC = () => {
         runByInputMessage.set(key, run)
       }
     }
+
+    return { pairs, messages, runBySessionIndex, runByInputMessage }
+  }, [state.sessionMessages, state.sessionRuns])
+
+  function renderSessionMessages() {
+    const { pairs, messages, runBySessionIndex, runByInputMessage } = messagePairs
 
     return pairs.map(({ user, assistant, key }, pairIndex) => {
       const userContent = user.content.trim()
@@ -432,6 +477,7 @@ const ChatInterface: React.FC = () => {
                 onClick={scrollToBottom}
                 className="fixed bottom-28 right-8 z-20 w-8 h-8 bg-white border border-stone-200 rounded-full shadow-sm flex items-center justify-center text-stone-400 hover:text-stone-600 hover:shadow transition-all"
                 title="滚动到底部"
+                aria-label="滚动到底部"
               >
                 <ArrowDown size={14} />
               </button>
@@ -656,7 +702,7 @@ const ChatInterface: React.FC = () => {
             </button>
           )}
           {mock && !openHref && (
-            <span className="text-[11px] text-stone-400">Mock 产物，关闭 Mock 后可生成真实文件</span>
+            <span className="text-[11px] text-stone-400">模拟产物，关闭模拟后可生成真实文件</span>
           )}
         </div>
       )

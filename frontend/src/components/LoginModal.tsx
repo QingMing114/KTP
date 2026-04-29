@@ -65,6 +65,22 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin, onReg
       setError('请输入用户名和密码')
       return
     }
+    if (userId.trim().length < 2) {
+      setError('用户名至少需要2个字符')
+      return
+    }
+    if (!/^[a-zA-Z0-9_-]{2,32}$/.test(userId.trim())) {
+      setError('用户名只能包含字母、数字、下划线和连字符')
+      return
+    }
+    if (password.length < 4) {
+      setError('密码至少需要4个字符')
+      return
+    }
+    if (password.length > 128) {
+      setError('密码不能超过128个字符')
+      return
+    }
     if (mode === 'register' && password !== confirmPassword) {
       setError('两次输入的密码不一致')
       return

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react'
-import { AppState, AppContextType, Run, RunSummary, RunPart, SessionMessage, ThinkingStep, Session, Attachment, TokenUsage, User, AuthState } from '../types'
+import { AppState, AppContextType, Run, RunPart, SessionMessage, ThinkingStep, Session, Attachment, TokenUsage, User, AuthState } from '../types'
 import { SseEvent } from '../types/api'
 import * as api from '../services/api'
 import { buildUrl } from '../services/api'
@@ -10,17 +10,19 @@ function loadInitialAuth(): AuthState {
     try {
       const parts = token.split('.')
       if (parts.length === 3) {
-        const payload = JSON.parse(decodeURIComponent(escape(atob(parts[1]))))
+        const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+        const pad = b64.length % 4
+        const padded = pad ? b64 + '='.repeat(4 - pad) : b64
+        const payload = JSON.parse(decodeURIComponent(escape(atob(padded))))
         if (payload.exp && payload.exp * 1000 > Date.now()) {
           return {
             isAuthenticated: true,
-            user: { user_id: payload.sub || 'unknown', role: payload.role || 'user' },
+            user: { user_id: payload.user_id || payload.sub || 'unknown', role: payload.role || 'user' },
             token,
           }
         }
       }
     } catch {
-      // JWT parse failed, treat as unauthenticated
       api.clearJwtToken()
     }
   }
@@ -57,7 +59,6 @@ const initialState: AppState = {
   conversationMode: "chat",
   useMock: false,
 }
-
 const AppContext = createContext<AppContextType | undefined>(undefined)
 
 export const useAppContext = () => {
@@ -79,31 +80,23 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const stateRef = useRef(state)
   stateRef.current = state
 
-  useEffect(() => {
-    refreshAll()
-    healthIntervalRef.current = setInterval(checkBackendHealth, 30000)
-    return () => {
-      if (healthIntervalRef.current) clearInterval(healthIntervalRef.current)
-    }
-  }, [])
-
-  function buildSessionTitle(message: string) {
-    return message.length > 48 ? `${message.slice(0, 48)}...` : message
-  }
-
-  const AGENT_DISPLAY_NAMES: Record<string, string> = {
+  const AGENT_DISPLAY_NAMES: Record<string, string> = useMemo(() => ({
     ktp_frontdesk: "前台调度",
     ktp_analysis_specialist: "分析专家",
     ktp_knowledge_specialist: "知识专家",
     ktp_training_specialist: "训练专家",
     ktp_workspace_specialist: "工作区专家",
-  }
+  }), [])
 
-  function getAgentDisplayName(agentId: string): string {
+  const buildSessionTitle = useCallback((message: string) => {
+    return message.length > 48 ? `${message.slice(0, 48)}...` : message
+  }, [])
+
+  const getAgentDisplayName = useCallback((agentId: string): string => {
     return AGENT_DISPLAY_NAMES[agentId] || agentId
-  }
+  }, [AGENT_DISPLAY_NAMES])
 
-  function updatePendingRun(event: SseEvent) {
+  const updatePendingRun = useCallback((event: SseEvent) => {
     setState(prev => {
       if (!prev.pendingRun) return { ...prev }
 
@@ -113,17 +106,38 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       let newThinkingSteps: ThinkingStep[] = [...prev.pendingRun.thinkingSteps]
       let newTokenUsage: TokenUsage | undefined = prev.pendingRun.tokenUsage
 
-      newRunId = event.run?.run_id || event.run_id || newRunId
+      if (event.run_id) newRunId = event.run_id
 
-      if (event.token_usage) {
-        newTokenUsage = event.token_usage
+      if (event.event === "run.started") {
+        newStatus = "streaming"
       }
 
-      if (event.event === "assistant.status") {
-        newThinkingSteps = [...newThinkingSteps, { type: "planning", label: "正在思考", detail: event.detail }]
+      if (event.event === "token.usage" && event.detail) {
+        try {
+          newTokenUsage = JSON.parse(event.detail)
+        } catch { /* ignore */ }
       }
 
-      if (event.event === "assistant.thinking") {
+      if (event.event === "assistant.delta" && event.assistant_part) {
+        const part = event.assistant_part
+        const lastPart = newParts[newParts.length - 1]
+        if (lastPart && lastPart.type === "text" && part.type === "text") {
+          newParts = [...newParts.slice(0, -1), { ...lastPart, text: (lastPart.text || "") + (part.text || "") }]
+        } else {
+          newParts = [...newParts, { type: "text", text: part.text || "" } as RunPart]
+        }
+      }
+
+      if (event.event === "assistant.delta" && event.output_message) {
+        const lastPart = newParts[newParts.length - 1]
+        if (lastPart && lastPart.type === "text") {
+          newParts = [...newParts.slice(0, -1), { ...lastPart, text: (lastPart.text || "") + event.output_message }]
+        } else {
+          newParts = [...newParts, { type: "text", text: event.output_message }]
+        }
+      }
+
+      if (event.event === "planner.thinking" || event.event === "planner.decision") {
         const thinkingText = event.detail || ""
         const pd = event.planner_decision
         const lastStep = newThinkingSteps[newThinkingSteps.length - 1]
@@ -236,20 +250,21 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
           const step = newThinkingSteps[artifactStepIdx]
           newThinkingSteps = [
             ...newThinkingSteps.slice(0, artifactStepIdx),
-            { ...step, artifacts: [...(step.artifacts || []), event.artifact] },
+            { ...step, artifact: event.artifact },
             ...newThinkingSteps.slice(artifactStepIdx + 1),
           ]
         }
         newParts = [...newParts, { type: "artifact", artifact: event.artifact }]
       }
-      if (event.event === "assistant.delta" && event.output_message) {
-        const lastPart = newParts[newParts.length - 1]
-        if (lastPart && lastPart.type === "text" && event.run_status === "streaming") {
-          newParts = [...newParts.slice(0, -1), { ...lastPart, text: lastPart.text + event.output_message }]
-        } else {
-          newParts = [...newParts, { type: "text", text: event.output_message }]
+
+      if (event.event === "run.error" || event.event === "run.failed") {
+        if (event.output_message) {
+          newParts = [...newParts, { type: "error", text: event.output_message, status: "failed" }]
         }
-        if (event.run_status === "completed") {
+        if (event.detail && !event.output_message) {
+          newParts = [...newParts, { type: "error", text: event.detail, status: "failed" }]
+        }
+        if (event.run_status === "failed") {
           newStatus = "completed"
           newThinkingSteps = newThinkingSteps.map(s =>
             s.type === "tool_calling" && s.toolStatus === "running"
@@ -290,41 +305,27 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         }
       }
     })
-  }
+  }, [getAgentDisplayName])
 
-  async function checkBackendHealth() {
+  const checkBackendHealth = useCallback(async () => {
     try {
-      await fetch(buildUrl('/v2/health'))
+      await fetch(buildUrl('/health'))
       setState(prev => ({ ...prev, backendOnline: true }))
     } catch {
       setState(prev => ({ ...prev, backendOnline: false }))
     }
-  }
+  }, [])
 
-  function refreshAll(options: { preferredSessionId?: string; preferredRunId?: string } = {}) {
-    setState(prev => ({ ...prev, loading: { ...prev.loading, boot: true }, errorMessage: null }))
-    checkBackendHealth()
-    const bootTimeout = setTimeout(() => {
-      setState(prev => ({ ...prev, loading: { ...prev.loading, boot: false } }))
-    }, 8000)
-    Promise.all([loadMetadata(), refreshSessions(options)])
-      .catch(() => {})
-      .finally(() => {
-        clearTimeout(bootTimeout)
-        setState(prev => ({ ...prev, loading: { ...prev.loading, boot: false } }))
-      })
-  }
-
-  async function loadMetadata() {
+  const loadMetadata = useCallback(async () => {
     try {
       const { tools, agents, packs } = await api.loadMetadata()
       setState(prev => ({ ...prev, tools, agents, packs }))
-    } catch {
-      setState(prev => ({ ...prev, tools: [], agents: [], packs: [] }))
+    } catch (err) {
+      setState(prev => ({ ...prev, tools: [], agents: [], packs: [], errorMessage: "元数据加载失败，部分功能可能不可用" }))
     }
-  }
+  }, [])
 
-  async function refreshSessions(options: { preferredSessionId?: string; preferredRunId?: string } = {}) {
+  const refreshSessions = useCallback(async (options: { preferredSessionId?: string; preferredRunId?: string } = {}) => {
     setState(prev => ({ ...prev, loading: { ...prev.loading, sessions: true } }))
     try {
       const sessions = await api.getSessions()
@@ -358,57 +359,82 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         sessionRuns: [],
         selectedRunId: null,
         selectedRun: null,
+        replayResponse: null,
         loading: { ...prev.loading, sessions: false }
       }))
 
-      loadRunDetailsInBackground(preferredSessionId, options.preferredRunId)
-    } catch {
-      setState(prev => ({ ...prev, sessions: [], loading: { ...prev.loading, sessions: false } }))
-    }
-  }
-
-  async function silentRefreshAfterSend(sessionId: string, runId?: string) {
-    try {
-      const sessions = await api.getSessions()
-      setState(prev => ({ ...prev, sessions }))
-
-      loadRunDetailsInBackground(sessionId, runId)
-    } catch {
-      // silent
-    }
-  }
-
-  async function loadRunDetailsInBackground(sessionId: string, preferredRunId?: string) {
-    try {
-      const runSummaries = await api.requestJson<RunSummary[]>(`/v2/sessions/${sessionId}/runs`)
-      if (runSummaries.length === 0) return
-
-      const runDetails = await Promise.all(
-        runSummaries.map((summary) => api.requestJson<Run>(`/v2/runs/${summary.run_id}`))
-      )
-
-      const finalPreferredRunId = preferredRunId ?? runDetails.at(-1)?.run_id ?? null
-      const selectedRun = runDetails.find((item: Run) => item.run_id === finalPreferredRunId) ?? runDetails.at(-1) ?? null
-
-      setState(prev => {
-        if (prev.selectedSessionId !== sessionId) return prev
-        return {
+      try {
+        const runSummaries = await api.getSessionRuns(preferredSessionId)
+        const finalPreferredRunId = options.preferredRunId ?? runSummaries.at(-1)?.run_id ?? null
+        let selectedRun: Run | null = null
+        const runDetails: Run[] = []
+        for (const summary of runSummaries.slice(-5)) {
+          try {
+            const detail = await api.getRunDetail(summary.run_id)
+            runDetails.push(detail)
+            if (detail.run_id === finalPreferredRunId) selectedRun = detail
+          } catch { /* skip failed run details */ }
+        }
+        setState(prev => ({
           ...prev,
           sessionRuns: runDetails,
           selectedRunId: finalPreferredRunId,
           selectedRun,
-        }
-      })
-    } catch {
-      // silent - run details are enhancement only
+        }))
+      } catch {
+        // silent - run details are enhancement only
+      }
+    } catch (err) {
+      setState(prev => ({
+        ...prev,
+        sessions: [],
+        loading: { ...prev.loading, sessions: false },
+        errorMessage: "会话列表加载失败",
+      }))
     }
-  }
+  }, [])
 
-  async function createSession(title: string) {
+  const silentRefreshAfterSend = useCallback(async (sessionId: string, runId?: string) => {
+    try {
+      const sessions = await api.getSessions()
+      const selectedSession = await api.getSession(sessionId) as Session
+      setState(prev => ({
+        ...prev,
+        sessions,
+        selectedSession,
+        sessionMessages: selectedSession.messages || prev.sessionMessages,
+      }))
+      if (runId) {
+        try {
+          const runDetail = await api.getRunDetail(runId)
+          setState(prev => ({
+            ...prev,
+            sessionRuns: [...prev.sessionRuns.filter(r => r.run_id !== runId), runDetail],
+          }))
+        } catch { /* silent */ }
+      }
+    } catch { /* silent */ }
+  }, [])
+
+  const refreshAll = useCallback((options: { preferredSessionId?: string; preferredRunId?: string } = {}) => {
+    setState(prev => ({ ...prev, loading: { ...prev.loading, boot: true }, errorMessage: null }))
+    checkBackendHealth()
+    const bootTimeout = setTimeout(() => {
+      setState(prev => ({ ...prev, loading: { ...prev.loading, boot: false } }))
+    }, 8000)
+    Promise.all([loadMetadata(), refreshSessions(options)])
+      .catch(() => {})
+      .finally(() => {
+        clearTimeout(bootTimeout)
+        setState(prev => ({ ...prev, loading: { ...prev.loading, boot: false } }))
+      })
+  }, [checkBackendHealth, loadMetadata, refreshSessions])
+
+  const createSession = useCallback(async (title: string) => {
     return api.createSession(title)
-  }
+  }, [])
 
-  async function deleteSession(sessionId: string) {
+  const deleteSession = useCallback(async (sessionId: string) => {
     try {
       await api.deleteSession(sessionId)
       let needsRefresh = false
@@ -431,9 +457,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     } catch (error) {
       setState(prev => ({ ...prev, errorMessage: error instanceof Error ? error.message : String(error) }))
     }
-  }
+  }, [refreshSessions])
 
-  function commitPendingRunToMessages() {
+  const commitPendingRunToMessages = useCallback(() => {
     setState(prev => {
       if (!prev.pendingRun) return prev
 
@@ -463,7 +489,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         pendingRun: null,
       }
     })
-  }
+  }, [])
 
   const sendMessage = useCallback(async () => {
     const current = stateRef.current
@@ -504,53 +530,48 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             status: "streaming",
             runId: null,
             thinkingSteps: [],
-          }
+            tokenUsage: undefined,
+          },
         }
       })
 
-      let finalRunId: string | null = null
-      const isTaskMode = conversationMode === "task"
       const abortController = new AbortController()
       abortControllerRef.current = abortController
-      try {
-        await api.requestEventStream(
-          `/v2/sessions/${sessionId}/messages/stream`,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              message,
-              user_id: authUserId,
-              context: {
-                entrypoint: isTaskMode ? "detect" : "v2_ui",
-                conversation_mode: isTaskMode ? "task" : "chat",
-                image_path: primaryPath,
-                attachments: attachments.map(a => ({ kind: "local_path" as const, path: a.path, name: a.name })),
-                use_mock: useMock || undefined,
-                client_capabilities: {
-                  ui: "chat_first_web",
-                },
-                extra_params: isTaskMode ? {
-                  task_bias: "analysis",
-                  prefer_visualization: true,
-                  include_visualization: true,
-                } : {},
-              },
-            }),
-          },
-          (event: SseEvent) => {
-            updatePendingRun(event)
-            finalRunId = event.run?.run_id || event.run_id || finalRunId
-          },
-          (error: Error) => {
-            console.error("Error in message stream:", error)
-            if (error.name !== "AbortError") {
-              setState(prev => ({ ...prev, errorMessage: error.message }))
-            }
-          },
-          abortController.signal
-        )
-      } catch (streamError: unknown) {
-        if (streamError instanceof Error && streamError.name === "AbortError") {
+
+      let finalRunId: string | null = null
+      let streamError: Error | null = null
+
+      await api.requestEventStream(
+        `/v2/sessions/${sessionId}/messages/stream`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message,
+            user_id: authUserId,
+            context: {
+              entrypoint: "v2_ui",
+              conversation_mode: conversationMode,
+              use_mock: useMock,
+              attachments: attachments.map(a => ({ kind: "local_path" as const, path: a.path, name: a.name })),
+              image_path: primaryPath,
+            },
+          }),
+          signal: abortController.signal,
+        },
+        (event: SseEvent) => {
+          if (event.run_id && !finalRunId) finalRunId = event.run_id
+          updatePendingRun(event)
+        },
+        (error: Error) => {
+          streamError = error
+        },
+        abortController.signal,
+      )
+
+      if (streamError != null) {
+        if (String(streamError).includes("aborted")) {
+          // User cancelled
         } else {
           throw streamError
         }
@@ -571,20 +592,20 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     } finally {
       setState(prev => ({ ...prev, loading: { ...prev.loading, sendMessage: false } }))
     }
-  }, [state.loading.sendMessage, state.pendingRun])
+  }, [createSession, buildSessionTitle, updatePendingRun, commitPendingRunToMessages, silentRefreshAfterSend])
 
-  async function selectSession(sessionId: string) {
-    if (sessionId === state.selectedSessionId) return
+  const selectSession = useCallback(async (sessionId: string) => {
+    if (sessionId === stateRef.current.selectedSessionId) return
     setState(prev => ({ ...prev, pendingRun: null, errorMessage: null }))
     await refreshSessions({ preferredSessionId: sessionId })
-  }
+  }, [refreshSessions])
 
-  async function replaySelectedRun() {
-    if (!state.selectedRun) return
-
+  const replaySelectedRun = useCallback(async () => {
+    const run = stateRef.current.selectedRun
+    if (!run) return
     setState(prev => ({ ...prev, loading: { ...prev.loading, replay: true } }))
     try {
-      const replayResponse = await api.replayRun(state.selectedRun.run_id)
+      const replayResponse = await api.replayRun(run.run_id)
       setState(prev => ({ ...prev, replayResponse }))
     } catch (error) {
       console.error("Error replaying run:", error)
@@ -592,33 +613,33 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     } finally {
       setState(prev => ({ ...prev, loading: { ...prev.loading, replay: false } }))
     }
-  }
+  }, [])
 
-  function handleApiConfigSubmit(e: React.FormEvent) {
+  const handleApiConfigSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
     const target = e.target as HTMLFormElement
     const apiBase = target.elements.namedItem('apiBase') as HTMLInputElement
     const apiBaseValue = apiBase.value
     api.setApiBaseUrl(apiBaseValue)
     setState(prev => ({ ...prev, apiBaseUrl: apiBaseValue }))
-    refreshAll({ preferredSessionId: state.selectedSessionId ?? undefined, preferredRunId: state.selectedRunId ?? undefined })
-  }
+    refreshAll({ preferredSessionId: stateRef.current.selectedSessionId ?? undefined, preferredRunId: stateRef.current.selectedRunId ?? undefined })
+  }, [refreshAll])
 
-  function handleMessageChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+  const handleMessageChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setState(prev => ({
       ...prev,
       composer: { ...prev.composer, message: e.target.value }
     }))
-  }
+  }, [])
 
-  function handlePromptClick(prompt: string) {
+  const handlePromptClick = useCallback((prompt: string) => {
     setState(prev => ({
       ...prev,
       composer: { ...prev.composer, message: prompt }
     }))
-  }
+  }, [])
 
-  function handleAttachmentRemove(index: number) {
+  const handleAttachmentRemove = useCallback((index: number) => {
     setState(prev => ({
       ...prev,
       composer: {
@@ -626,9 +647,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         attachments: prev.composer.attachments.filter((_, i) => i !== index)
       }
     }))
-  }
+  }, [])
 
-  function addAttachment(attachment: Attachment) {
+  const addAttachment = useCallback((attachment: Attachment) => {
     setState(prev => ({
       ...prev,
       composer: {
@@ -636,65 +657,88 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         attachments: [...prev.composer.attachments, attachment]
       }
     }))
-  }
+  }, [])
 
-  function clearError() {
+  const clearError = useCallback(() => {
     setState(prev => ({ ...prev, errorMessage: null }))
-  }
+  }, [])
 
-  function setConversationMode(mode: "chat" | "task") {
+  const setConversationMode = useCallback((mode: "chat" | "task") => {
     setState(prev => ({ ...prev, conversationMode: mode }))
-  }
+  }, [])
 
-  function setUseMock(value: boolean) {
+  const setUseMock = useCallback((value: boolean) => {
     setState(prev => ({ ...prev, useMock: value }))
-  }
+  }, [])
 
-  function stopGeneration() {
+  const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
     }
     commitPendingRunToMessages()
-  }
+  }, [commitPendingRunToMessages])
 
-  function retryLastMessage() {
-    const lastUserMsg = [...state.sessionMessages].reverse().find(m => m.role === "user")
+  const retryLastMessage = useCallback(() => {
+    const lastUserMsg = [...stateRef.current.sessionMessages].reverse().find(m => m.role === "user")
     if (!lastUserMsg) return
     setState(prev => ({
       ...prev,
       composer: { ...prev.composer, message: lastUserMsg.content },
     }))
-  }
+  }, [])
 
-  async function login(userId: string, password: string) {
+  const login = useCallback(async (userId: string, password: string) => {
     const result = await api.authLogin(userId, password)
     api.setJwtToken(result.access_token)
-    const user: User = { user_id: result.user_id, role: 'user' }
-    try {
-      const me = await api.authGetMe()
-      user.role = me.role
-    } catch {
-      // authGetMe failed, keep default role
-    }
+    const user: User = { user_id: result.user_id, role: result.role || 'user' }
     setState(prev => ({
       ...prev,
       auth: { isAuthenticated: true, user, token: result.access_token },
     }))
-  }
+  }, [])
 
-  async function register(userId: string, password: string) {
-    await api.authRegister(userId, password)
-    await login(userId, password)
-  }
+  const register = useCallback(async (userId: string, password: string) => {
+    const result = await api.authRegister(userId, password)
+    api.setJwtToken(result.access_token)
+    const user: User = { user_id: result.user_id, role: result.role || 'user' }
+    setState(prev => ({
+      ...prev,
+      auth: { isAuthenticated: true, user, token: result.access_token },
+    }))
+  }, [])
 
-  function logout() {
+  const logout = useCallback(() => {
+    api.authLogout()
     api.clearJwtToken()
     setState(prev => ({
       ...prev,
       auth: { isAuthenticated: false, user: null, token: null },
+      sessions: [],
+      selectedSessionId: null,
+      selectedSession: null,
+      sessionMessages: [],
     }))
-  }
+  }, [])
+
+  useEffect(() => {
+    refreshAll()
+    healthIntervalRef.current = setInterval(checkBackendHealth, 30000)
+    return () => {
+      if (healthIntervalRef.current) clearInterval(healthIntervalRef.current)
+    }
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    api.onAuthExpired(() => {
+      setState(prev => ({
+        ...prev,
+        auth: { isAuthenticated: false, user: null, token: null },
+        errorMessage: "登录已过期，请重新登录",
+      }))
+    })
+    return () => api.onAuthExpired(null)
+  }, [])
 
   const value: AppContextType = useMemo(() => ({
     state,

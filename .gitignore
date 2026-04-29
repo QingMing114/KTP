@@ -33,4 +33,18 @@ node_modules/
 *.onnx
 *.pt
 *.pth
-1
+
+# Cython compiled outputs
+*.so
+*.c
+!prosail_python/
+
+# Compile script temp files
+setup_compile.py
+
+# Release directory
+ktp_release/
+
+# Data directories
+backend/data/
+backend/plugins/

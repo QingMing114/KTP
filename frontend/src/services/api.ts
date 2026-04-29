@@ -1,5 +1,5 @@
 import type { SseEvent, SessionCreateResponse, RunReplayResponse, MetadataResponse } from '../types/api'
-import type { Session, Run, Dataset, RunSummary, SystemManifest } from '../types'
+import type { Session, Run, Dataset, RunSummary, SystemManifest, PluginToolSpec, PluginToolTestResult } from '../types'
 
 const DEFAULT_API_BASE_URL = ""
 const API_BASE_STORAGE_KEY = "ktp_v2_api_base_url"
@@ -20,6 +20,13 @@ export function setJwtToken(token: string): void {
 
 export function clearJwtToken(): void {
   localStorage.removeItem(JWT_TOKEN_STORAGE_KEY)
+  if (_onAuthExpired) _onAuthExpired()
+}
+
+let _onAuthExpired: (() => void) | null = null
+
+export function onAuthExpired(callback: (() => void) | null): void {
+  _onAuthExpired = callback
 }
 
 export function getApiKey(): string {
@@ -132,7 +139,8 @@ export async function requestEventStream(
         detail = response.statusText
       }
       if (response.status === 401) {
-        throw new Error("认证失败：请检查 API Key 配置")
+        clearJwtToken()
+        throw new Error("认证已过期，请重新登录")
       }
       if (response.status === 429) {
         throw new Error("请求过于频繁，请稍后再试")
@@ -230,7 +238,7 @@ export async function createSession(title: string): Promise<{ session_id: string
   const payload = await requestJson<SessionCreateResponse>("/v2/sessions", {
     method: "POST",
     body: JSON.stringify({
-      title: title && title.trim().length > 0 ? title.trim() : "New chat",
+      title: title && title.trim().length > 0 ? title.trim() : "新对话",
       user_id: "web-user",
     }),
   })
@@ -309,22 +317,41 @@ export async function replayRun(runId: string): Promise<RunReplayResponse> {
   })
 }
 
-export async function authLogin(userId: string, password: string): Promise<{ access_token: string; user_id: string }> {
+export async function authLogin(userId: string, password: string): Promise<{ access_token: string; user_id: string; role: string }> {
   return requestJson("/v2/auth/login", {
     method: "POST",
     body: JSON.stringify({ user_id: userId, password }),
   })
 }
 
-export async function authRegister(userId: string, password: string): Promise<{ user_id: string; role: string }> {
+export async function authRegister(userId: string, password: string): Promise<{ user_id: string; role: string; access_token: string }> {
   return requestJson("/v2/auth/register", {
     method: "POST",
     body: JSON.stringify({ user_id: userId, password }),
   })
 }
 
-export async function authGetMe(): Promise<{ user_id: string; role: string }> {
+export async function authGetMe(): Promise<{ user_id: string; role: string; created_at?: string; last_login?: string }> {
   return requestJson("/v2/auth/me")
+}
+
+export async function authLogout(): Promise<void> {
+  try {
+    await requestJson("/v2/auth/logout", { method: "POST" })
+  } catch {
+    // logout is best-effort
+  }
+}
+
+export async function authChangePassword(oldPassword: string, newPassword: string): Promise<{ status: string; detail: string }> {
+  return requestJson("/v2/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+  })
+}
+
+export async function authListUsers(): Promise<Array<{ user_id: string; role: string; created_at: string; last_login: string | null }>> {
+  return requestJson("/v2/auth/users")
 }
 
 export async function getDatasets(): Promise<Dataset[]> {
@@ -371,5 +398,29 @@ export async function cleanupSystem(maxAgeDays?: number): Promise<{ deleted_sess
   return requestJson("/v2/system/cleanup", {
     method: "POST",
     body: JSON.stringify(maxAgeDays ? { max_age_days: maxAgeDays } : {}),
+  })
+}
+
+export async function registerPluginTool(spec: PluginToolSpec): Promise<{ status: string; name: string }> {
+  return requestJson("/v2/plugins/tools", {
+    method: "POST",
+    body: JSON.stringify(spec),
+  })
+}
+
+export async function unregisterPluginTool(toolName: string): Promise<{ status: string; name: string }> {
+  return requestJson(`/v2/plugins/tools/${encodeURIComponent(toolName)}`, {
+    method: "DELETE",
+  })
+}
+
+export async function listPluginTools(): Promise<Array<{ name: string; display_name: string; category: string; pack_name: string }>> {
+  return requestJson("/v2/plugins/tools")
+}
+
+export async function testPluginTool(toolName: string, toolInput: Record<string, unknown>): Promise<PluginToolTestResult> {
+  return requestJson(`/v2/plugins/tools/${encodeURIComponent(toolName)}/test`, {
+    method: "POST",
+    body: JSON.stringify(toolInput),
   })
 }

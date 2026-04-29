@@ -9,7 +9,7 @@ export default defineConfig({
     open: true,
     proxy: {
       '/v2': {
-        target: 'http://127.0.0.1:18082',
+        target: 'http://127.0.0.1:8005',
         changeOrigin: true,
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {
@@ -21,16 +21,31 @@ export default defineConfig({
         },
       },
       '/chat': {
-        target: 'http://127.0.0.1:18082',
+        target: 'http://127.0.0.1:8005',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://127.0.0.1:18082',
+        target: 'http://127.0.0.1:8005',
+        changeOrigin: true,
+      },
+      '/detect': {
+        target: 'http://127.0.0.1:8005',
         changeOrigin: true,
       },
     },
   },
   build: {
+    sourcemap: false,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+      },
+      mangle: {
+        toplevel: true,
+      },
+    },
     rollupOptions: {
       output: {
         manualChunks: {

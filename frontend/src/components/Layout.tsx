@@ -189,7 +189,7 @@ const Layout: React.FC = () => {
             <div className="flex-1 min-w-0">
               {state.auth.isAuthenticated ? (
                 <p className="text-[13px] font-medium truncate text-stone-600">
-                  {state.auth.user?.user_id || 'User'}
+                  {state.auth.user?.user_id || '用户'}
                 </p>
               ) : (
                 <button

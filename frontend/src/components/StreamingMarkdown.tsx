@@ -6,10 +6,7 @@ interface StreamingMarkdownProps {
 }
 
 const StreamingMarkdown: React.FC<StreamingMarkdownProps> = ({ content }) => {
-  const isLikelyMarkdown = content.includes('```') || content.includes('**') || content.includes('##') || content.includes('- ') || content.includes('| ')
-  if (!isLikelyMarkdown && content.length < 100) {
-    return <span className="whitespace-pre-wrap">{escapeHtml(content)}</span>
-  }
+  const isLikelyMarkdown = content.includes('```') || content.includes('**') || content.includes('##') || content.includes('- ') || content.includes('| ') || /<[a-zA-Z][^>]*>/.test(content)
   if (isLikelyMarkdown) {
     const MarkdownRenderer = React.lazy(() => import('./MarkdownRenderer'))
     return (

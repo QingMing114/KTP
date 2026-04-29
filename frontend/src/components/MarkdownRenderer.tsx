@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/prism-light'
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import python from 'react-syntax-highlighter/dist/esm/languages/prism/python'
@@ -27,6 +28,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeRaw]}
       components={{
         code({ className, children, ...props }) {
           const match = /language-(\w+)/.exec(className || '')

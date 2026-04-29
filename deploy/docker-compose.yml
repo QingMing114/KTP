@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-3002}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      APP_NAME: ${APP_NAME:-ktp-product}
+      APP_ENV: ${APP_ENV:-production}
+      APP_HOST: 0.0.0.0
+      APP_PORT: 18080
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_AUTH_ENABLED: ${APP_AUTH_ENABLED:-true}
+      APP_AUTH_TOKEN: ${APP_AUTH_TOKEN:-}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:-}
+      V2_API_STORE_BACKEND: sqlite
+      V2_API_SQLITE_PATH: /app/data/ktp_v2_runtime.sqlite3
+      AGENT_LLM_BACKEND: ${AGENT_LLM_BACKEND:-openai_compatible}
+      AGENT_LLM_OPENAI_API_BASE: ${AGENT_LLM_OPENAI_API_BASE:-http://host.docker.internal:8000/v1}
+      AGENT_LLM_OPENAI_API_KEY: ${AGENT_LLM_OPENAI_API_KEY:-EMPTY}
+      AGENT_LLM_OPENAI_MODEL_NAME: ${AGENT_LLM_OPENAI_MODEL_NAME:-Qwen/Qwen3.5-27B}
+      AGENT_LLM_REQUEST_TIMEOUT_SECONDS: ${AGENT_LLM_REQUEST_TIMEOUT_SECONDS:-180}
+      KTP_LICENSE_SKIP: ${KTP_LICENSE_SKIP:-0}
+    ports:
+      - "${BACKEND_PORT:-8005}:18080"
+    volumes:
+      - backend_data:/app/data
+      - ./license.key:/app/data/license.key:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:18080/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  backend_data:

@@ -45,4 +45,5 @@ export interface SseEvent {
   planner_decision?: PlannerDecision;
   delegation?: DelegationInfo;
   token_usage?: TokenUsage;
+  assistant_part?: RunPart;
 }

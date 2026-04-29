@@ -151,7 +151,7 @@ const ThinkingProcess: React.FC<ThinkingProcessProps> = ({ steps, isActive, onAr
                       <div className="flex items-center gap-1.5 mb-1">
                         <Sparkles size={11} className="text-stone-400" />
                         <span className="font-medium text-[11px] text-stone-600">{escapeHtml(artifact.title)}</span>
-                        {isMockArtifact(artifact) && <span className="text-[9px] bg-amber-100/60 text-amber-600 px-1 py-0 rounded-full font-medium">Mock</span>}
+                        {isMockArtifact(artifact) && <span className="text-[9px] bg-amber-100/60 text-amber-600 px-1 py-0 rounded-full font-medium">模拟</span>}
                       </div>
                       {artifact.content && <div className="text-[10px] text-stone-400 whitespace-pre-wrap mb-1">{escapeHtml(artifact.content)}</div>}
                       {artifact.uri && onArtifactClick && buildArtifactOpenHref(artifact) && (

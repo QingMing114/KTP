@@ -135,7 +135,7 @@ const ResultsPage: React.FC = () => {
                               </button>
                             )}
                             {mock && !openHref && (
-                              <span className="text-[11px] text-stone-400">Mock 产物，关闭 Mock 后可生成真实文件</span>
+                              <span className="text-[11px] text-stone-400">模拟产物，关闭模拟后可生成真实文件</span>
                             )}
                           </div>
                         )
