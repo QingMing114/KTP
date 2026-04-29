@@ -54,7 +54,7 @@ class ChatFirstPlanner:
     @staticmethod
     def _build_system_prompt(*, request_context: RequestContextV2) -> str:
         task_mode_rules = (
-            "conversation_mode=task: 优先 ktp.analysis_pipeline 或 ktp.trigger_training，不要选 workspace 工具。"
+            "conversation_mode=task: 用户有明确的任务需求，优先选择最匹配的工具执行，不要选无关工具。"
             if request_context.conversation_mode == "task"
             else "conversation_mode=chat: 优先直接回答，确实需要外部能力时才调用工具。"
         )
@@ -62,25 +62,38 @@ class ChatFirstPlanner:
             "你是 KTP Chat-First Agent 的 planner。"
             "严格输出一个符合 AgentStepV2 的 JSON 对象。"
             "action 只能是 reply、clarify、call_tools、fail。"
-            "【路由决策】你必须自己判断用户意图："
-            "如果是闲聊、问候、身份询问、一般知识解释、不需要外部工具的问题 → 选 reply 直接回答；"
-            "如果需要调用工具才能完成 → 选 call_tools；"
-            "如果缺少关键输入 → 选 clarify；"
-            "不要因为用户提到了某个领域词就盲目调工具，只有确实需要工具能力时才调用。"
-            "需要本地知识时用 knowledge.search_local 或 ktp.explain_knowledge。"
-            "需要影像分析/报告/置信度/可视化时优先用 ktp.analysis_pipeline。"
-            "明确训练请求才用 ktp.trigger_training。"
-            "植被光谱模拟用 prosail.simulation。"
-            "作物生长模拟用 apsim.crop_simulation。"
-            "LAI反演需要报告/可视化时用 ktp.analysis_pipeline（会自动走完整管线生成报告和可视化）。"
-            "仅单像素快速LAI计算（不需要报告）时才用 prosail.invert_lai。"
-            "用户明确要求执行模拟、反演、计算时必须用 call_tools。"
-            "缺关键输入时选 clarify。"
-            "reply、clarify、fail 要写 response_message。"
-            "call_tools 要写 tool_calls。"
+            "【路由决策】根据用户意图选择最合适的工具，不要机械地匹配关键词："
+            "闲聊/问候/身份/一般知识/不需要工具 → reply；"
+            "需要工具才能完成 → call_tools；"
+            "缺关键输入 → clarify。"
+            "【工具选择指南】理解用户意图后选择最匹配的工具："
+            "ktp.analysis_pipeline — 完整遥感分析流程（推理+报告+置信度+可视化一步到位）"
+            "ktp.lookup_model_registry — 仅查询可用模型"
+            "ktp.run_inference_workflow — 仅运行推理"
+            "ktp.build_report — 仅生成报告"
+            "ktp.evaluate_confidence — 仅评估置信度"
+            "ktp.build_visualization — 仅生成可视化"
+            "ktp.explain_knowledge — 知识概念解释"
+            "ktp.retrieve_knowledge — 检索知识来源"
+            "knowledge.search_local — 本地知识搜索"
+            "ktp.trigger_training — 训练模型"
+            "prosail.simulation — 植被光谱模拟"
+            "prosail.build_lut / prosail.load_lut — 查找表构建/加载"
+            "prosail.invert_lai — 单像素LAI反演"
+            "prosail.invert_lai_tif — 批量LAI反演(tif)"
+            "apsim.crop_simulation — APSIM作物生长模拟"
+            "workspace.search / workspace.read_file / workspace.write — 工作区文件操作"
+            "【选择原则】"
+            "1. 用户需要端到端分析 → ktp.analysis_pipeline"
+            "2. 用户只需要某个步骤 → 选对应子工具"
+            "3. 用户明确指定工具 → 按用户要求选择"
+            "4. 用户需要LAI反演且要报告 → ktp.analysis_pipeline"
+            "5. 用户只需LAI数值 → prosail.invert_lai 或 prosail.invert_lai_tif"
+            "6. 用户需要作物模拟 → apsim.crop_simulation"
+            "7. 不要因为提到领域词就盲目调工具"
+            "reply/clarify/fail 要写 response_message。call_tools 要写 tool_calls。"
             "默认使用用户语言，简洁自然。"
-            "【防循环规则】如果 tool_history 中已有相同工具的成功调用结果，必须选 reply 返回结果，绝不要重复调用同一工具。"
-            "工具执行成功后优先用 reply 总结结果，避免不必要的后续工具调用。"
+            "【防循环】tool_history 中已有相同工具成功结果时必须 reply，绝不重复调用。"
             f"{task_mode_rules}"
         )
 
@@ -228,11 +241,8 @@ class ChatFirstPlanner:
             if tool_name in {"knowledge.search_local", "ktp.explain_knowledge", "ktp.retrieve_knowledge", "ktp.analysis_pipeline"}:
                 payload.setdefault("top_k", int(request_context.extra_params.get("top_k", 3) or 3))
         if tool_name == "ktp.analysis_pipeline":
-            payload.setdefault("include_knowledge", False)
-            payload.setdefault(
-                "include_visualization",
-                request_context.entrypoint == "detect" or bool(request_context.extra_params.get("include_visualization")),
-            )
+            payload.setdefault("include_knowledge", bool(payload.get("include_knowledge", False)))
+            payload.setdefault("include_visualization", bool(payload.get("include_visualization", False)))
         if tool_name == "workspace.read_file":
             if "path" not in payload:
                 extracted_path = extract_image_path_from_text(message)
@@ -275,14 +285,8 @@ class ChatFirstPlanner:
             return normalized
 
         alias_map = {
-            "ktp.retrieve_knowledge": "ktp.explain_knowledge",
-            "ktp.lookup_model_registry": "ktp.analysis_pipeline",
-            "ktp.run_inference_workflow": "ktp.analysis_pipeline",
-            "ktp.build_report": "ktp.analysis_pipeline",
-            "ktp.evaluate_confidence": "ktp.analysis_pipeline",
-            "ktp.build_visualization": "ktp.analysis_pipeline",
+            "ktp.retrieve_knowledge": "ktp.retrieve_knowledge",
             "ktp.run_analysis": "ktp.analysis_pipeline",
-            "prosail.invert_lai_tif": "ktp.analysis_pipeline",
             "knowledge.retrieve": "knowledge.search_local",
             "knowledge.search": "knowledge.search_local",
             "workspace.read": "workspace.read_file",
@@ -336,40 +340,6 @@ class ChatFirstPlanner:
             return "apsim.crop_simulation"
         if any(keyword in lowered for keyword in ("训练", "train")) and "ktp.trigger_training" in visible_tool_names:
             return "ktp.trigger_training"
-        if request_context.conversation_mode == "task" and "ktp.analysis_pipeline" in visible_tool_names:
-            return "ktp.analysis_pipeline"
-        if any(
-            keyword in lowered
-            for keyword in (
-                "分析",
-                "检测",
-                "报告",
-                "置信度",
-                "可视化",
-                "长势",
-                "估产",
-                "lai",
-                "叶面积",
-                "反演",
-                "workflow",
-                "report",
-                "confidence",
-                "visualization",
-                "visualize",
-                ".tif",
-                ".tiff",
-                "/data/",
-            )
-        ) and "ktp.analysis_pipeline" in visible_tool_names:
-            return "ktp.analysis_pipeline"
-        if any(
-            keyword in lowered
-            for keyword in ("资料", "来源", "source", "reference", "引用", "解释", "区别", "ndvi", "evi")
-        ):
-            if "ktp.explain_knowledge" in visible_tool_names:
-                return "ktp.explain_knowledge"
-            if "knowledge.search_local" in visible_tool_names:
-                return "knowledge.search_local"
         return None
 
     @staticmethod

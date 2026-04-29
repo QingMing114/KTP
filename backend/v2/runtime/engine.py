@@ -1415,7 +1415,7 @@ class BoundedRuntimeEngine:
     def _resolve_visible_tools(self, *, request_context: RequestContextV2) -> list:
         allowed_categories = None
         if request_context.conversation_mode == "task":
-            allowed_categories = {"analysis", "knowledge", "report", "visualization", "training"}
+            allowed_categories = {"analysis", "knowledge", "report", "visualization", "training", "crop_simulation", "remote_sensing", "workspace"}
         visible_tools = []
         for tool in self._tool_registry.list_tools():
             if not tool.enabled_by_default and tool.surface_visibility not in {"debug", "internal"}:
@@ -1424,15 +1424,6 @@ class BoundedRuntimeEngine:
                 if tool.surface_visibility not in {"all", "web", "api"}:
                     continue
             if allowed_categories is not None and tool.category not in allowed_categories:
-                continue
-            if tool.name.startswith("ktp.") and tool.name in {
-                "ktp.lookup_model_registry",
-                "ktp.run_inference_workflow",
-                "ktp.retrieve_knowledge",
-                "ktp.build_report",
-                "ktp.evaluate_confidence",
-                "ktp.build_visualization",
-            }:
                 continue
             visible_tools.append(tool)
         return visible_tools
