@@ -12,6 +12,7 @@ from v2.adapters.python_services.ktp_rag import (
     build_default_ktp_knowledge_adapter,
 )
 from v2.shared.schemas import ObservationV2, PackArtifactView, ToolSpecV2
+from v2.tools.apsim_adapter import run_apsim_crop_simulation
 from v2.tools.handlers import (
     build_ktp_build_report_handler,
     build_ktp_build_visualization_handler,
@@ -566,6 +567,33 @@ def build_default_tool_registry(
                     produces_artifacts=["lai_geotiff", "lai_confidence_geotiff"],
                 ),
                 handler=run_prosail_invert_lai_tif,
+            ),
+            "apsim.crop_simulation": ToolDefinition(
+                spec=ToolSpecV2(
+                    name="apsim.crop_simulation",
+                    display_name="APSIM 作物模拟",
+                    description="使用 APSIM 作物生长模型进行作物模拟，支持多种作物（小麦、玉米、大豆等）和区域配置。",
+                    visibility="public",
+                    category="crop_simulation",
+                    pack_name="apsim",
+                    usage_hint="Use when the user asks for crop growth simulation, APSIM modeling, yield prediction, or crop phenology analysis.",
+                    input_schema={
+                        "crop_type": "string?",
+                        "region": "string?",
+                        "start_year": "integer?",
+                        "end_year": "integer?",
+                        "soil_type": "string?",
+                        "sowing_date": "string?",
+                        "cultivar": "string?",
+                        "query": "string?",
+                    },
+                    safety_level="safe",
+                    is_macro=False,
+                    capabilities=["crop_simulation", "yield_prediction", "phenology_modeling"],
+                    requires_context=["query"],
+                    produces_artifacts=["simulation_data", "simulation_log"],
+                ),
+                handler=run_apsim_crop_simulation,
             ),
         }
     )

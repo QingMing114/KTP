@@ -17,7 +17,7 @@ from shared.request_normalization import (
     detect_task_type_from_text,
     extract_image_path_from_text,
 )
-from v2.adapters.python_services.ktp_services import KtpExecutionContext, KtpServiceError
+from v2.adapters.python_services.ktp_services import KTP_DEFAULT_CROP_TYPE, KTP_DEFAULT_REGION, KTP_DEFAULT_TASK_TYPE, KtpExecutionContext, KtpServiceError
 from v2.agents.registry import AgentProfileRegistry
 from v2.packs.registry import DomainPackRegistry
 from v2.policies.guard import PolicyGuard, PolicyGuardError
@@ -1530,9 +1530,9 @@ class BoundedRuntimeEngine:
 
         context = bundle.create_context(
             query=query,
-            region=str(flow_input.get("region") or extra_params.pop("region", "") or ""),
-            crop_type=str(flow_input.get("crop_type") or extra_params.pop("crop_type", "") or ""),
-            task_type=str(flow_input.get("task_type") or extra_params.pop("task_type", "") or ""),
+            region=str(flow_input.get("region") or extra_params.pop("region", "") or KTP_DEFAULT_REGION),
+            crop_type=str(flow_input.get("crop_type") or extra_params.pop("crop_type", "") or KTP_DEFAULT_CROP_TYPE),
+            task_type=str(flow_input.get("task_type") or extra_params.pop("task_type", "") or KTP_DEFAULT_TASK_TYPE),
             request_id=str(flow_input.get("request_id") or run.run_id),
             use_mock_backend=bool(flow_input.get("use_mock_backend", False)),
             image_path=str(flow_input.get("image_path")) if flow_input.get("image_path") else None,

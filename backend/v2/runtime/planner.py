@@ -71,6 +71,7 @@ class ChatFirstPlanner:
             "需要影像分析/报告/置信度/可视化时优先用 ktp.analysis_pipeline。"
             "明确训练请求才用 ktp.trigger_training。"
             "植被光谱模拟用 prosail.simulation。"
+            "作物生长模拟用 apsim.crop_simulation。"
             "LAI反演需要报告/可视化时用 ktp.analysis_pipeline（会自动走完整管线生成报告和可视化）。"
             "仅单像素快速LAI计算（不需要报告）时才用 prosail.invert_lai。"
             "用户明确要求执行模拟、反演、计算时必须用 call_tools。"
@@ -328,6 +329,11 @@ class ChatFirstPlanner:
         visible_tool_names: set[str],
     ) -> str | None:
         lowered = message.lower()
+        if any(
+            keyword in lowered
+            for keyword in ("apsim", "作物模拟", "作物生长", "crop simulation", "crop model")
+        ) and "apsim.crop_simulation" in visible_tool_names:
+            return "apsim.crop_simulation"
         if any(keyword in lowered for keyword in ("训练", "train")) and "ktp.trigger_training" in visible_tool_names:
             return "ktp.trigger_training"
         if request_context.conversation_mode == "task" and "ktp.analysis_pipeline" in visible_tool_names:
