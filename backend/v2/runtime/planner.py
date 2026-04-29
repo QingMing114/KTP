@@ -188,8 +188,42 @@ class ChatFirstPlanner:
                     ),
                 )
             )
-        step.tool_calls = normalized_calls
+        step.tool_calls = ChatFirstPlanner._correct_tool_intent(
+            calls=normalized_calls,
+            message=message,
+            visible_tool_names=visible_tool_names,
+        )
         return step
+
+    @staticmethod
+    def _correct_tool_intent(
+        *,
+        calls: list,
+        message: str,
+        visible_tool_names: set[str],
+    ) -> list:
+        if not calls:
+            return calls
+        lowered = message.lower()
+        _intent_rules: list[tuple[set[str], str]] = [
+            ({"apsim", "作物模拟", "作物生长", "crop simulation", "crop model"}, "apsim.crop_simulation"),
+            ({"prosail", "光谱模拟", "spectral", "reflectance"}, "prosail.simulation"),
+            ({"lai反演", "invert lai", "反演lai"}, "prosail.invert_lai"),
+        ]
+        for keywords, correct_tool in _intent_rules:
+            if any(kw in lowered for kw in keywords) and correct_tool in visible_tool_names:
+                for i, call in enumerate(calls):
+                    if call.tool_name != correct_tool and call.tool_name in {
+                        "ktp.analysis_pipeline",
+                        "ktp.run_inference_workflow",
+                    }:
+                        calls[i] = type(call)(
+                            call_id=call.call_id,
+                            tool_name=correct_tool,
+                            tool_input={"query": message, **{k: v for k, v in (call.tool_input or {}).items() if k != "query"}},
+                        )
+                break
+        return calls
 
     @staticmethod
     def _normalize_tool_input(
