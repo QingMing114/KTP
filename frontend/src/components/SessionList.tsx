@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useAppContext } from '../context/AppContext'
 import { MessageSquare, Loader2, Trash2, AlertTriangle, Pencil, Check, X, Search } from 'lucide-react'
 import { escapeHtml, formatRelativeTime } from '../utils'
-import * as api from '../services/api'
+import { logger } from '../utils/logger'
+import { updateConversation } from '../services/canonical'
 
 function ConfirmDialog({
   open,
@@ -102,7 +103,7 @@ const SessionList: React.FC = () => {
         setSelectedIds(new Set())
         setMultiSelectMode(false)
       } catch (err) {
-        console.error('Failed to delete sessions:', err)
+        logger.error('Failed to delete sessions:', err)
       } finally {
         setDeleting(false)
         setPendingDeleteId(null)
@@ -146,10 +147,10 @@ const SessionList: React.FC = () => {
       return
     }
     try {
-      await api.updateSession(editingId, editValue.trim())
+      await updateConversation(editingId, editValue.trim())
       await refreshSessions({ preferredSessionId: editingId })
     } catch (err) {
-      console.error('Failed to rename session:', err)
+      logger.error('Failed to rename session:', err)
     } finally {
       setEditingId(null)
     }

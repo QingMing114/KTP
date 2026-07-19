@@ -86,6 +86,21 @@ class LocalRAGServiceClient:
             results=results_payload,
         )
 
+    def list_documents(self) -> list[dict[str, Any]]:
+        return self._service.list_documents()
+
+    def get_document(self, document_id: str) -> dict[str, Any] | None:
+        return self._service.get_document(document_id)
+
+    def delete_document(self, document_id: str) -> bool:
+        return self._service.delete_document(document_id)
+
+    def ingest_document(self, request: Any) -> Any:
+        return self._service.ingest_document(request)
+
+    def query(self, request: Any) -> Any:
+        return self._service.query(request)
+
     @staticmethod
     def _build_summary(results: list[RetrievedChunk]) -> str:
         if not results:

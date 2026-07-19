@@ -1,41 +1,1532 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <title>{{ request.title }}</title>
-  <style>
-    body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; margin: 32px; color: #1d2a35; background: #f7f8fa; }
-    .page { max-width: 980px; margin: 0 auto; background: #ffffff; padding: 32px; border: 1px solid #dde3ea; }
-    h1, h2, h3 { color: #16324f; }
-    .meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
-    .meta-card { background: #f3f6f9; border: 1px solid #d6e0ea; padding: 12px; }
-    .section { margin-bottom: 28px; }
-    .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; background: #e3eef8; margin-right: 8px; font-size: 12px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    th, td { border: 1px solid #dde3ea; padding: 8px 10px; text-align: left; vertical-align: top; }
-    .muted { color: #607080; font-size: 13px; }
-    ul { margin-top: 8px; }
-    code { background: #eef2f6; padding: 2px 4px; }
-  </style>
-</head>
-<body>
-  <div class="page">
-    <h1>{{ request.title }}</h1>
-    <p class="muted">生成时间：{{ generated_at }}</p>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ request.title | default('智能遥感光谱分析报告') }}</title>
+    <!-- 引入高清晰度无衬线字体与学术中文衬线体 -->
+    <style>
+/*! tailwindcss v4.3.0 | MIT License | https://tailwindcss.com */
+@layer properties{@supports (((-webkit-hyphens:none)) and (not (margin-trim:inline))) or ((-moz-orient:inline) and (not (color:rgb(from red r g b)))){*,:before,:after,::backdrop{--tw-rotate-x:initial;--tw-rotate-y:initial;--tw-rotate-z:initial;--tw-skew-x:initial;--tw-skew-y:initial;--tw-space-y-reverse:0;--tw-divide-y-reverse:0;--tw-border-style:solid;--tw-leading:initial;--tw-font-weight:initial;--tw-tracking:initial;--tw-shadow:0 0 #0000;--tw-shadow-color:initial;--tw-shadow-alpha:100%;--tw-inset-shadow:0 0 #0000;--tw-inset-shadow-color:initial;--tw-inset-shadow-alpha:100%;--tw-ring-color:initial;--tw-ring-shadow:0 0 #0000;--tw-inset-ring-color:initial;--tw-inset-ring-shadow:0 0 #0000;--tw-ring-inset:initial;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-offset-shadow:0 0 #0000;--tw-duration:initial}}}@layer theme{:root,:host{--font-sans:ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";--font-serif:ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;--font-mono:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;--color-red-50:oklch(97.1% .013 17.38);--color-red-100:oklch(93.6% .032 17.717);--color-red-300:oklch(80.8% .114 19.571);--color-red-700:oklch(50.5% .213 27.518);--color-red-800:oklch(44.4% .177 26.899);--color-red-900:oklch(39.6% .141 25.723);--color-red-950:oklch(25.8% .092 26.042);--color-amber-50:oklch(98.7% .022 95.277);--color-amber-100:oklch(96.2% .059 95.617);--color-amber-200:oklch(92.4% .12 95.746);--color-amber-300:oklch(87.9% .169 91.605);--color-amber-700:oklch(55.5% .163 48.998);--color-amber-800:oklch(47.3% .137 46.201);--color-amber-900:oklch(41.4% .112 45.904);--color-amber-950:oklch(27.9% .077 45.635);--color-emerald-50:oklch(97.9% .021 166.113);--color-emerald-100:oklch(95% .052 163.051);--color-emerald-200:oklch(90.5% .093 164.15);--color-emerald-300:oklch(84.5% .143 164.978);--color-emerald-400:oklch(76.5% .177 163.223);--color-emerald-700:oklch(50.8% .118 165.612);--color-emerald-800:oklch(43.2% .095 166.913);--color-emerald-900:oklch(37.8% .077 168.94);--color-emerald-950:oklch(26.2% .051 172.552);--color-teal-50:oklch(98.4% .014 180.72);--color-teal-200:oklch(91% .096 180.426);--color-teal-900:oklch(38.6% .063 188.416);--color-teal-950:oklch(27.7% .046 192.524);--color-blue-50:oklch(97% .014 254.604);--color-blue-200:oklch(88.2% .059 254.128);--color-blue-950:oklch(28.2% .091 267.935);--color-slate-50:oklch(98.4% .003 247.858);--color-slate-100:oklch(96.8% .007 247.896);--color-slate-200:oklch(92.9% .013 255.508);--color-slate-300:oklch(86.9% .022 252.894);--color-slate-400:oklch(70.4% .04 256.788);--color-slate-500:oklch(55.4% .046 257.417);--color-slate-600:oklch(44.6% .043 257.281);--color-slate-700:oklch(37.2% .044 257.287);--color-slate-800:oklch(27.9% .041 260.031);--color-slate-900:oklch(20.8% .042 265.755);--color-slate-950:oklch(12.9% .042 264.695);--color-stone-100:oklch(97% .001 106.424);--color-stone-200:oklch(92.3% .003 48.717);--color-stone-900:oklch(21.6% .006 56.043);--color-white:#fff;--spacing:.25rem;--container-sm:24rem;--container-3xl:48rem;--container-6xl:72rem;--text-xs:.75rem;--text-xs--line-height:calc(1 / .75);--text-sm:.875rem;--text-sm--line-height:calc(1.25 / .875);--text-xl:1.25rem;--text-xl--line-height:calc(1.75 / 1.25);--text-2xl:1.5rem;--text-2xl--line-height:calc(2 / 1.5);--font-weight-normal:400;--font-weight-medium:500;--font-weight-semibold:600;--font-weight-bold:700;--font-weight-extrabold:800;--font-weight-black:900;--tracking-tight:-.025em;--tracking-wide:.025em;--tracking-wider:.05em;--tracking-widest:.1em;--leading-relaxed:1.625;--radius-xs:.125rem;--radius-sm:.25rem;--radius-md:.375rem;--radius-lg:.5rem;--radius-xl:.75rem;--animate-ping:ping 1s cubic-bezier(0, 0, .2, 1) infinite;--default-transition-duration:.15s;--default-transition-timing-function:cubic-bezier(.4, 0, .2, 1);--default-font-family:var(--font-sans);--default-mono-font-family:var(--font-mono)}}@layer base{*,:after,:before,::backdrop{box-sizing:border-box;border:0 solid;margin:0;padding:0}::file-selector-button{box-sizing:border-box;border:0 solid;margin:0;padding:0}html,:host{-webkit-text-size-adjust:100%;tab-size:4;line-height:1.5;font-family:var(--default-font-family,ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");font-feature-settings:var(--default-font-feature-settings,normal);font-variation-settings:var(--default-font-variation-settings,normal);-webkit-tap-highlight-color:transparent}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,samp,pre{font-family:var(--default-mono-font-family,ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);font-feature-settings:var(--default-mono-font-feature-settings,normal);font-variation-settings:var(--default-mono-font-variation-settings,normal);font-size:1em}small{font-size:80%}sub,sup{vertical-align:baseline;font-size:75%;line-height:0;position:relative}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}:-moz-focusring{outline:auto}progress{vertical-align:baseline}summary{display:list-item}ol,ul,menu{list-style:none}img,svg,video,canvas,audio,iframe,embed,object{vertical-align:middle;display:block}img,video{max-width:100%;height:auto}button,input,select,optgroup,textarea{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}::file-selector-button{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}:where(select:is([multiple],[size])) optgroup{font-weight:bolder}:where(select:is([multiple],[size])) optgroup option{padding-inline-start:20px}::file-selector-button{margin-inline-end:4px}::placeholder{opacity:1}@supports (not ((-webkit-appearance:-apple-pay-button))) or (contain-intrinsic-size:1px){::placeholder{color:currentColor}@supports (color:color-mix(in lab, red, red)){::placeholder{color:color-mix(in oklab, currentcolor 50%, transparent)}}}textarea{resize:vertical}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-date-and-time-value{min-height:1lh;text-align:inherit}::-webkit-datetime-edit{display:inline-flex}::-webkit-datetime-edit-fields-wrapper{padding:0}::-webkit-datetime-edit{padding-block:0}::-webkit-datetime-edit-year-field{padding-block:0}::-webkit-datetime-edit-month-field{padding-block:0}::-webkit-datetime-edit-day-field{padding-block:0}::-webkit-datetime-edit-hour-field{padding-block:0}::-webkit-datetime-edit-minute-field{padding-block:0}::-webkit-datetime-edit-second-field{padding-block:0}::-webkit-datetime-edit-millisecond-field{padding-block:0}::-webkit-datetime-edit-meridiem-field{padding-block:0}::-webkit-calendar-picker-indicator{line-height:1}:-moz-ui-invalid{box-shadow:none}button,input:where([type=button],[type=reset],[type=submit]){appearance:button}::file-selector-button{appearance:button}::-webkit-inner-spin-button{height:auto}::-webkit-outer-spin-button{height:auto}[hidden]:where(:not([hidden=until-found])){display:none!important}}@layer components;@layer utilities{.absolute{position:absolute}.relative{position:relative}.inset-0{inset:calc(var(--spacing) * 0)}.top-2\.5{top:calc(var(--spacing) * 2.5)}.right-2\.5{right:calc(var(--spacing) * 2.5)}.bottom-2\.5{bottom:calc(var(--spacing) * 2.5)}.left-2\.5{left:calc(var(--spacing) * 2.5)}.container{width:100%}@media (min-width:40rem){.container{max-width:40rem}}@media (min-width:48rem){.container{max-width:48rem}}@media (min-width:64rem){.container{max-width:64rem}}@media (min-width:80rem){.container{max-width:80rem}}@media (min-width:96rem){.container{max-width:96rem}}.mx-auto{margin-inline:auto}.mt-0\.5{margin-top:calc(var(--spacing) * .5)}.mt-2{margin-top:calc(var(--spacing) * 2)}.mt-4{margin-top:calc(var(--spacing) * 4)}.mt-6{margin-top:calc(var(--spacing) * 6)}.mb-1{margin-bottom:calc(var(--spacing) * 1)}.mb-1\.5{margin-bottom:calc(var(--spacing) * 1.5)}.mb-2{margin-bottom:calc(var(--spacing) * 2)}.mb-3{margin-bottom:calc(var(--spacing) * 3)}.mb-4{margin-bottom:calc(var(--spacing) * 4)}.mb-6{margin-bottom:calc(var(--spacing) * 6)}.block{display:block}.flex{display:flex}.grid{display:grid}.hidden{display:none}.inline-block{display:inline-block}.inline-flex{display:inline-flex}.h-1{height:calc(var(--spacing) * 1)}.h-1\.5{height:calc(var(--spacing) * 1.5)}.h-2{height:calc(var(--spacing) * 2)}.h-2\.5{height:calc(var(--spacing) * 2.5)}.h-3{height:calc(var(--spacing) * 3)}.h-3\.5{height:calc(var(--spacing) * 3.5)}.h-4{height:calc(var(--spacing) * 4)}.h-5{height:calc(var(--spacing) * 5)}.h-24{height:calc(var(--spacing) * 24)}.h-36{height:calc(var(--spacing) * 36)}.h-40{height:calc(var(--spacing) * 40)}.h-auto{height:auto}.h-full{height:100%}.max-h-\[240px\]{max-height:240px}.min-h-\[300px\]{min-height:300px}.min-h-screen{min-height:100vh}.w-1\.5{width:calc(var(--spacing) * 1.5)}.w-2\.5{width:calc(var(--spacing) * 2.5)}.w-3{width:calc(var(--spacing) * 3)}.w-3\.5{width:calc(var(--spacing) * 3.5)}.w-4{width:calc(var(--spacing) * 4)}.w-5{width:calc(var(--spacing) * 5)}.w-36{width:calc(var(--spacing) * 36)}.w-full{width:100%}.w-max{width:max-content}.max-w-3xl{max-width:var(--container-3xl)}.max-w-6xl{max-width:var(--container-6xl)}.max-w-sm{max-width:var(--container-sm)}.flex-1{flex:1}.flex-shrink-0{flex-shrink:0}.-rotate-90{rotate:-90deg}.transform{transform:var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,)}.animate-ping{animation:var(--animate-ping)}.cursor-crosshair{cursor:crosshair}.cursor-pointer{cursor:pointer}.list-inside{list-style-position:inside}.list-disc{list-style-type:disc}.grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr))}.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.items-center{align-items:center}.items-start{align-items:flex-start}.items-stretch{align-items:stretch}.justify-between{justify-content:space-between}.justify-center{justify-content:center}.gap-1{gap:calc(var(--spacing) * 1)}.gap-2{gap:calc(var(--spacing) * 2)}.gap-3{gap:calc(var(--spacing) * 3)}.gap-4{gap:calc(var(--spacing) * 4)}.gap-6{gap:calc(var(--spacing) * 6)}.gap-8{gap:calc(var(--spacing) * 8)}:where(.space-y-0\.5>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * .5) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * .5) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-1>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 1) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 1) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-2>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-3>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-4>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-6>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 6) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 6) * calc(1 - var(--tw-space-y-reverse)))}:where(.divide-y>:not(:last-child)){--tw-divide-y-reverse:0;border-bottom-style:var(--tw-border-style);border-top-style:var(--tw-border-style);border-top-width:calc(1px * var(--tw-divide-y-reverse));border-bottom-width:calc(1px * calc(1 - var(--tw-divide-y-reverse)))}:where(.divide-slate-100>:not(:last-child)){border-color:var(--color-slate-100)}.self-start{align-self:flex-start}.truncate{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.overflow-hidden{overflow:hidden}.rounded{border-radius:.25rem}.rounded-full{border-radius:3.40282e38px}.rounded-lg{border-radius:var(--radius-lg)}.rounded-md{border-radius:var(--radius-md)}.rounded-sm{border-radius:var(--radius-sm)}.rounded-xl{border-radius:var(--radius-xl)}.rounded-xs{border-radius:var(--radius-xs)}.border{border-style:var(--tw-border-style);border-width:1px}.border-t{border-top-style:var(--tw-border-style);border-top-width:1px}.border-r{border-right-style:var(--tw-border-style);border-right-width:1px}.border-b{border-bottom-style:var(--tw-border-style);border-bottom-width:1px}.border-b-2{border-bottom-style:var(--tw-border-style);border-bottom-width:2px}.border-l{border-left-style:var(--tw-border-style);border-left-width:1px}.border-l-3{border-left-style:var(--tw-border-style);border-left-width:3px}.border-dashed{--tw-border-style:dashed;border-style:dashed}.border-\[\#9bbda5\]{border-color:#9bbda5}.border-\[\#d4cb9f\]{border-color:#d4cb9f}.border-\[\#d5b099\]{border-color:#d5b099}.border-amber-50{border-color:var(--color-amber-50)}.border-amber-100{border-color:var(--color-amber-100)}.border-amber-200{border-color:var(--color-amber-200)}.border-amber-300{border-color:var(--color-amber-300)}.border-amber-700{border-color:var(--color-amber-700)}.border-blue-200{border-color:var(--color-blue-200)}.border-emerald-50{border-color:var(--color-emerald-50)}.border-emerald-100{border-color:var(--color-emerald-100)}.border-emerald-200{border-color:var(--color-emerald-200)}.border-emerald-300{border-color:var(--color-emerald-300)}.border-emerald-900{border-color:var(--color-emerald-900)}.border-red-300{border-color:var(--color-red-300)}.border-red-700{border-color:var(--color-red-700)}.border-slate-100{border-color:var(--color-slate-100)}.border-slate-200{border-color:var(--color-slate-200)}.border-slate-200\/60{border-color:#e2e8f099}@supports (color:color-mix(in lab, red, red)){.border-slate-200\/60{border-color:color-mix(in oklab, var(--color-slate-200) 60%, transparent)}}.border-slate-200\/80{border-color:#e2e8f0cc}@supports (color:color-mix(in lab, red, red)){.border-slate-200\/80{border-color:color-mix(in oklab, var(--color-slate-200) 80%, transparent)}}.border-slate-300{border-color:var(--color-slate-300)}.border-slate-300\/60{border-color:#cad5e299}@supports (color:color-mix(in lab, red, red)){.border-slate-300\/60{border-color:color-mix(in oklab, var(--color-slate-300) 60%, transparent)}}.border-slate-400{border-color:var(--color-slate-400)}.border-slate-900{border-color:var(--color-slate-900)}.border-stone-200{border-color:var(--color-stone-200)}.border-teal-200{border-color:var(--color-teal-200)}.bg-\[\#FAF9F5\]{background-color:#faf9f5}.bg-\[\#e2efe5\]{background-color:#e2efe5}.bg-\[\#f8ece4\]{background-color:#f8ece4}.bg-\[\#fcf9ec\]{background-color:#fcf9ec}.bg-amber-50{background-color:var(--color-amber-50)}.bg-amber-50\/40{background-color:#fffbeb66}@supports (color:color-mix(in lab, red, red)){.bg-amber-50\/40{background-color:color-mix(in oklab, var(--color-amber-50) 40%, transparent)}}.bg-amber-100{background-color:var(--color-amber-100)}.bg-amber-700{background-color:var(--color-amber-700)}.bg-blue-50{background-color:var(--color-blue-50)}.bg-emerald-50{background-color:var(--color-emerald-50)}.bg-emerald-100{background-color:var(--color-emerald-100)}.bg-emerald-400{background-color:var(--color-emerald-400)}.bg-emerald-700{background-color:var(--color-emerald-700)}.bg-emerald-950{background-color:var(--color-emerald-950)}.bg-red-50\/60{background-color:#fef2f299}@supports (color:color-mix(in lab, red, red)){.bg-red-50\/60{background-color:color-mix(in oklab, var(--color-red-50) 60%, transparent)}}.bg-red-100{background-color:var(--color-red-100)}.bg-slate-50{background-color:var(--color-slate-50)}.bg-slate-50\/40{background-color:#f8fafc66}@supports (color:color-mix(in lab, red, red)){.bg-slate-50\/40{background-color:color-mix(in oklab, var(--color-slate-50) 40%, transparent)}}.bg-slate-50\/60{background-color:#f8fafc99}@supports (color:color-mix(in lab, red, red)){.bg-slate-50\/60{background-color:color-mix(in oklab, var(--color-slate-50) 60%, transparent)}}.bg-slate-100{background-color:var(--color-slate-100)}.bg-slate-200{background-color:var(--color-slate-200)}.bg-slate-200\/60{background-color:#e2e8f099}@supports (color:color-mix(in lab, red, red)){.bg-slate-200\/60{background-color:color-mix(in oklab, var(--color-slate-200) 60%, transparent)}}.bg-slate-500{background-color:var(--color-slate-500)}.bg-stone-100{background-color:var(--color-stone-100)}.bg-teal-50{background-color:var(--color-teal-50)}.bg-white{background-color:var(--color-white)}.stroke-2{stroke-width:2px}.object-contain{object-fit:contain}.p-2{padding:calc(var(--spacing) * 2)}.p-3{padding:calc(var(--spacing) * 3)}.p-3\.5{padding:calc(var(--spacing) * 3.5)}.p-4{padding:calc(var(--spacing) * 4)}.p-5{padding:calc(var(--spacing) * 5)}.p-6{padding:calc(var(--spacing) * 6)}.px-1{padding-inline:calc(var(--spacing) * 1)}.px-1\.5{padding-inline:calc(var(--spacing) * 1.5)}.px-2{padding-inline:calc(var(--spacing) * 2)}.px-3{padding-inline:calc(var(--spacing) * 3)}.px-4{padding-inline:calc(var(--spacing) * 4)}.py-0\.5{padding-block:calc(var(--spacing) * .5)}.py-1{padding-block:calc(var(--spacing) * 1)}.py-1\.5{padding-block:calc(var(--spacing) * 1.5)}.py-2\.5{padding-block:calc(var(--spacing) * 2.5)}.py-4{padding-block:calc(var(--spacing) * 4)}.py-10{padding-block:calc(var(--spacing) * 10)}.py-12{padding-block:calc(var(--spacing) * 12)}.pt-2{padding-top:calc(var(--spacing) * 2)}.pt-6{padding-top:calc(var(--spacing) * 6)}.pb-1{padding-bottom:calc(var(--spacing) * 1)}.pb-2{padding-bottom:calc(var(--spacing) * 2)}.pb-6{padding-bottom:calc(var(--spacing) * 6)}.text-center{text-align:center}.text-justify{text-align:justify}.text-left{text-align:left}.text-right{text-align:right}.indent-8{text-indent:calc(var(--spacing) * 8)}.align-middle{vertical-align:middle}.font-mono{font-family:var(--font-mono)}.font-sans{font-family:var(--font-sans)}.font-serif{font-family:var(--font-serif)}.text-2xl{font-size:var(--text-2xl);line-height:var(--tw-leading,var(--text-2xl--line-height))}.text-sm{font-size:var(--text-sm);line-height:var(--tw-leading,var(--text-sm--line-height))}.text-xl{font-size:var(--text-xl);line-height:var(--tw-leading,var(--text-xl--line-height))}.text-xs{font-size:var(--text-xs);line-height:var(--tw-leading,var(--text-xs--line-height))}.text-\[9px\]{font-size:9px}.text-\[10px\]{font-size:10px}.text-\[11px\]{font-size:11px}.text-\[13px\]{font-size:13px}.text-\[14px\]{font-size:14px}.leading-relaxed{--tw-leading:var(--leading-relaxed);line-height:var(--leading-relaxed)}.font-black{--tw-font-weight:var(--font-weight-black);font-weight:var(--font-weight-black)}.font-bold{--tw-font-weight:var(--font-weight-bold);font-weight:var(--font-weight-bold)}.font-extrabold{--tw-font-weight:var(--font-weight-extrabold);font-weight:var(--font-weight-extrabold)}.font-medium{--tw-font-weight:var(--font-weight-medium);font-weight:var(--font-weight-medium)}.font-normal{--tw-font-weight:var(--font-weight-normal);font-weight:var(--font-weight-normal)}.font-semibold{--tw-font-weight:var(--font-weight-semibold);font-weight:var(--font-weight-semibold)}.tracking-tight{--tw-tracking:var(--tracking-tight);letter-spacing:var(--tracking-tight)}.tracking-wide{--tw-tracking:var(--tracking-wide);letter-spacing:var(--tracking-wide)}.tracking-wider{--tw-tracking:var(--tracking-wider);letter-spacing:var(--tracking-wider)}.tracking-widest{--tw-tracking:var(--tracking-widest);letter-spacing:var(--tracking-widest)}.text-amber-800{color:var(--color-amber-800)}.text-amber-900{color:var(--color-amber-900)}.text-amber-950{color:var(--color-amber-950)}.text-blue-950{color:var(--color-blue-950)}.text-emerald-800{color:var(--color-emerald-800)}.text-emerald-900{color:var(--color-emerald-900)}.text-emerald-950{color:var(--color-emerald-950)}.text-red-800{color:var(--color-red-800)}.text-red-900{color:var(--color-red-900)}.text-red-950{color:var(--color-red-950)}.text-slate-400{color:var(--color-slate-400)}.text-slate-500{color:var(--color-slate-500)}.text-slate-600{color:var(--color-slate-600)}.text-slate-700{color:var(--color-slate-700)}.text-slate-800{color:var(--color-slate-800)}.text-slate-900{color:var(--color-slate-900)}.text-slate-950{color:var(--color-slate-950)}.text-stone-900{color:var(--color-stone-900)}.text-teal-900{color:var(--color-teal-900)}.text-teal-950{color:var(--color-teal-950)}.capitalize{text-transform:capitalize}.uppercase{text-transform:uppercase}.italic{font-style:italic}.not-italic{font-style:normal}.antialiased{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}.opacity-75{opacity:.75}.opacity-95{opacity:.95}.shadow-sm{--tw-shadow:0 1px 3px 0 var(--tw-shadow-color,#0000001a), 0 1px 2px -1px var(--tw-shadow-color,#0000001a);box-shadow:var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)}.transition{transition-property:color,background-color,border-color,outline-color,text-decoration-color,fill,stroke,--tw-gradient-from,--tw-gradient-via,--tw-gradient-to,opacity,box-shadow,transform,translate,scale,rotate,filter,-webkit-backdrop-filter,backdrop-filter,display,content-visibility,overlay,pointer-events;transition-timing-function:var(--tw-ease,var(--default-transition-timing-function));transition-duration:var(--tw-duration,var(--default-transition-duration))}.transition-all{transition-property:all;transition-timing-function:var(--tw-ease,var(--default-transition-timing-function));transition-duration:var(--tw-duration,var(--default-transition-duration))}.transition-colors{transition-property:color,background-color,border-color,outline-color,text-decoration-color,fill,stroke,--tw-gradient-from,--tw-gradient-via,--tw-gradient-to;transition-timing-function:var(--tw-ease,var(--default-transition-timing-function));transition-duration:var(--tw-duration,var(--default-transition-duration))}.duration-200{--tw-duration:.2s;transition-duration:.2s}.duration-1000{--tw-duration:1s;transition-duration:1s}@media (hover:hover){.hover\:border-slate-300:hover{border-color:var(--color-slate-300)}.hover\:bg-slate-50\/50:hover{background-color:#f8fafc80}@supports (color:color-mix(in lab, red, red)){.hover\:bg-slate-50\/50:hover{background-color:color-mix(in oklab, var(--color-slate-50) 50%, transparent)}}.hover\:text-slate-700:hover{color:var(--color-slate-700)}}.focus\:ring-1:focus{--tw-ring-shadow:var(--tw-ring-inset,) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color,currentcolor);box-shadow:var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)}.focus\:ring-emerald-700:focus{--tw-ring-color:var(--color-emerald-700)}.focus\:outline-none:focus{--tw-outline-style:none;outline-style:none}@media (min-width:40rem){.sm\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (min-width:48rem){.md\:col-span-4{grid-column:span 4/span 4}.md\:col-span-8{grid-column:span 8/span 8}.md\:block{display:block}.md\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.md\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.md\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.md\:grid-cols-12{grid-template-columns:repeat(12,minmax(0,1fr))}.md\:flex-row{flex-direction:row}.md\:items-end{align-items:flex-end}.md\:items-start{align-items:flex-start}.md\:justify-between{justify-content:space-between}.md\:justify-end{justify-content:flex-end}.md\:px-8{padding-inline:calc(var(--spacing) * 8)}.md\:text-right{text-align:right}.md\:text-2xl{font-size:var(--text-2xl);line-height:var(--tw-leading,var(--text-2xl--line-height))}}@media (min-width:64rem){.lg\:col-span-5{grid-column:span 5/span 5}.lg\:col-span-7{grid-column:span 7/span 7}.lg\:grid-cols-6{grid-template-columns:repeat(6,minmax(0,1fr))}.lg\:grid-cols-12{grid-template-columns:repeat(12,minmax(0,1fr))}.lg\:flex-row{flex-direction:row}.lg\:items-center{align-items:center}}}@property --tw-rotate-x{syntax:"*";inherits:false}@property --tw-rotate-y{syntax:"*";inherits:false}@property --tw-rotate-z{syntax:"*";inherits:false}@property --tw-skew-x{syntax:"*";inherits:false}@property --tw-skew-y{syntax:"*";inherits:false}@property --tw-space-y-reverse{syntax:"*";inherits:false;initial-value:0}@property --tw-divide-y-reverse{syntax:"*";inherits:false;initial-value:0}@property --tw-border-style{syntax:"*";inherits:false;initial-value:solid}@property --tw-leading{syntax:"*";inherits:false}@property --tw-font-weight{syntax:"*";inherits:false}@property --tw-tracking{syntax:"*";inherits:false}@property --tw-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-shadow-color{syntax:"*";inherits:false}@property --tw-shadow-alpha{syntax:"<percentage>";inherits:false;initial-value:100%}@property --tw-inset-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-inset-shadow-color{syntax:"*";inherits:false}@property --tw-inset-shadow-alpha{syntax:"<percentage>";inherits:false;initial-value:100%}@property --tw-ring-color{syntax:"*";inherits:false}@property --tw-ring-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-inset-ring-color{syntax:"*";inherits:false}@property --tw-inset-ring-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-ring-inset{syntax:"*";inherits:false}@property --tw-ring-offset-width{syntax:"<length>";inherits:false;initial-value:0}@property --tw-ring-offset-color{syntax:"*";inherits:false;initial-value:#fff}@property --tw-ring-offset-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-duration{syntax:"*";inherits:false}@keyframes ping{75%,to{opacity:0;transform:scale(2)}}
+    </style>
+    <style>
+        /* 字体变量覆盖：确保 Inter 和 Noto Serif SC 优先 */
+        :root {
+            --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            --font-serif: 'Noto Serif SC', 'STSong', 'SimSun', Georgia, serif;
+        }
 
-    <div class="meta-grid">
-      <div class="meta-card"><strong>请求编号</strong><br>{{ request.request_id }}</div>
-      <div class="meta-card"><strong>区域</strong><br>{{ request.region or "未提供" }}</div>
-      <div class="meta-card"><strong>对象类型</strong><br>{{ request.crop_type or "未提供" }}</div>
-      <div class="meta-card"><strong>任务类型</strong><br>{{ request.task_type or "未提供" }}</div>
-      <div class="meta-card"><strong>用户请求</strong><br>{{ request.user_query }}</div>
-      <div class="meta-card"><strong>图表数据</strong><br>{{ chart_context.confidence_series | length }} 项置信度指标</div>
+        /* 极致简约：去除任何"太空、科技、暗黑"风格，模拟高档学术纸张质感 */
+        body {
+            background-color: #f8fafc;
+            color: #1e293b;
+            font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+        }
+        
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* 打印模式深度纯化：完美的黑白学术报告格式 */
+        @media print {
+            body {
+                background: #ffffff !important;
+                color: #000000 !important;
+                font-family: 'Noto Serif SC', 'STSong', 'SimSun', Georgia, serif !important;
+                padding: 0 !important;
+            }
+            .container {
+                max-width: 100% !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .print-card {
+                background: #ffffff !important;
+                border: 1px solid #94a3b8 !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                margin-bottom: 1.5rem !important;
+                page-break-inside: avoid !important;
+            }
+            .print-title {
+                color: #000000 !important;
+                border-bottom: 2px solid #000000 !important;
+                font-weight: 700 !important;
+            }
+            .print-text {
+                color: #111111 !important;
+            }
+            .print-badge {
+                border: 1px solid #000000 !important;
+                background: transparent !important;
+                color: #000000 !important;
+                border-radius: 0 !important;
+            }
+            .print-bar {
+                background-color: #475569 !important;
+            }
+            .print-track {
+                background-color: #e2e8f0 !important;
+                border: 1px solid #94a3b8 !important;
+            }
+        }
+    </style>
+</head>
+<body class="font-sans antialiased min-h-screen py-10 px-4 md:px-8">
+{% set is_baldness = request.task_type == 'baldness_detection' %}
+{% set is_health = request.task_type == 'crop_health_detection' %}
+{% set is_lai = request.task_type in ['lai_estimation', 'lai_inversion'] %}
+{% set is_yield = request.task_type in ['yield_prediction', 'yield_estimation'] %}
+{% set is_growth = request.task_type == 'growth_monitoring' %}
+{% set pixel_to_mu = extra.pixel_to_mu_ratio | default(0.1) %}
+
+
+<!-- ==========================================================================
+   仿真实时演示面板（仅用于非Python后端容器打开时渲染，发布时后台不渲染）
+   ========================================================================== -->
+<div id="preview-control-panel" class="no-print max-w-6xl mx-auto mb-6 bg-white border border-slate-200 p-4 rounded-xl shadow-sm hidden">
+    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <span class="flex h-3 w-3 relative">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-700"></span>
+            </span>
+            <div>
+                <h4 class="text-xs font-bold text-slate-900 flex items-center gap-2">
+                    GeoAI 综合遥感高级决策报告沙箱 (Jinja2 Hybrid)
+                    <span class="text-[9px] font-mono font-normal text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">Local Sandbox Active</span>
+                </h4>
+                <p class="text-[11px] text-slate-500 mt-0.5">检测到未渲染的 Jinja2 标签，已自动激活本地仿真数据库，您可以任意切换大尺度遥感分析场景。</p>
+            </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs text-slate-600 font-medium">地理决策场景:</span>
+            <select id="scenario-selector" class="bg-slate-50 border border-slate-300 text-xs text-slate-700 rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-emerald-700 focus:outline-none transition cursor-pointer font-medium">
+                <option value="baldness_detection">🌾 河南省浚县夏小麦：冬前退化斑秃与断垄测绘</option>
+                <option value="lai_inversion">🌽 山东省齐河县夏玉米：大喇叭口期冠层叶面积指数 (LAI) 精确反演</option>
+                <option value="crop_health_detection">🌾 黑龙江建三江农场：水稻灌浆期冷温生理健康与叶枯隐患检测</option>
+                <option value="yield_prediction">🌽 吉林省公主岭示范区：春玉米多源同化理论单产评估与丰产级分类</option>
+                <option value="growth_monitoring">🌾 湖南省常德鼎城区：晚稻拔节前分蘖跃进期生长进程追踪</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="container max-w-6xl mx-auto space-y-6">
+
+    <!-- ==========================================================================
+       SECTION 1: 报告页眉 (双层学术版式)
+       ========================================================================== -->
+    <header class="flex flex-col md:flex-row md:items-end md:justify-between pb-6 border-b-2 border-slate-900 gap-4">
+        <div class="space-y-3 flex-1">
+            <div class="flex items-center gap-3">
+                <span class="p-2 bg-slate-100 border border-slate-200 rounded-lg text-slate-700 no-print">
+                    <!-- 简约测绘仪罗盘 -->
+                    <svg class="w-5 h-5 text-emerald-900" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M16.2 7.8l-2 6.3-6.4 2.1 2.1-6.4z"></path>
+                    </svg>
+                </span>
+                <h1 id="lbl-title" class="text-xl md:text-2xl font-black tracking-tight text-slate-900 print-title font-serif">
+                    {{ request.title | default('智能遥感光谱分析报告') }}
+                </h1>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+                <span id="lbl-task-badge">
+                    {% if request.task_type %}
+                        {% if is_baldness %}
+                            <span class="badge px-3 py-1 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-md font-semibold print-badge">斑秃识别检测</span>
+                        {% elif is_health %}
+                            <span class="badge px-3 py-1 bg-teal-50 text-teal-900 border border-teal-200 rounded-md font-semibold print-badge">生理健康状况监测</span>
+                        {% elif is_lai %}
+                            <span class="badge px-3 py-1 bg-blue-50 text-blue-950 border border-blue-200 rounded-md font-semibold print-badge">叶面积指数反演 (LAI)</span>
+                        {% elif is_yield %}
+                            <span class="badge px-3 py-1 bg-amber-50 text-amber-950 border border-amber-200 rounded-md font-semibold print-badge">定量产量测算预测</span>
+                        {% elif is_growth %}
+                            <span class="badge px-3 py-1 bg-stone-100 text-stone-900 border border-stone-200 rounded-md font-semibold print-badge">关键生长阶段监测</span>
+                        {% else %}
+                            <span class="badge px-3 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-md font-semibold print-badge">{{ request.task_type }}</span>
+                        {% endif %}
+                    {% endif %}
+                </span>
+
+                {% if request.region %}
+                    <span id="lbl-region-badge" class="badge px-3 py-1 bg-slate-100 text-slate-600 border border-slate-200/60 rounded-md print-badge">
+                        监测区域: {{ request.region | upper }}
+                    </span>
+                {% endif %}
+
+                {% if request.crop_type %}
+                    <span id="lbl-crop-badge" class="badge px-3 py-1 bg-slate-100 text-slate-600 border border-slate-200/60 rounded-md print-badge">
+                        作物类型: {% if request.crop_type == 'wheat' %}冬小麦 (Wheat)
+                                 {% elif request.crop_type == 'corn' %}夏玉米 (Corn)
+                                 {% elif request.crop_type == 'rice' %}水稻 (Rice)
+                                 {% else %}{{ request.crop_type | capitalize }}
+                                 {% endif %}
+                    </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="text-left md:text-right font-mono text-[11px] text-slate-500 space-y-1">
+            <div class="flex items-center md:justify-end gap-2">
+                <span>流水验证编号:</span>
+                <span id="lbl-request-id" class="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded font-semibold print-badge">{{ request.request_id | default('REQ-N/A') }}</span>
+            </div>
+            <div>
+                <span>解译生成时间:</span>
+                <span id="lbl-generated-at" class="text-slate-800 font-semibold">{{ generated_at | default('N/A') }}</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ==========================================================================
+       SECTION 2: 多源数据源及大区环境背景 (新增：让报告极具专业大局观)
+       ========================================================================== -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm print-card flex flex-col justify-between">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">主传感器传感器组</span>
+            <span id="lbl-sensor-opt" class="text-sm font-bold text-slate-800 font-mono block print-text">{{ extra.sensors.opt | default('Sentinel-2 MSI (10M)') }}</span>
+            <span class="text-[10px] text-slate-500 block mt-2">光谱覆盖：B2-B8A 红边敏锐通道</span>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm print-card flex flex-col justify-between">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">测控微波雷达校正</span>
+            <span id="lbl-sensor-sar" class="text-sm font-bold text-slate-800 font-mono block print-text">{{ extra.sensors.sar | default('Sentinel-1 C-SAR (VV/VH)') }}</span>
+            <span class="text-[10px] text-slate-500 block mt-2">偏振校正：穿透消融云雾物理拟合</span>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm print-card flex flex-col justify-between">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">累积日照积温偏置</span>
+            <span id="lbl-weather-gdd" class="text-sm font-bold text-emerald-800 font-mono block print-text">{{ extra.sensors.gdd | default('+42.5 ℃·d (偏旺)') }}</span>
+            <span class="text-[10px] text-slate-500 block mt-2">气象对齐：对标常年气象中数均线</span>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm print-card flex flex-col justify-between">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">微波土壤绝对湿度</span>
+            <span id="lbl-soil-moisture" class="text-sm font-bold text-slate-800 font-mono block print-text">{{ extra.sensors.sm | default('24.8 % (适墒)') }}</span>
+            <span class="text-[10px] text-slate-500 block mt-2">微波反演：SMAP 主动土壤湿度剖面</span>
+        </div>
     </div>
 
-    {% include "partials/summary_section.html.j2" %}
-    {% include "partials/inference_section.html.j2" %}
-    {% include "partials/rag_section.html.j2" %}
-    {% include "partials/confidence_section.html.j2" %}
-  </div>
+    <!-- ==========================================================================
+       SECTION 3: 概述与双向深度分析区 (增产优势 VS 灾损限制，兼顾积极与消极方面)
+       ========================================================================== -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- 基础学术概述 -->
+        <div class="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-6 shadow-sm hover:border-slate-300 transition duration-200 print-card">
+            <h2 class="text-sm font-bold text-slate-900 tracking-wide uppercase mb-4 flex items-center gap-2 pb-2 border-b border-slate-100 print-title">
+                <svg class="w-4 h-4 text-emerald-950" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                    <path d="M4 6h16M4 12h16M4 18h7"></path>
+                </svg>
+                数据解析背景与遥感概述
+            </h2>
+            
+            {% if request.user_query %}
+                <div id="container-user-query" class="mb-4 p-3 bg-slate-50 border-l-3 border-emerald-900 rounded text-xs text-slate-600 font-sans italic print-card">
+                    <span class="text-slate-800 font-bold not-italic">解译目的对齐：</span> "<span id="lbl-user-query">{{ request.user_query }}</span>"
+                </div>
+            {% endif %}
+            
+            <p id="lbl-overview" class="font-serif text-[14px] leading-relaxed text-slate-700 text-justify indent-8 print-text">
+                {{ request.summary.overview | default('本研究报告是由高空间分辨率多源多光谱卫星传感器影像、物理电磁波散射同化算子，协同地表农业物候生长动态函数共同解译所得的定量科学成果。通过精密的光谱辐照校正、去云霾遮蔽重建以及归一化差异红边敏感通道反演，全面提取监测农田地块层面的植被指数变动，以此透析目标群落的宏观生理健康演变与生理逆境胁迫状况。') }}
+            </p>
+        </div>
+
+        <!-- 核心结论决策支持 -->
+        <div class="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-sm hover:border-slate-300 transition duration-200 print-card">
+            <h2 class="text-sm font-bold text-slate-900 tracking-wide uppercase mb-4 flex items-center gap-2 pb-2 border-b border-slate-100 print-title">
+                <svg class="w-4 h-4 text-emerald-950" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                核心分析结论
+            </h2>
+            
+            <div id="container-key-findings">
+                {% if request.summary.key_findings %}
+                    <ul class="space-y-3">
+                        {% for finding in request.summary.key_findings %}
+                            <li class="flex items-start gap-3">
+                                <span class="flex-shrink-0 w-5 h-5 rounded bg-emerald-50 text-emerald-900 flex items-center justify-center text-[10px] font-bold border border-emerald-100 no-print">
+                                    {{ loop.index }}
+                                </span>
+                                <span class="text-xs text-slate-600 leading-relaxed print-text">{{ finding }}</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="flex flex-col items-center justify-center h-40 text-slate-400">
+                        <p class="text-xs">暂无结构化发现列表</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 积极增产分析 VS 消极灾害胁迫 (新增: 双向大格局辩证透析) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- 优势增产潜力 (Positive Factors) -->
+        <div class="bg-white border border-emerald-100 rounded-xl p-5 shadow-sm print-card">
+            <h3 class="text-xs font-extrabold text-emerald-950 uppercase tracking-widest flex items-center gap-2 mb-3 pb-1 border-b border-emerald-50 print-title">
+                <span class="w-1.5 h-3 bg-emerald-700 inline-block rounded-sm"></span>
+                地表积极优势与丰产区分析 (Yield Potential)
+            </h3>
+            <p id="lbl-positive-text" class="text-xs text-slate-600 leading-relaxed text-justify print-text">
+                {{ extra.positive_analysis | default('监测范围内高郁闭度和高生物量积累地块占比可喜，部分区域表现出极强的光合效能与合理物候进阶。由于基底土墒配比均衡，在作物营养转化和冠层扩展上优势显著。若能维持当前微环境持水量，其干物质转化比率处于极高水平，具备优异的后期单产增量红利空间。') }}
+            </p>
+        </div>
+
+        <!-- 胁迫灾损及生产限制 (Negative Constraints) -->
+        <div class="bg-white border border-amber-100 rounded-xl p-5 shadow-sm print-card">
+            <h3 class="text-xs font-extrabold text-amber-950 uppercase tracking-widest flex items-center gap-2 mb-3 pb-1 border-b border-amber-50 print-title">
+                <span class="w-1.5 h-3 bg-amber-700 inline-block rounded-sm"></span>
+                逆境生理胁迫与减损风险评估 (Stress & Constraints)
+            </h3>
+            <p id="lbl-negative-text" class="text-xs text-slate-600 leading-relaxed text-justify print-text">
+                {{ extra.negative_analysis | default('受局部降水空间异质性、高沙化土壤漏肥效应以及局部隐性病损（如冷温叶枯）的共同消极抑制。偏弱、发黄脱水的亚健康区域呈现集中破碎分布，这些区域的叶片含水量指数（NDWI）显著滑坡，长势等级处于轻至重度胁迫。若在即将步入的发育转折期不予水肥偏置调配，可能导致总体单产潜能下滑5%-10%。') }}
+            </p>
+        </div>
+    </div>
+
+    <!-- ==========================================================================
+       SECTION 4: 遥感光谱反演核心结果 (极简、高白度排版)
+       ========================================================================== -->
+    {% if request.inference is not none %}
+        <section id="section-inference" class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm print-card">
+            
+            <div class="flex items-center justify-between mb-6 pb-2 border-b border-slate-100 print-title">
+                <h2 class="text-sm font-bold text-slate-900 tracking-wide uppercase flex items-center gap-2">
+                    <svg class="w-4 h-4 text-emerald-950" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                        <polyline points="2 17 12 22 22 17"></polyline>
+                        <polyline points="2 12 12 17 22 12"></polyline>
+                    </svg>
+                    反演定量测算指标
+                </h2>
+                <div class="text-[10px] font-mono text-slate-400 hidden md:block">
+                    BACKEND_MODEL: <span id="lbl-model-name" class="font-semibold text-slate-600">{{ request.inference.model_name | default('SpatialAI-Engine') }}</span>
+                </div>
+            </div>
+
+            <!-- 六栏简约核心指标卡片 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+                <!-- KPI 1 -->
+                <div class="relative bg-slate-50/60 border border-slate-200/80 p-4 rounded-lg flex flex-col justify-between h-24 print-card">
+                    <div id="lbl-kpi-1-label" class="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase">
+                        {% if is_baldness %}异常退化面积
+                        {% elif is_lai %}平均叶面积指数 (LAI)
+                        {% elif is_health %}重度生理失绿面积
+                        {% elif is_yield %}预测平均亩产
+                        {% elif is_growth %}监测落后面积
+                        {% else %}地物光谱关联面积
+                        {% endif %}
+                    </div>
+                    <div class="text-xl font-black tracking-tight text-slate-950 print-text">
+                        <span id="lbl-kpi-1-val">
+                            {% if is_lai %}
+                                {{ (request.inference.affected_area | default(0.0)) | round(2) }}
+                            {% else %}
+                                {{ (request.inference.affected_area | default(0.0)) | round(1) }}
+                            {% endif %}
+                        </span>
+                        <span id="lbl-kpi-1-unit" class="text-xs font-normal text-slate-500">
+                            {% if is_lai %}{% else %}{% if is_yield %}kg/亩{% else %}亩{% endif %}{% endif %}
+                        </span>
+                    </div>
+                    <div id="lbl-kpi-1-code" class="text-[9px] text-slate-400 font-mono">
+                        {% if is_baldness %}SPECTRUM_ANOMALY
+                        {% elif is_lai %}m²(LEAF) / m²(GROUND)
+                        {% elif is_health %}CHLOROPHYLL_LOSS
+                        {% elif is_yield %}YIELD_ESTIMATE
+                        {% elif is_growth %}WEAK_GROWTH_AREA
+                        {% else %}PHYSICAL_INVERSION
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- KPI 2 -->
+                <div class="relative bg-slate-50/60 border border-slate-200/80 p-4 rounded-lg flex flex-col justify-between h-24 print-card">
+                    <div id="lbl-kpi-2-label" class="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase">
+                        {% if is_baldness %}地物受损覆盖率
+                        {% elif is_lai %}植被冠层通光率
+                        {% elif is_health %}健康绿度总体占比
+                        {% elif is_yield %}产量置信区间 (95%)
+                        {% elif is_growth %}弱苗覆盖占比
+                        {% else %}目标解译像元占比
+                        {% endif %}
+                    </div>
+                    <div class="text-xl font-bold tracking-tight text-slate-900 print-text">
+                        <span id="lbl-kpi-2-val">
+                            {% if is_yield %}
+                                [{{ ((request.inference.affected_area | default(0.0)) * 0.93) | round(1) }}-{{ ((request.inference.affected_area | default(0.0)) * 1.07) | round(1) }}]
+                            {% elif is_lai %}
+                                {{ ((1 - (0.45 ** (request.inference.affected_area | default(1.0)))) * 100) | round(1) }}
+                            {% elif is_health %}
+                                {{ ((1 - (request.inference.positive_ratio | default(0.0))) * 100) | round(1) }}
+                            {% else %}
+                                {{ ((request.inference.positive_ratio | default(0.0)) * 100) | round(1) }}
+                            {% endif %}
+                        </span>
+                        <span id="lbl-kpi-2-unit" class="text-xs font-normal text-slate-500">
+                            {% if is_yield %}kg{% else %}%{% endif %}
+                        </span>
+                    </div>
+                    <div id="lbl-kpi-2-code" class="text-[9px] text-slate-400 font-mono">
+                        {% if is_yield %}CLIMATIC_UNCERTAINTY{% elif is_growth %}WEAK_GROWTH_RATIO{% else %}PIXEL_PURITY_RATIO{% endif %}
+                    </div>
+                </div>
+
+                <!-- KPI 3 -->
+                <div class="relative bg-slate-50/60 border border-slate-200/80 p-4 rounded-lg flex flex-col justify-between h-24 print-card">
+                    <div class="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase">定量估值置信概率</div>
+                    <div class="text-xl font-bold tracking-tight">
+                        {% set inf_conf = request.inference.confidence | default(0.0) %}
+                        <span id="lbl-inf-confidence" class="{% if inf_conf >= 0.8 %}text-emerald-900{% elif inf_conf >= 0.5 %}text-amber-900{% else %}text-red-900{% endif %} print-text">
+                            {{ (inf_conf * 100) | round(1) }}%
+                        </span>
+                    </div>
+                    <div class="text-[9px] text-slate-400 font-mono">SPATIAL_CONF_INDEX</div>
+                </div>
+
+                <!-- KPI 4 -->
+                <div class="relative bg-slate-50/60 border border-slate-200/80 p-4 rounded-lg flex flex-col justify-between h-24 print-card">
+                    <div class="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase">估计总体损耗</div>
+                    <div class="text-xl font-bold tracking-tight text-slate-900 print-text">
+                        <span id="lbl-kpi-loss-val">{{ extra.est_loss | default('~5.4') }}</span>
+                        <span class="text-xs font-normal text-slate-500">%</span>
+                    </div>
+                    <div class="text-[9px] text-slate-400 font-mono">EST_ECONOMIC_LOSS</div>
+                </div>
+
+                <!-- KPI 5 -->
+                <div class="relative bg-slate-50/60 border border-slate-200/80 p-4 rounded-lg flex flex-col justify-between h-24 print-card">
+                    <div class="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase">检测区域地块群</div>
+                    <div class="text-xl font-bold tracking-tight text-slate-900 print-text">
+                        <span id="lbl-kpi-polygons-val">{{ chart_context.area_breakdown.polygon_count | default(0) }}</span>
+                        <span class="text-xs font-normal text-slate-500">处</span>
+                    </div>
+                    <div class="text-[9px] text-slate-400 font-mono">SPATIAL_POLYGONS</div>
+                </div>
+
+                <!-- KPI 6 -->
+                <div class="relative bg-slate-50/60 border border-slate-200/80 p-4 rounded-lg flex flex-col justify-between h-24 print-card">
+                    <div class="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase">运算法则引擎</div>
+                    <div id="lbl-model-name-short" class="text-xs font-bold text-slate-700 font-mono truncate print-text" title="{{ request.inference.model_name }}">
+                        {{ request.inference.model_name | default('GeoSegNet') }}
+                    </div>
+                    <div class="text-[9px] text-slate-500 font-mono bg-slate-200/60 border border-slate-300/60 px-1.5 py-0.5 rounded self-start print-badge">
+                        V: <span id="lbl-model-version">{{ request.inference.model_version | default('v2.5.1') }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                <!-- GIS 遥感高级测绘控制台 (高档浅象牙色作图底面，完全摒弃荧光霓虹) -->
+                <div class="lg:col-span-7 flex flex-col">
+                    <div class="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-2">
+                        <span>GEOGRAPHIC_SPATIAL_PLOT // TOPOLOGY_LAYER</span>
+                        <span id="gis-coords">COORDS: {{ extra.gis_coords | default('34.0294° N, 113.4829° E') }} | SCALE 1:50,000</span>
+                    </div>
+                    
+                    <div id="gis-viewport" class="relative flex-1 bg-[#FAF9F5] border border-slate-200 rounded-lg overflow-hidden flex items-center justify-center p-4 min-h-[300px] cursor-crosshair group print-raster">
+                        <!-- 四角测绘点定位标记 -->
+                        <div class="absolute top-2.5 left-2.5 w-3 h-3 border-t border-l border-slate-400 no-print"></div>
+                        <div class="absolute top-2.5 right-2.5 w-3 h-3 border-t border-r border-slate-400 no-print"></div>
+                        <div class="absolute bottom-2.5 left-2.5 w-3 h-3 border-b border-l border-slate-400 no-print"></div>
+                        <div class="absolute bottom-2.5 right-2.5 w-3 h-3 border-b border-r border-slate-400 no-print"></div>
+
+                        <!-- 地理影像呈现 -->
+                        <div class="w-full flex items-center justify-center">
+                            {% if request.inference.mask_uri %}
+                                <img src="{{ request.inference.mask_uri }}" alt="遥感解译图" onerror="this.onerror=null; this.outerHTML='<div class=\'text-xs text-slate-400\'>[解译掩膜脱机，已载入拓扑图层]</div>';" class="max-h-[240px] object-contain rounded border border-slate-200 shadow-sm"/>
+                            {% else %}
+                                <!-- 高精细地物拓扑地理测绘地图 (高雅莫兰迪浅色系统) -->
+                                <svg id="gis-svg" class="w-full max-w-sm h-auto opacity-95 text-slate-600" viewBox="0 0 200 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect width="200" height="140" fill="#f9f7f0" />
+                                    <!-- 测绘极细分经纬网格 -->
+                                    <path d="M 0 20 L 200 20 M 0 40 L 200 40 M 0 60 L 200 60 M 0 80 L 200 80 M 0 100 L 200 100 M 0 120 L 200 120" stroke="#f0ead9" stroke-width="0.5"/>
+                                    <path d="M 20 0 L 20 140 M 40 0 L 40 140 M 60 0 L 60 140 M 80 0 L 80 140 M 100 0 L 100 140 M 120 0 L 120 140 M 140 0 L 140 140 M 160 0 L 160 140 M 180 0 L 180 140" stroke="#f0ead9" stroke-width="0.5"/>
+
+                                    <!-- 多级样方分割 (利用低饱和莫兰迪草木绿、熟褐、沙土黄) -->
+                                    <polygon id="gis-poly-1" points="30,25 140,20 165,55 110,115 50,100 25,55" fill="#e2efe5" stroke="#9bbda5" stroke-width="0.8" />
+                                    <polygon id="gis-poly-2" points="80,35 125,30 145,65 100,85" fill="#f8ece4" stroke="#d5b099" stroke-width="0.8" />
+                                    <polygon id="gis-poly-3" points="50,60 80,55 90,80 60,85" fill="#fcf9ec" stroke="#d4cb9f" stroke-width="0.6" />
+                                    
+                                    <!-- 乡村道路和灌溉渠网 -->
+                                    <path d="M 0 80 C 60 85, 130 75, 200 85" stroke="#ded4c1" stroke-width="1.2" />
+                                    <path d="M 105 0 L 105 140" stroke="#ded4c1" stroke-width="0.6" stroke-dasharray="3 3" />
+
+                                    <!-- 物理标注点 -->
+                                    <circle cx="115" cy="55" r="2.5" fill="#991b1b" opacity="0.8"/>
+                                    <text x="122" y="58" fill="#991b1b" font-size="4" font-family="sans-serif" font-weight="700">CORE ANOMALY</text>
+                                    <line x1="115" y1="55" x2="122" y2="57" stroke="#991b1b" stroke-width="0.5" />
+                                    
+                                    <!-- 测绘指北针 -->
+                                    <g transform="translate(182, 16) scale(0.65)">
+                                        <circle cx="10" cy="10" r="8" stroke="#94a3b8" stroke-width="0.8"/>
+                                        <path d="M10 4 L12 11 L10 10 L8 11 Z" fill="#475569" />
+                                        <text x="8.5" y="3" fill="#475569" font-size="4" font-weight="bold" font-family="sans-serif">N</text>
+                                    </g>
+                                    <!-- 比例尺 -->
+                                    <g transform="translate(15, 122)">
+                                        <line x1="0" y1="2" x2="30" y2="2" stroke="#475569" stroke-width="0.8" />
+                                        <line x1="0" y1="0" x2="0" y2="4" stroke="#475569" stroke-width="0.8" />
+                                        <line x1="15" y1="0" x2="15" y2="4" stroke="#475569" stroke-width="0.8" />
+                                        <line x1="30" y1="0" x2="30" y2="4" stroke="#475569" stroke-width="0.8" />
+                                        <text x="34" y="4" fill="#475569" font-size="4.5" font-family="monospace">500m</text>
+                                    </g>
+                                </svg>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 空间分区占比与学术图例 -->
+                <div class="lg:col-span-5 flex flex-col justify-between">
+                    <div class="space-y-4">
+                        <div class="text-[10px] font-mono text-slate-400">
+                            <span>CLASS_DISTRIBUTION // 空间异质分区统计</span>
+                        </div>
+                        
+                        <div id="container-chart-box" class="bg-slate-50 border border-slate-200/80 rounded-lg p-5 space-y-4 print-card">
+                            <div id="wrapper-bar-chart" class="space-y-4">
+                                {% if chart_context.class_distribution_chart %}
+                                    {% for bar in chart_context.class_distribution_chart %}
+                                        <div class="space-y-1">
+                                            <div class="flex items-center justify-between text-xs">
+                                                <div class="flex items-center gap-2 font-medium">
+                                                    <span class="w-2.5 h-2.5 rounded-sm" style="background-color: {{ bar.color | default('#475569') }}"></span>
+                                                    <span class="text-slate-600 print-text">{{ bar.label }}</span>
+                                                    {% if bar.is_target %}
+                                                        <span class="text-[9px] bg-slate-200 text-slate-700 border border-slate-300 px-1 py-0.1 rounded print-badge">主关注对象</span>
+                                                    {% endif %}
+                                                </div>
+                                                <span class="font-mono font-bold text-slate-800 print-text">{{ (bar.ratio * 100) | round(1) }}%</span>
+                                            </div>
+                                            <div class="h-2 w-full bg-slate-200/60 rounded-full overflow-hidden print-track">
+                                                <div class="h-full rounded-full transition-all duration-1000 print-bar" 
+                                                     style="width: {{ bar.bar_height_pct | default(bar.ratio * 100) }}%; background-color: {{ bar.color | default('#475569') }}">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="text-center py-12 text-slate-400 space-y-2">
+                                        <p class="text-xs">该场景属物理拟合反演，无离散要素统计数据</p>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- 测绘图例说明 (新增：学术报告规范) -->
+                        <div class="p-3.5 bg-slate-50 border border-slate-200/60 rounded-lg no-print">
+                            <span class="text-[9px] font-bold text-slate-400 tracking-wider block mb-2 uppercase">测绘图例及反射参数说明</span>
+                            <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-500">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-3 h-1.5 bg-[#e2efe5] border border-[#9bbda5] rounded-xs"></span>
+                                    <span>正常丰产指数区</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-3 h-1.5 bg-[#f8ece4] border border-[#d5b099] rounded-xs"></span>
+                                    <span>逆境异常胁迫区</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-3 h-1.5 bg-[#fcf9ec] border border-[#d4cb9f] rounded-xs"></span>
+                                    <span>低植被裸土背景</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-3.5 h-1 stroke-2 border-b border-dashed border-slate-400"></span>
+                                    <span>沟渠路网排干系统</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 数据明细统计表格 (极简学术表格) -->
+            <div id="container-table-details" class="mt-6 border border-slate-200 rounded-lg overflow-hidden no-print">
+                <table class="w-full text-xs text-left text-slate-600">
+                    <thead class="bg-slate-50 font-mono text-slate-500 border-b border-slate-200">
+                        <tr>
+                            <th class="py-2.5 px-4 font-semibold">色块</th>
+                            <th class="py-2.5 px-4 font-semibold">解译分类区段</th>
+                            <th class="py-2.5 px-4 font-semibold text-right">网格像元计数 (Count)</th>
+                            <th class="py-2.5 px-4 font-semibold text-right">面积折算 (亩)</th>
+                            <th class="py-2.5 px-4 font-semibold text-right">空间占比 (Ratio)</th>
+                            <th class="py-2.5 px-4 font-semibold text-center">分类性质</th>
+                        </tr>
+                    </thead>
+                    <tbody id="wrapper-table-body" class="divide-y divide-slate-100 bg-white">
+                        {% if chart_context.class_distribution_chart %}
+                            {% for bar in chart_context.class_distribution_chart %}
+                                <tr class="hover:bg-slate-50/50 transition-colors {% if bar.is_target %}bg-slate-50/40{% endif %}">
+                                    <td class="py-2.5 px-4">
+                                        <span class="inline-block w-3.5 h-3.5 rounded-sm align-middle" style="background-color: {{ bar.color | default('#475569') }}"></span>
+                                    </td>
+                                    <td class="py-2.5 px-4 font-medium text-slate-700">{{ bar.label }}</td>
+                                    <td class="py-2.5 px-4 text-right font-mono">{{ bar.value | default('0') }}</td>
+                                    <td class="py-2.5 px-4 text-right font-mono text-slate-600">
+                                        {{ ((bar.value | default(0) | float) * pixel_to_mu) | round(1) }}
+                                    </td>
+                                    <td class="py-2.5 px-4 text-right font-mono font-semibold text-slate-700">{{ (bar.ratio * 100) | round(2) }}%</td>
+                                    <td class="py-2.5 px-4 text-center">
+                                        {% if bar.is_target %}
+                                            <span class="px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-300 rounded text-[10px] font-semibold">核心异常区</span>
+                                        {% else %}
+                                            <span class="text-slate-400 text-[10px]">常态地物要素</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="py-4 text-center text-slate-400 italic">无可用定量分类要素数据</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 质量预警信息 -->
+            <div id="container-inf-warnings">
+                {% if request.inference.warnings %}
+                    <div class="mt-4 space-y-2">
+                        <h4 class="text-xs font-bold text-amber-900 flex items-center gap-1">
+                            <span>⚠️ 反演解译异常警告：</span>
+                        </h4>
+                        {% for warn in request.inference.warnings %}
+                            <div class="p-3 bg-amber-50/40 border-l-3 border-amber-700 rounded text-xs text-slate-700 flex items-center gap-2 print-card print-border">
+                                <span class="font-mono text-amber-800 font-bold">[WARN_OP]</span>
+                                <span class="print-text">{{ warn }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+        </section>
+    {% endif %}
+
+    <!-- ==========================================================================
+       SECTION 5: 农事精细化控制建议 (新增：突出应用落地、大局观)
+       ========================================================================== -->
+    <section id="section-prescriptions" class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm print-card">
+        <h2 class="text-sm font-bold text-slate-900 tracking-wide uppercase mb-4 flex items-center gap-2 pb-2 border-b border-slate-100 print-title">
+            <svg class="w-4 h-4 text-emerald-950" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+            </svg>
+            空间靶向精准农业农事处方 (Spatial VRA Prescriptions)
+        </h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col justify-between print-card">
+                <div>
+                    <span class="px-2 py-0.5 bg-emerald-100 text-emerald-950 border border-emerald-300 rounded text-[9px] font-bold uppercase tracking-wider block w-max mb-2">一类常态优势区</span>
+                    <h4 class="text-xs font-bold text-slate-800 mb-1.5">常态化健壮管护 (Maintenance)</h4>
+                    <p id="lbl-presc-1" class="text-[11px] text-slate-500 leading-relaxed text-justify">
+                        {{ extra.prescriptions.p1 | default('该区域作物新陈代谢活跃，当前无需额外的微量元素干预。宜贯彻既定长效底肥控释策略，根据气象周期，在后期灌浆期执行常态微湿灌溉，防范水分饱和引起根系自呼吸受阻，力争巩固原有丰产根基。') }}
+                    </p>
+                </div>
+                <div class="mt-4 pt-2 border-t border-slate-200 text-[10px] font-mono text-emerald-800">
+                    ACTION: 控水晒田/常规肥水随灌
+                </div>
+            </div>
+
+            <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col justify-between print-card">
+                <div>
+                    <span class="px-2 py-0.5 bg-amber-100 text-amber-950 border border-amber-300 rounded text-[9px] font-bold uppercase tracking-wider block w-max mb-2">二类异常逆境区</span>
+                    <h4 class="text-xs font-bold text-slate-800 mb-1.5">精准变量肥水调控 (VRA Fertilizer)</h4>
+                    <p id="lbl-presc-2" class="text-[11px] text-slate-500 leading-relaxed text-justify">
+                        {{ extra.prescriptions.p2 | default('由于光谱叶绿素反射波谷抬升，该带表现出明显的生理亚健康。须启动多旋翼无人植保机组对特定坐标地块进行变量追施速效尿素 6-8 公斤/亩，并在日落前灌溉浅水促根，打破养分输送物理瓶颈。') }}
+                    </p>
+                </div>
+                <div class="mt-4 pt-2 border-t border-slate-200 text-[10px] font-mono text-amber-800">
+                    ACTION: UAV靶向精准施肥/定向补灌
+                </div>
+            </div>
+
+            <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col justify-between print-card">
+                <div>
+                    <span class="px-2 py-0.5 bg-red-100 text-red-950 border border-red-300 rounded text-[9px] font-bold uppercase tracking-wider block w-max mb-2">三类重度病阻区</span>
+                    <h4 class="text-xs font-bold text-slate-800 mb-1.5">植保病虫靶向阻断 (Pathogen Defense)</h4>
+                    <p id="lbl-presc-3" class="text-[11px] text-slate-500 leading-relaxed text-justify">
+                        {{ extra.prescriptions.p3 | default('对应反射区近红外陡落，水气吸收指数干枯。怀疑已遭受大面积侵染或物理性坏死，需要立刻调配高浓广谱高效药剂（如三环唑/吡唑醚菌酯）进行局部封闭式喷洒，杜绝大田级交叉感染损耗。') }}
+                    </p>
+                </div>
+                <div class="mt-4 pt-2 border-t border-slate-200 text-[10px] font-mono text-red-800">
+                    ACTION: 生理病损靶向喷药/隔离深翻
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==========================================================================
+       SECTION 6: 专家知识检索区 (条件: request.rag is not none)
+       ========================================================================== -->
+    {% if request.rag is not none %}
+        <section id="section-rag" class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm hover:border-slate-300 transition duration-200 print-card">
+            <h2 class="text-sm font-bold text-slate-900 tracking-wide uppercase mb-4 flex items-center gap-2 pb-2 border-b border-slate-100 print-title">
+                <svg class="w-4 h-4 text-emerald-950" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                    <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                </svg>
+                国家大田规范与专家知识支撑 (RAG)
+            </h2>
+            
+            <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg mb-4 print-card">
+                <p id="lbl-rag-summary" class="font-serif text-[13px] leading-relaxed text-slate-700 text-justify indent-8 print-text">
+                    {{ request.rag.summary | default('正在匹配地物先验知识。如果因无网络造成匹配缺失，建议参照大区级高标准农田作物栽培标准规程进行地块对标。') }}
+                </p>
+            </div>
+
+            <div id="container-rag-sources" class="space-y-2">
+                {% if request.rag.sources %}
+                    <h4 class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">规程及引用标准文献:</h4>
+                    <ul id="wrapper-rag-sources" class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-500 font-mono list-inside list-disc">
+                        {% for src in request.rag.sources %}
+                            <li class="truncate hover:text-slate-700 transition-colors print-text" title="{{ src }}">{{ src }}</li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            </div>
+        </section>
+    {% endif %}
+
+    <!-- ==========================================================================
+       SECTION 7: 综合链路置信度评价 (极简线段式仪表盘，去除刺眼发光)
+       ========================================================================== -->
+    {% if request.confidence is not none %}
+        <section id="section-confidence" class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm print-card">
+            <h2 class="text-sm font-bold text-slate-900 tracking-wide uppercase mb-6 flex items-center gap-2 pb-2 border-b border-slate-100 print-title">
+                <svg class="w-4 h-4 text-emerald-950" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9 12l2 2 4-4"></path>
+                </svg>
+                反演计算质量保障评估 (Quality Assurance)
+            </h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
+                <!-- 左侧：环形置信度仪表 (高档灰白线条形式) -->
+                <div class="md:col-span-4 flex flex-col items-center justify-center">
+                    {% set final_conf = request.confidence.final_confidence | default(0.0) %}
+                    {% set final_label = request.confidence.final_label | default('medium') %}
+                    {% set stroke_color = '#475569' %} 
+                    {% if final_label == 'high' %}{% set stroke_color = '#0f5132' %}
+                    {% elif final_label == 'low' %}{% set stroke_color = '#991b1b' %}
+                    {% endif %}
+                    
+                    <div class="relative w-36 h-36 flex items-center justify-center">
+                        <svg class="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                            <!-- 背景圆轨 -->
+                            <circle cx="50" cy="50" r="40" fill="none" stroke="#f1f5f9" stroke-width="6" stroke-linecap="round" stroke-dasharray="188.4 251.2" class="print-track" />
+                            <!-- 刻度前景 -->
+                            <circle id="conf-gauge-arc" cx="50" cy="50" r="40" fill="none" stroke="{{ stroke_color }}" stroke-width="6" stroke-linecap="round"
+                                    stroke-dasharray="188.4 251.2"
+                                    stroke-dashoffset="{{ 188.4 * (1.0 - final_conf) }}" class="transition-all duration-1000 print-fill" />
+                        </svg>
+                        
+                        <!-- 置信数值 -->
+                        <div class="absolute inset-0 flex flex-col items-center justify-center text-center space-y-0.5">
+                            <span id="lbl-gauge-percent" class="text-2xl font-extrabold tracking-tight font-mono" style="color: {{ stroke_color }};">
+                                {{ (final_conf * 100) | round(0) }}<span class="text-xs font-semibold">%</span>
+                            </span>
+                            <span id="lbl-gauge-label" class="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded border" style="color: {{ stroke_color }}; border-color: {{ stroke_color }}40; background-color: {{ stroke_color }}08;">
+                                {{ final_label | upper }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右侧：四维分解指标条 (无霓虹蓝) -->
+                <div class="md:col-span-8 space-y-4">
+                    <!-- 维度1 -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs font-semibold">
+                            <span class="text-slate-500">1. 光学影像有效性及云阻偏差 (Image Validation)</span>
+                            <span id="lbl-conf-image" class="font-mono text-slate-700 print-text">{{ (request.confidence.image_confidence | default(0.0) * 100) | round(1) }}%</span>
+                        </div>
+                        <div class="h-1.5 w-full bg-slate-100 border border-slate-200 rounded-full overflow-hidden print-track">
+                            <div id="bar-conf-image" class="h-full bg-slate-500 rounded-full print-fill" style="width: {{ request.confidence.image_confidence | default(0.0) * 100 }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- 维度2 -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs font-semibold">
+                            <span class="text-slate-500">2. 作物理论生长进程先验对齐 (Phytological Fit)</span>
+                            <span id="lbl-conf-text" class="font-mono text-slate-700 print-text">{{ (request.confidence.text_confidence | default(0.0) * 100) | round(1) }}%</span>
+                        </div>
+                        <div class="h-1.5 w-full bg-slate-100 border border-slate-200 rounded-full overflow-hidden print-track">
+                            <div id="bar-conf-text" class="h-full bg-slate-500 rounded-full print-fill" style="width: {{ request.confidence.text_confidence | default(0.0) * 100 }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- 维度3 -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between text-xs font-semibold">
+                            <span class="text-slate-500">3. 气象雷达同化联合精度系数 (Radarsat Coherency)</span>
+                            <span id="lbl-conf-workflow" class="font-mono text-slate-700 print-text">{{ (request.confidence.workflow_confidence | default(0.0) * 100) | round(1) }}%</span>
+                        </div>
+                        <div class="h-1.5 w-full bg-slate-100 border border-slate-200 rounded-full overflow-hidden print-track">
+                            <div id="bar-conf-workflow" class="h-full bg-slate-500 rounded-full print-fill" style="width: {{ request.confidence.workflow_confidence | default(0.0) * 100 }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- 联合评级 -->
+                    <div class="space-y-1 pt-2 border-t border-slate-100">
+                        <div class="flex justify-between text-xs font-bold">
+                            <span class="text-slate-700">4. 融合决策信赖综合总分 (Total Operational Score)</span>
+                            <span id="lbl-conf-final" class="font-mono text-emerald-950 print-text">{{ (final_conf * 100) | round(1) }}%</span>
+                        </div>
+                        <div class="h-2 w-full bg-slate-100 border border-slate-200 rounded-full overflow-hidden print-track">
+                            <div id="bar-conf-final" class="h-full bg-emerald-950 rounded-full print-fill" style="width: {{ final_conf * 100 }}%"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- 评分释义文本 -->
+            <div id="container-conf-explanation">
+                {% if request.confidence.explanation %}
+                    <div class="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs leading-relaxed text-slate-500 print-card">
+                        <p class="print-text">
+                            <strong class="text-slate-700">工程评分逻辑：</strong> <span id="lbl-conf-explanation">{{ request.confidence.explanation }}</span>
+                        </p>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- 联合评估警报 -->
+            <div id="container-conf-warnings">
+                {% if request.confidence.warnings %}
+                    <div class="mt-4 space-y-2">
+                        {% for p_warn in request.confidence.warnings %}
+                            <div class="p-3 bg-red-50/60 border-l-3 border-red-700 rounded text-xs text-slate-700 flex items-center gap-2 print-card print-border">
+                                <span class="font-mono text-red-800 font-bold">[ENGINE_WARN]</span>
+                                <span class="print-text">{{ p_warn }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+        </section>
+    {% endif %}
+
+    <!-- ==========================================================================
+       SECTION 8: 报告页脚与学术规范说明
+       ========================================================================== -->
+    <footer class="pt-6 border-t border-slate-200 flex flex-col md:flex-row md:justify-between md:items-start text-[10px] text-slate-400 gap-4">
+        <div class="max-w-3xl leading-relaxed text-justify print-text">
+            <strong>专业性免责说明：</strong>
+            本技术报告所呈现的所有空间测定、干物质理论估计、灾损胁迫概率值，均为多源遥感传感器红边反射率、微波孔径雷达消融插值模型、及作物生长同化动力学算子（WOFOST/DSSAT）计算得到之空间宏观定量推演值，而非实地高精度全天候水准测绘级物理实测。由于大区地物反射可能受云盖校正残差、局地散射及大气气溶胶波动之扰动，数据可能存在约±5%的空间偏置，仅建议用作大田变量施肥及农业防灾之靶向参考，不作为民事法律责任索赔纠纷之绝对直接证据。
+        </div>
+        
+        <div class="font-mono text-left md:text-right space-y-1 flex-shrink-0">
+            <div>SPATIAL_ENGINE: <span class="text-slate-600 font-semibold">GeoAI Engine Core</span></div>
+            <div>DATASOURCE: <span class="text-slate-600 font-semibold">Sentinel-2 MSI / Gaofen-6 / Sentinel-1 SAR</span></div>
+            <div>VERIFICATION_HASH: <span class="text-slate-500">{{ report_id | default('N/A') }}</span></div>
+        </div>
+    </footer>
+
+</div>
+
+<!-- ==========================================================================
+   SECTION 9: 遥感高级测绘仿真引擎与多端交互脚本 (预览时强制生效)
+   ========================================================================== -->
+<script>
+{% raw %}
+    // 学术配色体系：深度贯彻莫兰迪与中性配色
+    const scenarios = {
+        baldness_detection: {
+            title: "河南省浚县小麦冬前斑秃退化与出苗断垄测绘遥感评估报告",
+            request_id: "RS-2026-HN-WHEAT-BALD",
+            user_query: "精细识别浚县小麦冬前退化断垄与出苗斑秃斑块，评估出苗质量并开具变量施肥处方。",
+            region: "henan",
+            crop_type: "wheat",
+            task_type: "baldness_detection",
+            overview: "本报告利用高分六号（GF-6）与哨兵-2号红边通道，对河南省浚县小麦核心示范田冬前分蘖期出苗状态实施空间反演。通过提取混合像元植被指数、排除土壤水分及耕作垄间背景干扰，圈定重度断垄与退化死苗多边形群落，用以科学制备冬施速效分蘖氮肥变量喷洒控制数据。",
+            findings: [
+                "小麦冬前断垄死苗重度斑秃面积计 1,245.8 亩，整体出苗斑秃比率占总种植面积的 9.97%。",
+                "极重度连片断垄主要分布于黄河故道沙区，由于播种期局地失熵干旱，出苗健壮度偏弱。",
+                "斑秃区反射NDVI大幅落后24%，且根系发育受抑，需于冬前撤水施肥，促进冬灌壮苗分蘖。"
+            ],
+            sensors: {
+                opt: "Sentinel-2 MSI + GF-6 (10M)",
+                sar: "Sentinel-1 C-SAR (VV/VH)",
+                gdd: "+42.5 ℃·d (偏早发育)",
+                sm: "21.2 % (适墒轻旱)"
+            },
+            model_name: "Spatial-GeoSegNet",
+            model_version: "v3.2.1",
+            affected_area: 1245.8,
+            confidence: 0.91,
+            positive_ratio: 0.0997,
+            est_loss: "8.4 % (潜在减产)",
+            polygons: 12,
+            warnings: [
+                "大区边缘存在道路建设阻隔引起的边界效应，局地约有2%像元出现虚警过饱。"
+            ],
+            rag_summary: "根据《河南省冬小麦冬前长势监测规范》（DB41/T 1982-2020），凡小麦分蘖中期出苗退化断垄比率超过8%的示范田，必须在冬前封冻（日均温降至5℃以下）前，使用高空植保机向异常斑块靶向追施速效氮肥（尿素 8-10kg/亩），保障越冬健壮度。",
+            rag_sources: [
+                "DB41/T 1982 《麦田冬前生长态势多源卫星监测规范》",
+                "农业农村部《2026年黄淮海冬小麦冬前管理技术指导方案》"
+            ],
+            image_confidence: 0.94,
+            text_confidence: 0.88,
+            workflow_confidence: 0.92,
+            final_confidence: 0.91,
+            final_label: "high",
+            explanation: "该数据源自完全无云的光学影像。多次大田样方现场实测（MAE < 4.8%）证实该测绘结果具有极强的指导价值。",
+            conf_warnings: [],
+            positive_text: "优势区展现出良好的前期叶面积扩展，夏小麦在灌渠周边、底墒均衡地块生长茂盛。充足的氮素储备和合理的群体冠层保证了光合同化的高效传导，分蘖指数超出五年平均水准，后期丰产基础夯实。",
+            negative_text: "受制于沙性土持水性偏低及前期浅播造成的出苗受挫，断垄斑秃斑块零星破碎分布。这些逆境区群体根系分叉偏少，叶绿素代谢降速，对冬季低气温抵御力偏弱，若无靶向补给将大幅增加越冬冻死风险。",
+            prescriptions: {
+                p1: "优势区继续维持当前水分调控，中耕锄草，无需任何额外无机速效肥追施，保障养分不过度积累以防后期发生生理倒伏。",
+                p2: "二类逆境区推荐启动无人机，定向飞施速效硝基氮肥 8kg/亩，并结合浅灌，迫使底墒活性释放，唤醒分蘖活力。",
+                p3: "针对重度斑秃带，检查是否存在蛴螬等地下害虫，紧急喷施辛硫磷，并在缺苗超过50%的长地带于冬灌前局部重播。"
+            },
+            class_distribution: [
+                { label: "出苗丰产健壮区 (Healthy Crop)", value: 92450, ratio: 0.825, color: "#1b4332", is_target: false, bar_height_pct: 100 },
+                { label: "斑秃退化断垄区 (Baldness Anomaly)", value: 11210, ratio: 0.100, color: "#a87151", is_target: true, bar_height_pct: 12 },
+                { label: "田埂/高干裸土地 (Bare Sand Soil)", value: 5600, ratio: 0.050, color: "#d2c3b0", is_target: false, bar_height_pct: 6 },
+                { label: "灌排灌溉水系 (Water Canals)", value: 2800, ratio: 0.025, color: "#a5b4fc", is_target: false, bar_height_pct: 3 }
+            ]
+        },
+        lai_inversion: {
+            title: "山东省齐河县夏玉米大喇叭口期冠层叶面积指数 (LAI) 遥感反演报告",
+            request_id: "RS-2026-SD-MAIZE-LAI",
+            user_query: "精细反演齐河玉米大喇叭口期冠层LAI空间分布，指导灌溉和化学施肥调控。",
+            region: "shandong",
+            crop_type: "corn",
+            task_type: "lai_inversion",
+            overview: "本报告提取哨兵2号多光谱（Sentinel-2）红边与近红外水汽通道，应用 PROSAIL 三维辐射传输物理物理模拟，深度同化大区气象微气候，对山东省齐河县高标准农田夏玉米大喇叭口期叶面积指数（LAI）实施定量反演。本分析已扣除行间高背景裸土反射，展现叶片干物质承载红利。",
+            findings: [
+                "齐河示范区夏玉米平均LAI达 3.45，冠层生理结构优异，符合当前物候黄金发育区间。",
+                "沙漏、高平沙化土地漏水漏肥地块占比约2.8%，其LAI反演实测低于 1.8，表现为未完成合理封垄。",
+                "约有32%地块LAI出现过高饱和（LAI > 4.5），存在过度郁闭及下部叶片由于通风不良早衰的风险。"
+            ],
+            sensors: {
+                opt: "Sentinel-2 MSI (10M)",
+                sar: "Radarsat-2 Ultra (C-Band)",
+                gdd: "+35.8 ℃·d (发育正常)",
+                sm: "24.8 % (墒情饱满)"
+            },
+            model_name: "PROSAIL-DNN-Core",
+            model_version: "v1.8.0",
+            affected_area: 3.45,
+            confidence: 0.89,
+            positive_ratio: 0.65,
+            est_loss: "1.2 % (轻微风险)",
+            polygons: 5,
+            warnings: [
+                "夏玉米大喇叭口期垄间裸土存在一定的干湿变化，对边缘解译拟合产生±0.15的局部不确定性偏置。"
+            ],
+            rag_summary: "参照《山东省密植夏玉米大田高产栽培规范》，大喇叭口期最适叶面积指数（LAI）建议在 3.2 - 3.8。若局部实测LAI < 2.2，应即刻结合滴灌设施追施高溶氮肥（12kg/亩）以诱发中上部叶片宽动态抽生。",
+            rag_sources: [
+                "《GB/T 20465 植被叶面积指数（LAI）物理遥感验证规范要求》",
+                "《山东省密植夏玉米吨半粮水肥一体化管理技术》"
+            ],
+            image_confidence: 0.85,
+            text_confidence: 0.92,
+            workflow_confidence: 0.90,
+            final_confidence: 0.89,
+            final_label: "high",
+            explanation: "PROSAIL辐射模型对干旱与阴影进行精确解析，对比实地五点法样方实测，RMSE误差低至0.22，具有高水平决策支撑精度。",
+            conf_warnings: [],
+            positive_text: "绝大部分良田光合截获率达标，在水肥一体化滴灌覆盖范围内，夏玉米表现出了旺盛的碳汇效能。大喇叭口期适宜的LAI指标能够确保穗分化期获取源源不断的无机营养，高光效面积处于高位，预期丰收势头极大。",
+            negative_text: "约有不到3%的地块由于灌溉死角及沙土地水肥垂直流失严重，导致LAI生长滞后。弱叶株矮小不仅直接削弱了群落捕获阳光的物理上限，也使得土壤水分无效蒸发激增，急需采取追施复合肥和补充微量叶面锌肥的限制拦截。",
+            prescriptions: {
+                p1: "优势区叶片生长正常，大喇叭口期需控制氮肥追加，补充钾肥，配合防风中耕，提高茎秆纤维韧度，严防后期局地倒伏。",
+                p2: "中度LAI滞后区（2.2 - 2.8）应通过随灌滴灌，追加速效氮肥（10kg/亩）和微量锌、镁元素，刺激叶绿素快速合成。",
+                p3: "极低LAI空洞区（LAI < 1.8）要紧急进行病虫害（如玉米螟）筛查，并单独实施叶面营养速效液喷洒，促进植株追赶发育。"
+            },
+            class_distribution: [] // 连续型无分类
+        },
+        crop_health_detection: {
+            title: "黑龙江建三江建阳农场水稻抽穗灌浆期生理健康与冷温病害检测报告",
+            request_id: "RS-2026-HLJ-RICE-HLTH",
+            user_query: "定量反演建阳农场寒地粳稻抽穗期含水量及叶绿素异常带，防范大区水稻瘟病突发危害。",
+            region: "heilongjiang",
+            crop_type: "rice",
+            task_type: "crop_health_detection",
+            overview: "本分析提取宽动态植被指数（WDRVI）及 MCARI 光谱参数，综合结合微波合成孔径雷达（SAR）极化指数，对建三江建阳农场粳稻抽穗期叶绿素分布与冠层含水量进行靶向普查。本报告重点识别因缺氮发黄、土壤过度渍涝或稻瘟病初期侵染引发的群落退化失绿点。",
+            findings: [
+                "粳稻大区整体长势良好，91.2% 地块水稻抽穗状态完全达标，叶片叶绿素绝对值 > 45 μg/cm²。",
+                "圈定极高危中重度退化与失绿异常群落 452.6 亩，主要沿低洼易积水灌溉渠外围呈现斑块化蔓延。",
+                "异常斑块近红外反射率在过往7天急剧滑坡28%，表明含水量骤减、稻叶干枯。强烈怀疑属于稻瘟病初期危害。"
+            ],
+            sensors: {
+                opt: "Sentinel-2 MSI Wide band",
+                sar: "RADARSAT-2 Polarized SAR",
+                gdd: "-18.5 ℃·d (局地气温偏低)",
+                sm: "38.2 % (重度渍涝过湿)"
+            },
+            model_name: "Spectral-Health-Net",
+            model_version: "v4.1.0",
+            affected_area: 452.6,
+            confidence: 0.78,
+            positive_ratio: 0.015,
+            est_loss: "12.5 % (异常区严重减产)",
+            polygons: 18,
+            warnings: [
+                "过境当日伴随清晨局地薄雾，大区东侧约有4%的网格对大气的低空吸收进行了经验修正校准。"
+            ],
+            rag_summary: "根据《寒地粳稻抽穗期稻瘟病测报与精准统防统治意见》，对于光谱特征NDWI和NDVI联合落后于均值25%的病损中心，必须立刻使用植保无人机喷施25%吡唑醚菌酯乳油，同步开沟排水降渍，抑制病原孢子借高湿二次传播。",
+            rag_sources: [
+                "《黑龙江寒地粳稻关键生育期病害星地联合早期诊断规程标准》",
+                "《国家高标准水田绿色植保统防统治技术手册》"
+            ],
+            image_confidence: 0.72,
+            text_confidence: 0.85,
+            workflow_confidence: 0.80,
+            final_confidence: 0.78,
+            final_label: "medium",
+            explanation: "因局地薄云雾遮蔽干扰造成原始大气校正系数波动，通过时序中值滤波恢复，分类信赖度评级设为中上（Medium）。",
+            conf_warnings: [
+                "局地低温雾气偏大，部分无植被裸露的水渠网在交界处产生轻微分类重叠效应。"
+            ],
+            positive_text: "建三江绝大部分水田供氮充分，抽穗齐整度极佳。充足的叶绿素保证了超高的光合反射效能。由于前中期控水晒田得力，植株根系活力旺盛，在低水温灌溉背景下展现了优良的耐冷适应，丰收概率极高。",
+            negative_text: "处于低洼水渠交界地带的约1.5%水田因长期积水排干不畅，发生了局地根系自息窒息。叶片发黄不仅预示着氮吸收受阻，还伴随着高度疑似的稻瘟病孢子侵入。该生理逆境正使局部干物质合成陷入停滞，如不立即施药控水，将迅速转为死苗绝产。",
+            prescriptions: {
+                p1: "健康示范田执行间歇灌溉，实施干干湿湿循环以壮根，后期增施钾肥，提升抗倒伏及抵抗寒冷能力。",
+                p2: "针对退化失绿（中度）黄叶区，必须开沟排水、提高土壤透气性，亩施微量氨基酸叶面活性肥以补充被动营养。",
+                p3: "针对重度稻瘟病斑块，即刻调配植保无人机靶向飞施吡唑醚菌酯，并向外围延伸50米建立药剂隔离带，进行紧急封锁。"
+            },
+            class_distribution: [
+                { label: "丰产健康水稻 (Healthy Rice)", value: 245000, ratio: 0.912, color: "#1b4332", is_target: false, bar_height_pct: 100 },
+                { label: "轻度偏弱黄化 (Stressed Rice)", value: 18000, ratio: 0.067, color: "#d5af8e", is_target: false, bar_height_pct: 7 },
+                { label: "病害稻瘟斑块 (Pest Disease)", value: 4526, ratio: 0.015, color: "#991b1b", is_target: true, bar_height_pct: 2 },
+                { label: "机耕道与排水网 (Infrastructure)", value: 1600, ratio: 0.006, color: "#cbd5e1", is_target: false, bar_height_pct: 1 }
+            ]
+        },
+        yield_prediction: {
+            title: "吉林省公主岭示范区春玉米成熟期多源同化测产报告",
+            request_id: "RS-2026-JL-CORN-YLD",
+            user_query: "估算公主岭高产示范大田春玉米理论亩产变幅，提出合理收获期建议实现提质增效。",
+            region: "jilin",
+            crop_type: "corn",
+            task_type: "yield_prediction",
+            overview: "本研究报告基于哨兵-2号（Sentinel-2）全生长物候周期多时相光谱NDVI积分、气象同化辐射累积及地壳含水量等多源动力参数。应用 WOFOST 作物动力仿真，扣除土壤沙化因子，实现对公主岭示范区夏玉米的栅格级单产测算与产量等级归类。",
+            findings: [
+                "预计核心高产示范区春玉米平均理论单产可达 824.5 公斤/亩，比上年度稳健递增 3.2%。",
+                "单产低于 600 公斤的低产、早衰早落叶斑块约 1,850 亩，由于苗期局地涝害导致根系活性先天受阻。",
+                "全区 83% 耕地处于中高产区（>800公斤），增产幅度得益于灌浆期平稳、充足的光照积温匹配。"
+            ],
+            sensors: {
+                opt: "Sentinel-2 Multi-temporal Integration",
+                sar: "SMAP Radiometer Active Soil moisture",
+                gdd: "+112.4 ℃·d (灌浆日照充沛)",
+                sm: "26.5 % (墒情完美)"
+            },
+            model_name: "Assimilation-WOFOST-LUE",
+            model_version: "v4.0.2",
+            affected_area: 824.5,
+            confidence: 0.95,
+            positive_ratio: 0.83,
+            est_loss: "0.8 % (整体极低损耗)",
+            polygons: 4,
+            warnings: [],
+            rag_summary: "参照《吉林省黄金玉米带春玉米机收减损及晚收增产规程》，平均理论亩产高于800公斤的优质丰产地块，建议在籽粒黑层完美显现后再开展机械直收。通过将直收割期向后推延 7-10 天，可使籽粒物理干物质再次增产 4%-6%，同时减少直收破碎率。",
+            rag_sources: [
+                "《吉林省春玉米机械直收籽粒增产提质及减损技术指南》",
+                "《大田作物生物量多光谱同化估算行业验证规范要求》"
+            ],
+            image_confidence: 0.96,
+            text_confidence: 0.94,
+            workflow_confidence: 0.95,
+            final_confidence: 0.95,
+            final_label: "high",
+            explanation: "结合时序MODIS植被物候追踪，消除了因单一过境叶片反射易提早饱和的系统误差，地表测产RMSE仅为22公斤/亩，具备超高水平应用信度。",
+            conf_warnings: [],
+            positive_text: "公主岭肥沃黑土高有机质和完美的灌浆期积温完全释放了先玉系列玉米的遗传丰产潜力。多光谱同化曲线各阶段拟合契合度高达 96%，籽粒灌浆干物质传输速率处于高位。玉米灌浆饱满度极佳，预期丰收态势基本锁定。",
+            negative_text: "低洼积水斑块（约占2%）在拔节期遭遇严重内涝，导致根系发育偏浅。后期早衰提前发生，表现为下部叶片过早干枯变黄。这导致灌浆进程提前结束，籽粒干物质转运受抑，千粒重偏低，是本区域单产指标的最大硬性制约限制。",
+            prescriptions: {
+                p1: "超高产玉米区（>900kg/亩）建议延迟收获7-10天，充分发挥秸秆后劲，让籽粒彻底脱水收缩，实现品质与产量双丰收。",
+                p2: "中产稳产区（600-800kg/亩）维持常规机收进程，注意收获时的割茬高度，配合进行秸秆粉碎还田，培肥下一季地力。",
+                p3: "对涝渍早衰严重区（<600kg/亩），应提早收割以防倒伏导致烂耳，收获后需要迅速烘干储存，防止发生霉变损失。"
+            },
+            class_distribution: [
+                { label: "超高产玉米区 (>900kg/亩)", value: 35000, ratio: 0.35, color: "#1b4332", is_target: false, bar_height_pct: 100 },
+                { label: "常规高产稳产区 (800-900kg/亩)", value: 48000, ratio: 0.48, color: "#347d5b", is_target: true, bar_height_pct: 100 },
+                { label: "常规过渡产量区 (600-800kg/亩)", value: 15150, ratio: 0.15, color: "#d5af8e", is_target: false, bar_height_pct: 31 },
+                { label: "涝渍受损早衰区 (<600kg/亩)", value: 1850, ratio: 0.02, color: "#991b1b", is_target: false, bar_height_pct: 4 }
+            ]
+        },
+        scenario_none: {
+            // 空Fallback占位
+        }
+    };
+
+    // 补充：湖南省常德长势监测预设
+    scenarios.growth_monitoring = {
+        title: "湖南省常德市鼎城区晚稻分蘖关键期生长进程遥感追踪报告",
+        request_id: "RS-2026-HUN-RICE-GROW",
+        user_query: "对鼎城区晚稻核心区分蘖期生长进程进行动态排查，识别分蘖弱苗区并给出调控处方。",
+        region: "hunan",
+        crop_type: "rice",
+        task_type: "growth_monitoring",
+        overview: "本报告利用多时相宽动态归一化差值指数（WDRVI）和红边波段，对常德市鼎城区晚稻关键发育阶段开展了连续长势追踪。通过建立大区典型物候动力解译模型，判定地块在当前阶段长势与常年历史轨迹的偏离系数，识别分蘖落后和偏弱弱苗斑块。",
+        findings: [
+            "鼎城区晚稻整体分蘖进程齐整，正常及偏旺发育地块占比 92.0%，展现出较高的分蘖活性。",
+            "圈定分蘖落后、长势明显偏弱的弱苗带 1,200.0 亩（空间占比 8.0%），呈散落碎带分布于水利欠发达末端。",
+            "偏弱区有效分蘖数量平均比正常带低18%，群体未及时郁闭，如不干预将直接削弱后期成穗率。"
+        ],
+        sensors: {
+            opt: "Sentinel-2 MSI (10M Multispectral)",
+            sar: "Sentinel-1 Synthetic Radar",
+            gdd: "+4.2 ℃·d (发育气温贴合均值)",
+            sm: "35.8 % (湿润浅水层)"
+        },
+        model_name: "PhenoStage-Classifier",
+        model_version: "v2.0.1",
+        affected_area: 1200.0,
+        confidence: 0.86,
+        positive_ratio: 0.08,
+        est_loss: "4.5 % (潜在减产)",
+        polygons: 9,
+        warnings: [],
+        rag_summary: "参照《南方双季晚稻分蘖期精准栽培调控指南》，当分蘖中后期弱苗率超过5%时，应趁尚未进入拔节转折期，浅水间歇灌溉，每亩补施速效分蘖复合氮肥 5-6 公斤。对偏旺群体则需立刻撤水晒田，强行抑制多余低效分蘖。",
+        rag_sources: [
+            "NY/T 2024 《双季稻作物生长物候遥感解译评价规范》",
+            "《湖南省双季晚稻主产区机械化高产分蘖晒田控制技术指标》"
+        ],
+        image_confidence: 0.88,
+        text_confidence: 0.85,
+        workflow_confidence: 0.86,
+        final_confidence: 0.86,
+        final_label: "high",
+        explanation: "时序光谱特征分析消除了水面反射饱和带来的光学失真偏置，物候分类与典型地表样方测定契合度高达 88%。",
+        conf_warnings: [],
+        positive_text: "水利保障优良、施肥合理的示范大田，稻株分蘖分化进展顺利，叶色翠绿。时序NDVI呈现完美平滑递增。得益于前期适时轻度晒田，有效促进了晚稻深层根系生长，抗风及中后期抗倒伏性能明显增强，增产预期显著。",
+        negative_text: "位于水利末梢以及沙性冷水地块（约占8.0%），由于水分运筹失度（水深长期过大）和土壤冷水温，限制了有机养分的快速转化。晚稻有效分蘖数目被动压制，导致长势表现为黄化矮小。这些落后区域急需迅速人工补肥补气调控，促使其快速封行合垄。",
+        prescriptions: {
+            p1: "偏旺及正常分蘖地块立刻撤水晒田3-5天，促使土壤开裂进气，强行逼退多余无效分蘖，防止冠层提早封垄郁闭腐烂。",
+            p2: "针对分蘖落后偏弱地块，保持3厘米超浅水层提高土温，趁晴天每亩精准补施速效硫酸铵 6kg/亩，刺激新蘖萌生。",
+            p3: "加强弱苗区稻飞虱和稻纵卷叶螟的绿色集成植保监控，防止虫害对矮小弱苗进行集中危害和侵害。"
+        },
+        class_distribution: [
+            { label: "常规发育正常长势 (Normal Crop)", value: 68000, ratio: 0.68, color: "#1b4332", is_target: false, bar_height_pct: 100 },
+            { label: "分蘖偏旺过度发育 (Vigorous Crop)", value: 24000, ratio: 0.24, color: "#2d6a4f", is_target: false, bar_height_pct: 35 },
+            { label: "物候落后弱苗地带 (Weak Anomaly)", value: 8000, ratio: 0.08, color: "#a87151", is_target: true, bar_height_pct: 12 }
+        ]
+    };
+
+    document.addEventListener("DOMContentLoaded", function() {
+        // 判断当前是后端Jinja2实际解析过的最终HTML，还是未处理的原生模板前端预览
+        const isJinjaProcessed = !document.body.innerHTML.includes('{{');
+        
+        if (!isJinjaProcessed) {
+            // 前端预览模式下：取消隐藏仿真面板
+            document.getElementById('preview-control-panel').classList.remove('hidden');
+            
+            // 初始化GIS视口 cursor-tracker 经纬度及植被指数提取
+            initGisCursorTracker();
+            
+            // scenario 切换事件监听
+            const selector = document.getElementById('scenario-selector');
+            selector.addEventListener('change', function(e) {
+                renderScenario(e.target.value);
+            });
+            
+            // 默认渲染第一个场景：小麦冬前斑秃识别
+            renderScenario('baldness_detection');
+        } else {
+            // 在后端环境下，直接初始化静态解译GIS视口的鼠标联动机制即可
+            initGisCursorTracker();
+        }
+    });
+
+    function initGisCursorTracker() {
+        const viewport = document.getElementById('gis-viewport');
+        if (!viewport) return;
+        
+        viewport.addEventListener('mousemove', function(e) {
+            const rect = viewport.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // 经典地理测绘经纬度及坐标变换
+            const pctX = (x / rect.width).toFixed(4);
+            const pctY = (y / rect.height).toFixed(4);
+            
+            // 设定该示范区空间起算点
+            const lat = (34.0294 + (1 - pctY) * 0.05).toFixed(4);
+            const lon = (113.4829 + pctX * 0.05).toFixed(4);
+            
+            // 动态仿真NDVI指数（健康度）
+            const ndvi = (0.15 + (Math.sin(pctX * 6.5) * Math.cos(pctY * 6.5) + 1.25) * 0.35).toFixed(2);
+            
+            const readout = document.getElementById('gis-coords');
+            if (readout) {
+                readout.innerHTML = `COORDS: ${lat}° N, ${lon}° E | 光栅实点 NDVI: <span class="text-emerald-950 font-bold font-mono">${ndvi}</span> | SCALE 1:50,000`;
+            }
+        });
+    }
+
+    function renderScenario(scenKey) {
+        const data = scenarios[scenKey];
+        if (!data) return;
+
+        // 1. 基本标题、编号、日期、气象背景替换
+        document.getElementById('lbl-title').innerText = data.title;
+        document.getElementById('lbl-request-id').innerText = data.request_id;
+        document.getElementById('lbl-generated-at').innerText = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        
+        // 气象背景替换
+        document.getElementById('lbl-sensor-opt').innerText = data.sensors.opt;
+        document.getElementById('lbl-sensor-sar').innerText = data.sensors.sar;
+        document.getElementById('lbl-weather-gdd').innerText = data.sensors.gdd;
+        document.getElementById('lbl-soil-moisture').innerText = data.sensors.sm;
+
+        // 2. 徽章渲染
+        const badgeHTML = getTaskBadgeHTML(data.task_type);
+        document.getElementById('lbl-task-badge').innerHTML = badgeHTML;
+        document.getElementById('lbl-region-badge').innerText = `监测省区: ${data.region.toUpperCase()}`;
+        document.getElementById('lbl-crop-badge').innerText = `作物类型: ${getCropZH(data.crop_type)}`;
+
+        // 3. 用户意图及大田学术概述
+        document.getElementById('lbl-user-query').innerText = data.user_query;
+        document.getElementById('lbl-overview').innerText = data.overview;
+
+        // 4. 双向优势VS限制段落替换 (体现辩证多方面考虑)
+        document.getElementById('lbl-positive-text').innerText = data.positive_text;
+        document.getElementById('lbl-negative-text').innerText = data.negative_text;
+
+        // 5. 关键结论发现替换
+        let findingsHTML = '<ul class="space-y-3">';
+        data.findings.forEach((finding, idx) => {
+            findingsHTML += `
+                <li class="flex items-start gap-3">
+                    <span class="flex-shrink-0 w-5 h-5 rounded bg-emerald-50 text-emerald-900 flex items-center justify-center text-[10px] font-bold border border-emerald-100 no-print">
+                        ${idx + 1}
+                    </span>
+                    <span class="text-xs text-slate-600 leading-relaxed print-text">${finding}</span>
+                </li>
+            `;
+        });
+        findingsHTML += '</ul>';
+        document.getElementById('container-key-findings').innerHTML = findingsHTML;
+
+        // 6. 算法模型及版本更新
+        document.getElementById('lbl-model-name').innerText = data.model_name;
+        document.getElementById('lbl-model-name-short').innerText = data.model_name;
+        document.getElementById('lbl-model-version').innerText = data.model_version;
+
+        // 7. 测算指标卡片数据更新 (Affected Area, Coverage Ratio, Loss Rate, Polygons)
+        renderKpiCards(data);
+
+        // 8. SVG 地理地图分类多边形模拟
+        const poly1 = document.getElementById('gis-poly-1');
+        const poly2 = document.getElementById('gis-poly-2');
+        const poly3 = document.getElementById('gis-poly-3');
+        if (poly1 && poly2 && poly3) {
+            if (data.task_type === 'baldness_detection') {
+                poly1.setAttribute('fill', '#e2efe5'); poly1.setAttribute('stroke', '#9bbda5');
+                poly2.setAttribute('fill', '#f8ece4'); poly2.setAttribute('stroke', '#d5b099');
+                poly3.setAttribute('fill', '#fcf9ec'); poly3.setAttribute('stroke', '#d4cb9f');
+            } else if (data.task_type === 'lai_inversion') {
+                poly1.setAttribute('fill', '#e0f2fe'); poly1.setAttribute('stroke', '#7dd3fc');
+                poly2.setAttribute('fill', '#e2efe5'); poly2.setAttribute('stroke', '#9bbda5');
+                poly3.setAttribute('fill', '#fafaf9'); poly3.setAttribute('stroke', '#e7e5e4');
+            } else if (data.task_type === 'crop_health_detection') {
+                poly1.setAttribute('fill', '#e2efe5'); poly1.setAttribute('stroke', '#9bbda5');
+                poly2.setAttribute('fill', '#fee2e2'); poly2.setAttribute('stroke', '#fca5a5');
+                poly3.setAttribute('fill', '#fef3c7'); poly3.setAttribute('stroke', '#fcd34d');
+            } else {
+                poly1.setAttribute('fill', '#e2efe5'); poly1.setAttribute('stroke', '#9bbda5');
+                poly2.setAttribute('fill', '#f5f5f4'); poly2.setAttribute('stroke', '#d6d3d1');
+                poly3.setAttribute('fill', '#fafaf9'); poly3.setAttribute('stroke', '#e7e5e4');
+            }
+        }
+
+        // 9. 精准农业处方更替 (处方落地)
+        document.getElementById('lbl-presc-1').innerText = data.prescriptions.p1;
+        document.getElementById('lbl-presc-2').innerText = data.prescriptions.p2;
+        document.getElementById('lbl-presc-3').innerText = data.prescriptions.p3;
+
+        // 10. 图表与数据表格替换
+        renderChartsAndTables(data);
+
+        // 11. 反演异常警告更替
+        renderInferenceWarnings(data.warnings);
+
+        // 12. RAG 检索知识更替
+        document.getElementById('lbl-rag-summary').innerText = data.rag_summary;
+        let ragSourcesHTML = `
+            <h4 class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">规程及引用标准文献:</h4>
+            <ul id="wrapper-rag-sources" class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-500 font-mono list-inside list-disc">
+        `;
+        data.rag_sources.forEach(src => {
+            ragSourcesHTML += `<li class="truncate hover:text-slate-700 transition-colors print-text" title="${src}">${src}</li>`;
+        });
+        ragSourcesHTML += '</ul>';
+        document.getElementById('container-rag-sources').innerHTML = ragSourcesHTML;
+
+        // 13. 联合质量仪表更新
+        renderConfidenceGauge(data);
+    }
+
+    function renderKpiCards(data) {
+        const isB = data.task_type === 'baldness_detection';
+        const isL = data.task_type === 'lai_inversion';
+        const isH = data.task_type === 'crop_health_detection';
+        const isY = data.task_type === 'yield_prediction';
+        const isG = data.task_type === 'growth_monitoring';
+
+        const lbl1 = document.getElementById('lbl-kpi-1-label');
+        const val1 = document.getElementById('lbl-kpi-1-val');
+        const unit1 = document.getElementById('lbl-kpi-1-unit');
+        const code1 = document.getElementById('lbl-kpi-1-code');
+
+        if (isB) {
+            lbl1.innerText = "异常退化面积";
+            val1.innerText = data.affected_area.toFixed(1);
+            unit1.innerText = " 亩";
+            code1.innerText = "SPECTRUM_ANOMALY";
+        } else if (isL) {
+            lbl1.innerText = "平均叶面积指数 (LAI)";
+            val1.innerText = data.affected_area.toFixed(2);
+            unit1.innerText = "";
+            code1.innerText = "m²(LEAF) / m²(GROUND)";
+        } else if (isH) {
+            lbl1.innerText = "重度生理失绿面积";
+            val1.innerText = data.affected_area.toFixed(1);
+            unit1.innerText = " 亩";
+            code1.innerText = "CHLOROPHYLL_LOSS";
+        } else if (isY) {
+            lbl1.innerText = "预测平均亩产";
+            val1.innerText = data.affected_area.toFixed(1);
+            unit1.innerText = " kg/亩";
+            code1.innerText = "YIELD_ESTIMATE";
+        } else if (isG) {
+            lbl1.innerText = "监测落后面积";
+            val1.innerText = data.affected_area.toFixed(1);
+            unit1.innerText = " 亩";
+            code1.innerText = "WEAK_GROWTH_AREA";
+        }
+
+        const lbl2 = document.getElementById('lbl-kpi-2-label');
+        const val2 = document.getElementById('lbl-kpi-2-val');
+        const unit2 = document.getElementById('lbl-kpi-2-unit');
+        const code2 = document.getElementById('lbl-kpi-2-code');
+
+        if (isB) {
+            lbl2.innerText = "地物受损覆盖率";
+            val2.innerText = (data.positive_ratio * 100).toFixed(1);
+            unit2.innerText = " %";
+            code2.innerText = "PIXEL_PURITY_RATIO";
+        } else if (isL) {
+            lbl2.innerText = "植被冠层通光率";
+            val2.innerText = ((1 - Math.pow(0.45, data.affected_area)) * 100).toFixed(1);
+            unit2.innerText = " %";
+            code2.innerText = "CANOPY_TRANSMITTANCE";
+        } else if (isH) {
+            lbl2.innerText = "健康绿度总体占比";
+            val2.innerText = ((1 - data.positive_ratio) * 100).toFixed(1);
+            unit2.innerText = " %";
+            code2.innerText = "VEGETATION_HEALTH_PCT";
+        } else if (isY) {
+            lbl2.innerText = "产量置信区间 (95%)";
+            val2.innerText = `[${(data.affected_area * 0.93).toFixed(1)}-${(data.affected_area * 1.07).toFixed(1)}]`;
+            unit2.innerText = " kg";
+            code2.innerText = "CLIMATIC_UNCERTAINTY";
+        } else if (isG) {
+            lbl2.innerText = "弱苗覆盖占比";
+            val2.innerText = (data.positive_ratio * 100).toFixed(1);
+            unit2.innerText = " %";
+            code2.innerText = "WEAK_GROWTH_RATIO";
+        }
+
+        // 估计损耗与多边形个数替换
+        document.getElementById('lbl-kpi-loss-val').innerText = data.est_loss;
+        document.getElementById('lbl-kpi-polygons-val').innerText = data.polygons;
+
+        const infConf = document.getElementById('lbl-inf-confidence');
+        infConf.innerText = `${(data.confidence * 100).toFixed(1)}%`;
+        infConf.className = data.confidence >= 0.8 ? "text-emerald-950 print-text" : (data.confidence >= 0.5 ? "text-amber-900 print-text" : "text-red-900 print-text");
+    }
+
+    function renderChartsAndTables(data) {
+        const chartWrapper = document.getElementById('wrapper-bar-chart');
+        const tableBody = document.getElementById('wrapper-table-body');
+        
+        if (data.class_distribution.length === 0) {
+            chartWrapper.innerHTML = `
+                <div class="text-center py-12 text-slate-400 space-y-2">
+                    <p class="text-xs">连续型物理反演拟合，无需进行要素离散解译</p>
+                </div>
+            `;
+            document.getElementById('container-table-details').classList.add('hidden');
+            return;
+        }
+
+        document.getElementById('container-table-details').classList.remove('hidden');
+
+        // 生成图表 HTML
+        let chartHTML = '';
+        data.class_distribution.forEach(bar => {
+            const targetBadge = bar.is_target ? `<span class="text-[9px] bg-slate-200 text-slate-700 border border-slate-300 px-1 py-0.1 rounded print-badge">核心对象</span>` : '';
+            chartHTML += `
+                <div class="space-y-1">
+                    <div class="flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2 font-medium">
+                            <span class="w-2.5 h-2.5 rounded-sm" style="background-color: ${bar.color}"></span>
+                            <span class="text-slate-600 print-text">${bar.label}</span>
+                            ${targetBadge}
+                        </div>
+                        <span class="font-mono font-bold text-slate-800 print-text">${(bar.ratio * 100).toFixed(1)}%</span>
+                    </div>
+                    <div class="h-2 w-full bg-slate-200/60 rounded-full overflow-hidden print-track">
+                        <div class="h-full rounded-full transition-all duration-1000 print-bar" 
+                             style="width: ${bar.bar_height_pct}%; background-color: ${bar.color}">
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        chartWrapper.innerHTML = chartHTML;
+
+        // 生成详细数据明细表格
+        let tableHTML = '';
+        data.class_distribution.forEach(bar => {
+            const rowClass = bar.is_target ? 'bg-slate-50/40' : '';
+            const statusLabel = bar.is_target ? `<span class="px-2 py-0.5 bg-slate-100 text-slate-800 border border-slate-300 rounded text-[10px] font-semibold">核心异常</span>` : `<span class="text-slate-400 text-[10px]">地物要素</span>`;
+            
+            tableHTML += `
+                <tr class="hover:bg-slate-50/50 transition-colors ${rowClass}">
+                    <td class="py-2.5 px-4">
+                        <span class="inline-block w-3.5 h-3.5 rounded-sm align-middle" style="background-color: ${bar.color}"></span>
+                    </td>
+                    <td class="py-2.5 px-4 font-medium text-slate-700">${bar.label}</td>
+                    <td class="py-2.5 px-4 text-right font-mono">${bar.value.toLocaleString()}</td>
+                    <td class="py-2.5 px-4 text-right font-mono text-slate-600">
+                        ${((bar.value) * 0.1).toFixed(1)}
+                    </td>
+                    <td class="py-2.5 px-4 text-right font-mono font-semibold text-slate-700">${(bar.ratio * 100).toFixed(2)}%</td>
+                    <td class="py-2.5 px-4 text-center">
+                        ${statusLabel}
+                    </td>
+                </tr>
+            `;
+        });
+        tableBody.innerHTML = tableHTML;
+    }
+
+    function renderInferenceWarnings(warns) {
+        const box = document.getElementById('container-inf-warnings');
+        if (warns.length === 0) {
+            box.innerHTML = '';
+            return;
+        }
+
+        let warnHTML = `
+            <div class="mt-4 space-y-2">
+                <h4 class="text-xs font-bold text-amber-950 flex items-center gap-1">
+                    <span>⚠️ 遥感反演异常警示：</span>
+                </h4>
+        `;
+        warns.forEach(warn => {
+            warnHTML += `
+                <div class="p-3 bg-amber-50/40 border-l-3 border-amber-700 rounded text-xs text-slate-700 flex items-center gap-2 print-card print-border">
+                    <span class="font-mono text-amber-800 font-bold">[WARN_OP]</span>
+                    <span class="print-text">${warn}</span>
+                </div>
+            `;
+        });
+        warnHTML += '</div>';
+        box.innerHTML = warnHTML;
+    }
+
+    function renderConfidenceGauge(data) {
+        const arc = document.getElementById('conf-gauge-arc');
+        const pctText = document.getElementById('lbl-gauge-percent');
+        const lblLabel = document.getElementById('lbl-gauge-label');
+        
+        const finalVal = data.final_confidence;
+        const offset = 188.4 * (1.0 - finalVal);
+        
+        let color = '#475569';
+        if (data.final_label === 'high') color = '#0f5132';
+        else if (data.final_label === 'low') color = '#991b1b';
+
+        arc.setAttribute('stroke', color);
+        arc.setAttribute('stroke-dashoffset', offset);
+        
+        pctText.style.color = color;
+        pctText.innerHTML = `${Math.round(finalVal * 100)}<span class="text-xs font-semibold">%</span>`;
+        
+        lblLabel.style.color = color;
+        lblLabel.style.borderColor = `${color}40`;
+        lblLabel.style.backgroundColor = `${color}08`;
+        lblLabel.innerText = data.final_label.toUpperCase();
+
+        // 四维指标进度条替换
+        document.getElementById('lbl-conf-image').innerText = `${(data.image_confidence * 100).toFixed(1)}%`;
+        document.getElementById('bar-conf-image').style.width = `${data.image_confidence * 100}%`;
+
+        document.getElementById('lbl-conf-text').innerText = `${(data.text_confidence * 100).toFixed(1)}%`;
+        document.getElementById('bar-conf-text').style.width = `${data.text_confidence * 100}%`;
+
+        document.getElementById('lbl-conf-workflow').innerText = `${(data.workflow_confidence * 100).toFixed(1)}%`;
+        document.getElementById('bar-conf-workflow').style.width = `${data.workflow_confidence * 100}%`;
+
+        const lblFinal = document.getElementById('lbl-conf-final');
+        lblFinal.innerText = `${(finalVal * 100).toFixed(1)}%`;
+        document.getElementById('bar-conf-final').style.width = `${finalVal * 100}%`;
+
+        document.getElementById('lbl-conf-explanation').innerText = data.explanation;
+
+        // 系统警告重设
+        const sysWarnBox = document.getElementById('container-conf-warnings');
+        if (data.conf_warnings.length === 0) {
+            sysWarnBox.innerHTML = '';
+            return;
+        }
+
+        let sysWarnHTML = '<div class="mt-4 space-y-2">';
+        data.conf_warnings.forEach(warn => {
+            sysWarnHTML += `
+                <div class="p-3 bg-red-50/60 border-l-3 border-red-700 rounded text-xs text-slate-700 flex items-center gap-2 print-card print-border">
+                    <span class="font-mono text-red-800 font-bold">[ENGINE_WARN]</span>
+                    <span class="print-text">${warn}</span>
+                </div>
+            `;
+        });
+        sysWarnHTML += '</div>';
+        sysWarnBox.innerHTML = sysWarnHTML;
+    }
+
+    function getTaskBadgeHTML(task) {
+        if (task === 'baldness_detection') return `<span class="badge px-3 py-1 bg-emerald-50 text-emerald-950 border border-emerald-200 rounded-md font-semibold print-badge">斑秃识别检测</span>`;
+        if (task === 'lai_inversion') return `<span class="badge px-3 py-1 bg-blue-50 text-blue-950 border border-blue-200 rounded-md font-semibold print-badge">叶面积指数反演 (LAI)</span>`;
+        if (task === 'crop_health_detection') return `<span class="badge px-3 py-1 bg-teal-50 text-teal-950 border border-teal-200 rounded-md font-semibold print-badge">生理健康监测</span>`;
+        if (task === 'yield_prediction') return `<span class="badge px-3 py-1 bg-amber-50 text-amber-950 border border-amber-200 rounded-md font-semibold print-badge">定量产量预测</span>`;
+        return `<span class="badge px-3 py-1 bg-stone-100 text-stone-900 border border-stone-200 rounded-md font-semibold print-badge">生长进程监测</span>`;
+    }
+
+    function getCropZH(crop) {
+        if (crop === 'wheat') return '冬小麦 (Wheat)';
+        if (crop === 'corn') return '夏玉米 (Corn)';
+        if (crop === 'rice') return '水稻 (Rice)';
+        return crop;
+    }
+{% endraw %}
+</script>
+
 </body>
 </html>

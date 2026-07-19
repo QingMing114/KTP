@@ -4,6 +4,7 @@ import { useAppContext } from '../context/AppContext'
 import { useArtifactClick } from '../hooks/useArtifactClick'
 import { Sparkles, ArrowLeft, Check, ExternalLink, Bot, Clock, AlertTriangle, X, Search, Loader2 } from 'lucide-react'
 import { escapeHtml, buildArtifactOpenHref, isMockArtifact, getArtifactLabel, truncateId, getStatusLabel, getStatusStyle } from '../utils'
+import SimulationArtifact from '../components/SimulationArtifact'
 
 const ResultsPage: React.FC = () => {
   const { state } = useAppContext()
@@ -107,6 +108,9 @@ const ResultsPage: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {artifacts.map((part, index) => {
                         const artifact = part.artifact!
+                        if (artifact.artifact_type === "simulation_data" && artifact.content) {
+                          return <SimulationArtifact key={index} title={artifact.title} content={artifact.content} />
+                        }
                         const openHref = buildArtifactOpenHref(artifact)
                         const mock = isMockArtifact(artifact)
                         return (

@@ -69,12 +69,16 @@ class UserStore:
             conn.commit()
 
     def create_user(self, user_id: str, password: str, role: str = "user") -> UserRecord:
-        existing = self.get_user(user_id)
-        if existing is not None:
-            raise ValueError(f"User '{user_id}' already exists")
         pw_hash, salt = _hash_password(password)
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         with self._lock:
+            existing = self._conn.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,)).fetchone()
+            if existing is not None:
+                raise ValueError(f"User '{user_id}' already exists")
+            if role == "admin":
+                admin_count = self._conn.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'").fetchone()[0]
+                if admin_count > 0:
+                    role = "user"
             self._conn.execute(
                 "INSERT INTO users (user_id, password_hash, role, created_at, salt) VALUES (?, ?, ?, ?, ?)",
                 (user_id, pw_hash, role, now, salt),
@@ -121,6 +125,11 @@ class UserStore:
                 )
                 for r in rows
             ]
+
+    def count_users(self) -> int:
+        with self._lock:
+            row = self._conn.execute("SELECT COUNT(*) FROM users").fetchone()
+            return row[0] if row else 0
 
     def update_last_login(self, user_id: str) -> None:
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())

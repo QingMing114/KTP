@@ -11,6 +11,7 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from infra.llm.provider import AgentLLMProvider
 from ktp_backend.runtime_host import (
@@ -44,6 +45,34 @@ settings = get_v2_api_settings()
 configure_v2_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 
+
+class KnowledgeIngestPayload(BaseModel):
+    document_id: str = ""
+    title: str = ""
+    source: str = "web-upload"
+    text: str = ""
+    metadata: dict = Field(default_factory=dict)
+
+class KnowledgeQueryPayload(BaseModel):
+    request_id: str = ""
+    query: str = ""
+    top_k: int | None = None
+    task_type: str | None = None
+    region: str | None = None
+    crop_type: str | None = None
+    context: dict = Field(default_factory=dict)
+
+class InferenceRunPayload(BaseModel):
+    request_id: str = ""
+    region: str = "henan"
+    crop_type: str = "wheat"
+    task_type: str | None = None
+    image_path: str | None = None
+    use_mock: bool = False
+    extra_params: dict = Field(default_factory=dict)
+
+class InferenceBatchPayload(BaseModel):
+    tasks: list[InferenceRunPayload]
 
 def install_backend_api(
     app: FastAPI,
@@ -266,6 +295,140 @@ def install_backend_api(
     async def list_packs() -> list[DomainPackSummary]:
         return app.state.pack_registry.list_packs()
 
+    @app.get("/v2/knowledge/documents", tags=["knowledge"])
+    async def list_knowledge_documents() -> list[dict]:
+        try:
+            from services.rag_service.client import LocalRAGServiceClient
+            client = LocalRAGServiceClient()
+            return client.list_documents()
+        except Exception as exc:
+            logger.warning("knowledge_list_failed | error=%s", exc)
+            return []
+
+    @app.get("/v2/knowledge/documents/{document_id}", tags=["knowledge"])
+    async def get_knowledge_document(document_id: str) -> dict:
+        try:
+            from services.rag_service.client import LocalRAGServiceClient
+            client = LocalRAGServiceClient()
+            doc = client.get_document(document_id)
+            if doc is None:
+                raise HTTPException(status_code=404, detail="document_not_found")
+            return doc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("knowledge_get_failed | document_id=%s | error=%s", document_id, exc)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.delete("/v2/knowledge/documents/{document_id}", tags=["knowledge"])
+    async def delete_knowledge_document(document_id: str) -> dict:
+        try:
+            from services.rag_service.client import LocalRAGServiceClient
+            client = LocalRAGServiceClient()
+            deleted = client.delete_document(document_id)
+            if not deleted:
+                raise HTTPException(status_code=404, detail="document_not_found")
+            return {"status": "deleted", "document_id": document_id}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("knowledge_delete_failed | document_id=%s | error=%s", document_id, exc)
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @app.post("/v2/knowledge/documents/ingest", tags=["knowledge"])
+    async def ingest_knowledge_document(payload: KnowledgeIngestPayload) -> dict:
+        try:
+            from services.rag_service.client import LocalRAGServiceClient
+            from services.rag_service.schemas import DocumentIngestRequest
+            client = LocalRAGServiceClient()
+            request = DocumentIngestRequest(
+                document_id=payload.document_id,
+                title=payload.title,
+                source=payload.source,
+                text=payload.text,
+                metadata=payload.metadata,
+            )
+            response = client.ingest_document(request)
+            return response.model_dump()
+        except Exception as exc:
+            logger.warning("knowledge_ingest_failed | error=%s", exc)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/v2/inference/run", tags=["inference"])
+    async def run_inference(payload: InferenceRunPayload) -> dict:
+        try:
+            from services.inference_service.service import InferenceService
+            from services.inference_service.schemas import InferenceRequest
+            service = InferenceService()
+            request = InferenceRequest(
+                request_id=payload.request_id or str(uuid4()),
+                region=payload.region,
+                crop_type=payload.crop_type,
+                task_type=payload.task_type,
+                image_path=payload.image_path,
+                use_mock=payload.use_mock,
+                extra_params=payload.extra_params,
+            )
+            result = await service.run_inference(request)
+            return result.model_dump()
+        except Exception as exc:
+            logger.warning("inference_run_failed | error=%s", exc)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/v2/inference/batch", tags=["inference"])
+    async def batch_inference(payload: InferenceBatchPayload) -> dict:
+        try:
+            from services.inference_service.service import InferenceService
+            from services.inference_service.schemas import InferenceRequest
+            if not payload.tasks:
+                raise HTTPException(status_code=400, detail="tasks list is empty")
+            results = []
+            service = InferenceService()
+            for task in payload.tasks:
+                request = InferenceRequest(
+                    request_id=task.request_id or str(uuid4()),
+                    region=task.region,
+                    crop_type=task.crop_type,
+                    task_type=task.task_type,
+                    image_path=task.image_path,
+                    use_mock=task.use_mock,
+                    extra_params=task.extra_params,
+                )
+                try:
+                    result = await service.run_inference(request)
+                    results.append({"request_id": request.request_id, "success": result.success, "message": result.message, "result": result.model_dump().get("result")})
+                except Exception as exc:
+                    results.append({"request_id": request.request_id, "success": False, "message": str(exc), "result": None})
+            total = len(results)
+            succeeded = sum(1 for r in results if r["success"])
+            return {"total": total, "succeeded": succeeded, "failed": total - succeeded, "results": results}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("batch_inference_failed | error=%s", exc)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/v2/knowledge/query", tags=["knowledge"])
+    async def query_knowledge(payload: KnowledgeQueryPayload) -> dict:
+        try:
+            from services.rag_service.client import LocalRAGServiceClient
+            from services.rag_service.schemas import RAGQueryRequest
+            client = LocalRAGServiceClient()
+            request = RAGQueryRequest(
+                request_id=payload.request_id or str(uuid4()),
+                query=payload.query,
+                top_k=payload.top_k,
+                task_type=payload.task_type,
+                region=payload.region,
+                crop_type=payload.crop_type,
+                context=payload.context,
+            )
+            response = client.query(request)
+            return response.model_dump()
+        except Exception as exc:
+            logger.warning("knowledge_query_failed | error=%s", exc)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 
 def create_backend_app(
     *,
@@ -292,7 +455,7 @@ def create_backend_app(
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=resolved_settings.cors_origins_list(),
+        allow_origins=resolved_settings.cors_origins_list,
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],

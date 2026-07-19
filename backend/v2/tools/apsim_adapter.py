@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 import shutil
@@ -11,14 +12,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 _APSIM_MODELS_BIN = os.environ.get(
     "APSIM_MODELS_BIN",
-    str(Path(__file__).resolve().parents[4] / "ApsimX" / "bin" / "Release" / "net8.0" / "linux-x64" / "publish" / "Models"),
+    str(Path(__file__).resolve().parents[3] / "ApsimX" / "bin" / "Release" / "net8.0" / "linux-x64" / "publish" / "Models"),
 )
 
 _APSIM_ROOT = os.environ.get(
     "APSIM_ROOT",
-    str(Path(__file__).resolve().parents[4] / "ApsimX"),
+    str(Path(__file__).resolve().parents[3] / "ApsimX"),
 )
 
 _CROP_MODEL_MAP: dict[str, str] = {
@@ -433,13 +436,19 @@ def _parse_apsim_output(work_dir: Path) -> dict[str, Any]:
                     columns = [desc[0] for desc in cursor.description]
                     rows = cursor.fetchall()
                     if rows:
+                        _skip_prefixes = ("CheckpointID", "SimulationID", "Experiment", "FolderName")
+                        filtered_cols = [c for c in columns if c not in _skip_prefixes]
+                        sample = []
+                        for row in rows[:50]:
+                            d = dict(zip(columns, row))
+                            sample.append({k: v for k, v in d.items() if k not in _skip_prefixes})
                         results["tables"][table_name] = {
-                            "columns": columns,
+                            "columns": filtered_cols,
                             "row_count": len(rows),
-                            "sample": [dict(zip(columns, row)) for row in rows[:10]],
+                            "sample": sample,
                         }
                 except Exception:
-                    pass
+                    logger.debug("apsim_db_table_parse_failed", exc_info=True)
             conn.close()
         except Exception as exc:
             results["db_error"] = str(exc)
@@ -459,7 +468,7 @@ def _parse_apsim_output(work_dir: Path) -> dict[str, Any]:
                         "sample": [dict(zip(headers, row)) for row in sample_rows[:5]],
                     }
             except Exception:
-                pass
+                logger.debug("apsim_csv_parse_failed", exc_info=True)
 
     return results
 
@@ -502,7 +511,7 @@ def run_apsim_crop_simulation(
             days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
             sowing_doy = sum(days_in_month[:month - 1]) + day
         except Exception:
-            pass
+            logger.debug("apsim_sowing_date_parse_failed", exc_info=True)
 
     work_dir = Path(tempfile.mkdtemp(prefix="apsim_"))
     try:
@@ -551,13 +560,18 @@ def run_apsim_crop_simulation(
         for table_name, table_data in parsed.get("tables", {}).items():
             summary_parts.append(f"输出表 {table_name}: {table_data['row_count']} 行")
             if table_data.get("sample"):
-                sample_text = json.dumps(table_data["sample"], indent=2, ensure_ascii=False, default=str)
+                structured = json.dumps({
+                    "table_name": table_name,
+                    "row_count": table_data["row_count"],
+                    "columns": table_data.get("columns", []),
+                    "rows": table_data["sample"],
+                }, indent=2, ensure_ascii=False, default=str)
                 artifacts.append(
                     PackArtifactView(
                         pack_name="apsim",
                         artifact_type="simulation_data",
                         title=f"APSIM 输出 - {table_name}",
-                        content=sample_text,
+                        content=structured,
                     )
                 )
 
@@ -596,4 +610,4 @@ def run_apsim_crop_simulation(
         try:
             shutil.rmtree(work_dir, ignore_errors=True)
         except Exception:
-            pass
+            logger.debug("apsim_workdir_cleanup_failed", exc_info=True)

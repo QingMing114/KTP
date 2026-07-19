@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     app_auth_enabled: bool = Field(default=False, validation_alias="APP_AUTH_ENABLED")
     app_auth_token: str = Field(default="", validation_alias="APP_AUTH_TOKEN")
     app_cors_origins: str = Field(default="", validation_alias="APP_CORS_ORIGINS")
-    app_rate_limit: int = Field(default=60, validation_alias="APP_RATE_LIMIT")
+    app_rate_limit: int = Field(default=300, validation_alias="APP_RATE_LIMIT")
     app_rate_window: int = Field(default=60, validation_alias="APP_RATE_WINDOW")
     app_max_request_body_mb: int = Field(default=10, validation_alias="APP_MAX_REQUEST_BODY_MB")
 
@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     agent_max_steps: int = Field(default=20, validation_alias="AGENT_MAX_STEPS")
     agent_duplicate_call_threshold: int = Field(default=2, validation_alias="AGENT_DUPLICATE_CALL_THRESHOLD")
 
+    @property
     def get_cors_origins(self) -> list[str]:
         if not self.app_cors_origins:
             return ["*"]

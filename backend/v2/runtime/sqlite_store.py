@@ -35,10 +35,10 @@ class SQLiteRuntimeStore:
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT INTO v2_sessions (session_id, title, created_by, latest_run_id, messages_json, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO v2_sessions (session_id, title, created_by, latest_run_id, messages_json, created_at, updated_at, summary)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (session.session_id, session.title, session.created_by, session.latest_run_id, "[]", now, now),
+                (session.session_id, session.title, session.created_by, session.latest_run_id, "[]", now, now, session.summary),
             )
         return session
 
@@ -46,7 +46,7 @@ class SQLiteRuntimeStore:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT session_id, title, created_by, latest_run_id, messages_json, created_at, updated_at
+                SELECT session_id, title, created_by, latest_run_id, messages_json, created_at, updated_at, summary
                 FROM v2_sessions
                 WHERE session_id = ?
                 """,
@@ -60,7 +60,7 @@ class SQLiteRuntimeStore:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT session_id, title, created_by, latest_run_id, messages_json, created_at, updated_at
+                SELECT session_id, title, created_by, latest_run_id, messages_json, created_at, updated_at, summary
                 FROM v2_sessions
                 ORDER BY updated_at DESC, rowid ASC
                 """
@@ -74,7 +74,7 @@ class SQLiteRuntimeStore:
             connection.execute(
                 """
                 UPDATE v2_sessions
-                SET title = ?, created_by = ?, latest_run_id = ?, messages_json = ?, updated_at = ?
+                SET title = ?, created_by = ?, latest_run_id = ?, messages_json = ?, updated_at = ?, summary = ?
                 WHERE session_id = ?
                 """,
                 (
@@ -83,6 +83,7 @@ class SQLiteRuntimeStore:
                     session.latest_run_id,
                     self._dump_messages(session.messages),
                     now,
+                    session.summary,
                     session.session_id,
                 ),
             )
@@ -171,7 +172,8 @@ class SQLiteRuntimeStore:
                     latest_run_id TEXT,
                     messages_json TEXT NOT NULL,
                     created_at TEXT,
-                    updated_at TEXT
+                    updated_at TEXT,
+                    summary TEXT
                 )
                 """
             )
@@ -180,6 +182,8 @@ class SQLiteRuntimeStore:
                 connection.execute("ALTER TABLE v2_sessions ADD COLUMN created_at TEXT")
             if "updated_at" not in existing_columns:
                 connection.execute("ALTER TABLE v2_sessions ADD COLUMN updated_at TEXT")
+            if "summary" not in existing_columns:
+                connection.execute("ALTER TABLE v2_sessions ADD COLUMN summary TEXT")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS v2_runs (
@@ -210,7 +214,8 @@ class SQLiteRuntimeStore:
 
     @staticmethod
     def _session_from_row(row: sqlite3.Row | tuple[object, ...]) -> SessionDetail:
-        session_id, title, created_by, latest_run_id, messages_json, created_at, updated_at = row
+        session_id, title, created_by, latest_run_id, messages_json, created_at, updated_at, *rest = row
+        summary = rest[0] if rest else None
         messages = [SessionMessage.model_validate(item) for item in json.loads(messages_json)]
         return SessionDetail(
             session_id=session_id,
@@ -220,4 +225,5 @@ class SQLiteRuntimeStore:
             messages=messages,
             created_at=created_at,
             updated_at=updated_at,
+            summary=summary,
         )

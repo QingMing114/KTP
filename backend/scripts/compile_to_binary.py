@@ -26,6 +26,52 @@ EXCLUDE_FILES = {
     "license_guard.py",
 }
 
+FASTAPI_ROUTE_PATTERNS = [
+    "APIRouter",
+    "@router.",
+    "@app.",
+    "fastapi.Header",
+    "fastapi.Query",
+    "fastapi.Depends",
+    "fastapi.Body",
+    "fastapi.Form",
+    "fastapi.File",
+    "fastapi.Cookie",
+    "fastapi.Path",
+    "from fastapi import",
+    "from fastapi.responses import",
+]
+
+PYDANTIC_MODEL_PATTERNS = [
+    "BaseModel)",
+    "BaseSettings)",
+    "model_post_init",
+    "model_validator",
+    "field_validator",
+]
+
+
+def has_fastapi_routes(filepath: Path) -> bool:
+    try:
+        content = filepath.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    for pattern in FASTAPI_ROUTE_PATTERNS:
+        if pattern in content:
+            return True
+    return False
+
+
+def has_pydantic_models(filepath: Path) -> bool:
+    try:
+        content = filepath.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    for pattern in PYDANTIC_MODEL_PATTERNS:
+        if pattern in content:
+            return True
+    return False
+
 INCLUDE_EXTENSIONS = {".py"}
 
 
@@ -41,6 +87,8 @@ def find_python_packages(root: Path) -> list[Path]:
 
 def find_py_files(package_dir: Path) -> list[Path]:
     py_files = []
+    skipped_fastapi = []
+    skipped_pydantic = []
     for root, dirs, files in os.walk(package_dir):
         dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS and not d.startswith(".")]
         for f in sorted(files):
@@ -48,7 +96,17 @@ def find_py_files(package_dir: Path) -> list[Path]:
                 continue
             fp = Path(root) / f
             if fp.suffix in INCLUDE_EXTENSIONS:
+                if has_fastapi_routes(fp):
+                    skipped_fastapi.append(fp.relative_to(ROOT_DIR))
+                    continue
+                if has_pydantic_models(fp):
+                    skipped_pydantic.append(fp.relative_to(ROOT_DIR))
+                    continue
                 py_files.append(fp)
+    if skipped_fastapi:
+        print(f"  Skipped {len(skipped_fastapi)} FastAPI route files in {package_dir.name}")
+    if skipped_pydantic:
+        print(f"  Skipped {len(skipped_pydantic)} Pydantic model files in {package_dir.name}")
     return py_files
 
 

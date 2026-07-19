@@ -144,7 +144,15 @@ class InferenceService:
             return InferenceResponse(
                 request_id=request.request_id,
                 success=True,
-                result=None,
+                result={
+                    "lai": lai_response.lai,
+                    "confidence": lai_response.confidence,
+                    "mean_lai": lai_response.mean_lai,
+                    "std_lai": lai_response.std_lai,
+                    "num_pixels": lai_response.num_pixels,
+                    "lut_path": lai_response.lut_path,
+                    "method": lai_response.method,
+                },
                 message=f"LAI={lai_response.lai:.3f}, confidence={lai_response.confidence:.3f}",
             )
 

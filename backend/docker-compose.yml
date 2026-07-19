@@ -9,11 +9,17 @@ services:
       APP_HOST: 0.0.0.0
       APP_PORT: ${APP_PORT:-18080}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_AUTH_ENABLED: ${APP_AUTH_ENABLED:-false}
+      APP_AUTH_TOKEN: ${APP_AUTH_TOKEN:-}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:-}
+      APP_CORS_ORIGINS: ${APP_CORS_ORIGINS:-}
+      AGENT_LLM_BACKEND: ${AGENT_LLM_BACKEND:-openai_compatible}
+      AGENT_LLM_OPENAI_API_BASE: ${AGENT_LLM_OPENAI_API_BASE:-http://127.0.0.1:8000/v1}
+      AGENT_LLM_OPENAI_API_KEY: ${AGENT_LLM_OPENAI_API_KEY:-}
+      AGENT_LLM_OPENAI_MODEL_NAME: ${AGENT_LLM_OPENAI_MODEL_NAME:-}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/remote_sensing}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      TEMPORAL_SERVER_URL: ${TEMPORAL_SERVER_URL:-localhost:7233}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      MODEL_REGISTRY_URL: ${MODEL_REGISTRY_URL:-http://localhost:9000}
+      V2_API_STORE_BACKEND: ${V2_API_STORE_BACKEND:-sqlite}
     ports:
       - "${APP_PORT:-18080}:${APP_PORT:-18080}"
     depends_on:

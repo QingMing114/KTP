@@ -1,14 +1,19 @@
 
 import React, { Suspense } from 'react'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Navigate, Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
 import ChatPage from './pages/ChatPage'
 import ErrorBoundary from './components/ErrorBoundary'
+import MapWorkspaceDemoPage from './pages/MapWorkspaceDemoPage'
+import { AppProvider } from './context/AppContext'
 
 const AnalysisPage = React.lazy(() => import('./pages/AnalysisPage'))
 const ResultsPage = React.lazy(() => import('./pages/ResultsPage'))
 const SkillsPage = React.lazy(() => import('./pages/SkillsPage'))
 const DatasetsPage = React.lazy(() => import('./pages/DatasetsPage'))
+const KnowledgePage = React.lazy(() => import('./pages/KnowledgePage'))
+const ImageAnalysisPage = React.lazy(() => import('./pages/ImageAnalysisPage'))
+const BatchAnalysisPage = React.lazy(() => import('./pages/BatchAnalysisPage'))
 const HistoryPage = React.lazy(() => import('./pages/HistoryPage'))
 const SettingsPage = React.lazy(() => import('./pages/SettingsPage'))
 
@@ -44,7 +49,9 @@ function App() {
     <ErrorBoundary>
       <Router>
         <Routes>
-          <Route path="/" element={<Layout />}>
+          <Route path="/workspace-demo" element={<MapWorkspaceDemoPage />} />
+          <Route path="/workspace" element={<MapWorkspaceDemoPage live />} />
+          <Route path="/" element={<AppProvider><Layout /></AppProvider>}>
             <Route index element={
               <ErrorBoundary fallback={<PageErrorFallback />}>
                 <ChatPage />
@@ -54,6 +61,10 @@ function App() {
             <Route path="results" element={<ErrorBoundary fallback={<PageErrorFallback />}><Suspense fallback={<PageLoader />}><ResultsPage /></Suspense></ErrorBoundary>} />
             <Route path="skills" element={<ErrorBoundary fallback={<PageErrorFallback />}><Suspense fallback={<PageLoader />}><SkillsPage /></Suspense></ErrorBoundary>} />
             <Route path="datasets" element={<ErrorBoundary fallback={<PageErrorFallback />}><Suspense fallback={<PageLoader />}><DatasetsPage /></Suspense></ErrorBoundary>} />
+            <Route path="image-analysis" element={<ErrorBoundary fallback={<PageErrorFallback />}><Suspense fallback={<PageLoader />}><ImageAnalysisPage /></Suspense></ErrorBoundary>} />
+            <Route path="map" element={<Navigate to="/workspace" replace />} />
+            <Route path="batch-analysis" element={<ErrorBoundary fallback={<PageErrorFallback />}><Suspense fallback={<PageLoader />}><BatchAnalysisPage /></Suspense></ErrorBoundary>} />
+            <Route path="knowledge" element={<ErrorBoundary fallback={<PageErrorFallback />}><Suspense fallback={<PageLoader />}><KnowledgePage /></Suspense></ErrorBoundary>} />
             <Route path="history" element={<ErrorBoundary fallback={<PageErrorFallback />}><Suspense fallback={<PageLoader />}><HistoryPage /></Suspense></ErrorBoundary>} />
             <Route path="settings" element={<ErrorBoundary fallback={<PageErrorFallback />}><Suspense fallback={<PageLoader />}><SettingsPage /></Suspense></ErrorBoundary>} />
           </Route>

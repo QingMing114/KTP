@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
+
+# LAI HTML report handler (re-exported for registry convenience)
+from v2.tools.lai_report_handler import run_lai_html_report as run_lai_html_report  # noqa: E402,F401
 
 from services.rag_service.client import RAGServiceClientError
 from v2.adapters.python_services.ktp_services import (
@@ -894,14 +900,41 @@ def run_prosail_load_lut(
 
 def run_prosail_invert_lai(
     *,
-    reflectance: dict,
+    reflectance: dict | None = None,
+    image_path: str | None = None,
+    crop_type: str | None = None,
+    region: str | None = None,
+    task_type: str | None = None,
     lut_path: str | None = None,
     method: str = "min_distance",
     options: dict | None = None,
     query: str | None = None,
+    **_unused: object,
 ) -> tuple[ObservationV2, list[PackArtifactView]]:
     try:
         engine = _get_prosail_engine()
+
+        if image_path:
+            return run_prosail_invert_lai_tif(
+                image_path=image_path,
+                lut_path=lut_path,
+                ndvi_threshold=float((options or {}).get("ndvi_threshold", 0.2)),
+                scale_factor=float((options or {}).get("scale_factor", 10000.0)),
+                method=method,
+                output_dir=(options or {}).get("output_dir"),
+                query=query,
+            )
+
+        if reflectance is None:
+            return (
+                ObservationV2(
+                    source="prosail.invert_lai",
+                    status="error",
+                    summary="请提供 reflectance 反射率字典，或者提供 image_path 走 TIF 反演流程。",
+                    payload={"error": "missing_reflectance"},
+                ),
+                [],
+            )
 
         if engine.lut is None and lut_path:
             engine.load_lut(lut_path)

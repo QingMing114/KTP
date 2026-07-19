@@ -3,7 +3,9 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import SessionList from './SessionList'
 import LoginModal from './LoginModal'
 import { useAppContext } from '../context/AppContext'
-import { Bot, MessageSquare, Activity, FileText, Plus, Loader2, WifiOff, Key, PanelLeftClose, PanelLeft, LogOut, User, Wrench, Database, History, Settings, Menu, X } from 'lucide-react'
+import { logger } from '../utils/logger'
+import { ToastContainer } from './Toast'
+import { Bot, MessageSquare, Activity, FileText, Plus, Loader2, WifiOff, Key, PanelLeftClose, PanelLeft, LogOut, User, Wrench, Database, History, Settings, Menu, X, BookOpen, Image, MapPin, Layers } from 'lucide-react'
 import { getApiKey, setApiKey as saveApiKey } from '../services/api'
 
 const Layout: React.FC = () => {
@@ -51,20 +53,49 @@ const Layout: React.FC = () => {
       await selectSession(session.session_id)
       navigate('/')
     } catch (error) {
-      console.error("Failed to create session:", error)
+      logger.error("Failed to create session:", error)
     } finally {
       setCreatingSession(false)
     }
   }
 
-  const navItems = [
-    { path: '/', icon: MessageSquare, label: '对话' },
-    { path: '/skills', icon: Wrench, label: '技能中心' },
-    { path: '/analysis', icon: Activity, label: '分析工具' },
-    { path: '/results', icon: FileText, label: '分析结果' },
-    { path: '/datasets', icon: Database, label: '数据集' },
-    { path: '/history', icon: History, label: '运行历史' },
-    { path: '/settings', icon: Settings, label: '设置' },
+  const navGroups = [
+    {
+      label: '核心',
+      items: [
+        { path: '/', icon: MessageSquare, label: '对话' },
+      ],
+    },
+    {
+      label: '分析',
+      items: [
+        { path: '/analysis', icon: Activity, label: '分析工具' },
+        { path: '/image-analysis', icon: Image, label: '影像分析' },
+        { path: '/batch-analysis', icon: Layers, label: '批量分析' },
+      ],
+    },
+    {
+      label: '数据',
+      items: [
+        { path: '/knowledge', icon: BookOpen, label: '知识库' },
+        { path: '/datasets', icon: Database, label: '数据集' },
+        { path: '/workspace', icon: MapPin, label: '地图' },
+      ],
+    },
+    {
+      label: '管理',
+      items: [
+        { path: '/skills', icon: Wrench, label: '技能中心' },
+        { path: '/results', icon: FileText, label: '分析结果' },
+        { path: '/history', icon: History, label: '运行历史' },
+      ],
+    },
+    {
+      label: '系统',
+      items: [
+        { path: '/settings', icon: Settings, label: '设置' },
+      ],
+    },
   ]
 
   const sidebarContent = (
@@ -137,43 +168,52 @@ const Layout: React.FC = () => {
       )}
 
       {(!collapsed || isMobile) && (
-        <div className="flex-1 px-2 mt-2 overflow-y-auto">
+        <div className="flex-1 min-h-[120px] px-2 mt-2 overflow-y-auto">
           <SessionList />
         </div>
       )}
 
-      <div className={`${collapsed && !isMobile ? 'px-2 py-2 flex flex-col items-center gap-1' : 'px-2 py-2 space-y-0.5'}`}>
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const isActive = location.pathname === item.path
-          if (collapsed && !isMobile) {
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className="p-2 rounded-lg transition-colors flex items-center justify-center"
-                style={{ minWidth: 44, minHeight: 44 }}
-                title={item.label}
-                aria-label={item.label}
-              >
-                <span className={`p-1 rounded-lg transition-colors ${isActive ? 'bg-stone-200/80 text-stone-700' : 'text-stone-400 hover:bg-stone-200/40 hover:text-stone-500'}`}>
+      <div className={`shrink-0 max-h-[45vh] overflow-y-auto ${collapsed && !isMobile ? 'px-2 py-2 flex flex-col items-center gap-1' : 'px-2 py-2 space-y-0.5'}`}>
+        {navGroups.map((group) => (
+          <React.Fragment key={group.label}>
+            {(!collapsed || isMobile) && group.label !== '核心' && (
+              <div className="px-2.5 pt-2 pb-0.5">
+                <span className="text-[9px] font-medium text-stone-300 uppercase tracking-wider">{group.label}</span>
+              </div>
+            )}
+            {group.items.map((item) => {
+              const Icon = item.icon
+              const isActive = location.pathname === item.path
+              if (collapsed && !isMobile) {
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className="p-2 rounded-lg transition-colors flex items-center justify-center"
+                    style={{ minWidth: 44, minHeight: 44 }}
+                    title={item.label}
+                    aria-label={item.label}
+                  >
+                    <span className={`p-1 rounded-lg transition-colors ${isActive ? 'bg-stone-200/80 text-stone-700' : 'text-stone-400 hover:bg-stone-200/40 hover:text-stone-500'}`}>
+                      <Icon size={15} />
+                    </span>
+                  </Link>
+                )
+              }
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`w-full flex items-center space-x-2.5 px-2.5 py-2 rounded-lg transition-colors text-[13px] ${isActive ? 'bg-stone-200/80 text-stone-700' : 'text-stone-400 hover:bg-stone-200/40 hover:text-stone-500'}`}
+                  aria-label={item.label}
+                >
                   <Icon size={15} />
-                </span>
-              </Link>
-            )
-          }
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`w-full flex items-center space-x-2.5 px-2.5 py-2.5 rounded-lg transition-colors text-[13px] ${isActive ? 'bg-stone-200/80 text-stone-700' : 'text-stone-400 hover:bg-stone-200/40 hover:text-stone-500'}`}
-              aria-label={item.label}
-            >
-              <Icon size={15} />
-              <span>{item.label}</span>
-            </Link>
-          )
-        })}
+                  <span>{item.label}</span>
+                </Link>
+              )
+            })}
+          </React.Fragment>
+        ))}
       </div>
 
       {(!collapsed || isMobile) && (
@@ -270,6 +310,7 @@ const Layout: React.FC = () => {
 
   return (
     <div className="flex h-screen w-full bg-stone-50 font-sans overflow-hidden">
+      <ToastContainer />
       {state.loading.boot && (
         <div className="fixed inset-0 bg-stone-50/80 z-50 flex items-center justify-center pointer-events-none">
           <div className="flex flex-col items-center gap-3">
@@ -306,7 +347,7 @@ const Layout: React.FC = () => {
         onRegister={register}
       />
 
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
         {isMobile && (
           <div className="flex items-center gap-3 px-4 py-2.5 bg-white border-b border-stone-200/60 shrink-0">
             <button
@@ -318,7 +359,7 @@ const Layout: React.FC = () => {
             </button>
             <span className="text-sm font-semibold text-stone-700">KTP</span>
             <span className="text-[12px] text-stone-400">
-              {navItems.find(n => n.path === location.pathname)?.label || ''}
+              {navGroups.flatMap(g => g.items).find(n => n.path === location.pathname)?.label || ''}
             </span>
           </div>
         )}

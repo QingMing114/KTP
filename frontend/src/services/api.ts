@@ -1,5 +1,7 @@
 import type { SseEvent, SessionCreateResponse, RunReplayResponse, MetadataResponse } from '../types/api'
-import type { Session, Run, Dataset, RunSummary, SystemManifest, PluginToolSpec, PluginToolTestResult } from '../types'
+import type { Session, Run, Dataset, RunSummary, SystemManifest, PluginToolSpec, PluginToolTestResult, KnowledgeDocument, KnowledgeQueryResult } from '../types'
+import { API } from '../constants/api'
+import { logger } from '../utils/logger'
 
 const DEFAULT_API_BASE_URL = ""
 const API_BASE_STORAGE_KEY = "ktp_v2_api_base_url"
@@ -20,7 +22,6 @@ export function setJwtToken(token: string): void {
 
 export function clearJwtToken(): void {
   localStorage.removeItem(JWT_TOKEN_STORAGE_KEY)
-  if (_onAuthExpired) _onAuthExpired()
 }
 
 let _onAuthExpired: (() => void) | null = null
@@ -62,6 +63,16 @@ export function buildUrl(path: string): string {
   return new URL(path, withTrailingSlash(base)).toString()
 }
 
+const LAST_LOGIN_USER_KEY = "ktp_v2_last_login_user"
+
+export function setLastLoginUser(userId: string): void {
+  localStorage.setItem(LAST_LOGIN_USER_KEY, userId)
+}
+
+export function getLastLoginUser(): string {
+  return localStorage.getItem(LAST_LOGIN_USER_KEY) || "admin"
+}
+
 export async function requestJson<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
   headers.set("Content-Type", "application/json")
@@ -93,6 +104,7 @@ export async function requestJson<T = unknown>(path: string, init?: RequestInit)
       }
       if (response.status === 401) {
         clearJwtToken()
+        if (_onAuthExpired) _onAuthExpired()
         throw new Error("认证已过期，请重新登录")
       }
       if (response.status === 429) {
@@ -140,6 +152,7 @@ export async function requestEventStream(
       }
       if (response.status === 401) {
         clearJwtToken()
+        if (_onAuthExpired) _onAuthExpired()
         throw new Error("认证已过期，请重新登录")
       }
       if (response.status === 429) {
@@ -185,7 +198,7 @@ export async function requestEventStream(
     if (onError) {
       onError(error instanceof Error ? error : new Error(String(error)))
     } else {
-      console.error("Error in event stream:", error)
+      logger.error("Error in event stream:", error)
     }
   }
 }
@@ -215,27 +228,27 @@ function parseSseBlock(block: string): SseEvent | null {
     }
     return parsed
   } catch {
-    console.error("Failed to parse SSE block:", block)
-    return null
+    // JSON 解析失败时保留原始数据，避免事件静默丢失
+    return { event: eventType || "raw", raw_data: dataLines.join("\n") } as SseEvent
   }
 }
 
 export async function loadMetadata(): Promise<MetadataResponse> {
   try {
     const [tools, agents, packs] = await Promise.all([
-      requestJson<MetadataResponse["tools"]>("/v2/tools"),
-      requestJson<MetadataResponse["agents"]>("/v2/agents"),
-      requestJson<MetadataResponse["packs"]>("/v2/domain-packs"),
+      requestJson<MetadataResponse["tools"]>(API.V2.TOOLS),
+      requestJson<MetadataResponse["agents"]>(API.V2.AGENTS),
+      requestJson<MetadataResponse["packs"]>(API.V2.PACKS),
     ])
     return { tools, agents, packs }
   } catch (error) {
-    console.error("Error loading metadata:", error)
+    logger.error("Error loading metadata:", error)
     throw error
   }
 }
 
 export async function createSession(title: string): Promise<{ session_id: string; title: string }> {
-  const payload = await requestJson<SessionCreateResponse>("/v2/sessions", {
+  const payload = await requestJson<SessionCreateResponse>(API.V2.SESSIONS, {
     method: "POST",
     body: JSON.stringify({
       title: title && title.trim().length > 0 ? title.trim() : "新对话",
@@ -246,24 +259,24 @@ export async function createSession(title: string): Promise<{ session_id: string
 }
 
 export async function getSessions(): Promise<Session[]> {
-  const resp = await requestJson<unknown>("/v2/sessions")
+  const resp = await requestJson<unknown>(API.V2.SESSIONS)
   if (Array.isArray(resp)) return resp as Session[]
   const obj = resp as Record<string, unknown>
   return (obj.items || []) as Session[]
 }
 
 export async function getSession(sessionId: string) {
-  return requestJson(`/v2/sessions/${sessionId}`)
+  return requestJson(`${API.V2.SESSIONS}/${sessionId}`)
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
-  await requestJson(`/v2/sessions/${sessionId}`, {
+  await requestJson(`${API.V2.SESSIONS}/${sessionId}`, {
     method: "DELETE",
   })
 }
 
 export async function updateSession(sessionId: string, title: string): Promise<Session> {
-  return requestJson<Session>(`/v2/sessions/${sessionId}`, {
+  return requestJson<Session>(`${API.V2.SESSIONS}/${sessionId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title }),
@@ -281,7 +294,7 @@ export async function uploadFile(file: File): Promise<{ path: string; name: stri
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), SSE_TIMEOUT)
   try {
-    const response = await fetch(buildUrl("/v2/upload"), {
+    const response = await fetch(buildUrl(API.V2.UPLOAD), {
       method: "POST",
       headers,
       body: formData,
@@ -304,58 +317,60 @@ export async function uploadFile(file: File): Promise<{ path: string; name: stri
 }
 
 export async function getSessionRuns(sessionId: string): Promise<Run[]> {
-  const runSummaries = await requestJson<RunSummary[]>(`/v2/sessions/${sessionId}/runs`)
+  const runSummaries = await requestJson<RunSummary[]>(`${API.V2.SESSIONS}/${sessionId}/runs`)
   const runDetails = await Promise.all(
-    runSummaries.map((summary) => requestJson<Run>(`/v2/runs/${summary.run_id}`)),
+    runSummaries.map((summary) => requestJson<Run>(`${API.V2.RUNS}/${summary.run_id}`)),
   )
   return runDetails
 }
 
 export async function replayRun(runId: string): Promise<RunReplayResponse> {
-  return requestJson<RunReplayResponse>(`/v2/runs/${runId}/replay`, {
+  return requestJson<RunReplayResponse>(`${API.V2.RUNS}/${runId}/replay`, {
     method: "POST",
   })
 }
 
 export async function authLogin(userId: string, password: string): Promise<{ access_token: string; user_id: string; role: string }> {
-  return requestJson("/v2/auth/login", {
+  const result = await requestJson<{ access_token: string; user_id: string; role: string }>(API.V2.AUTH.LOGIN, {
     method: "POST",
     body: JSON.stringify({ user_id: userId, password }),
   })
+  setLastLoginUser(userId)
+  return result
 }
 
 export async function authRegister(userId: string, password: string): Promise<{ user_id: string; role: string; access_token: string }> {
-  return requestJson("/v2/auth/register", {
+  return requestJson(API.V2.AUTH.REGISTER, {
     method: "POST",
     body: JSON.stringify({ user_id: userId, password }),
   })
 }
 
 export async function authGetMe(): Promise<{ user_id: string; role: string; created_at?: string; last_login?: string }> {
-  return requestJson("/v2/auth/me")
+  return requestJson(API.V2.AUTH.ME)
 }
 
 export async function authLogout(): Promise<void> {
   try {
-    await requestJson("/v2/auth/logout", { method: "POST" })
+    await requestJson(API.V2.AUTH.LOGOUT, { method: "POST" })
   } catch {
     // logout is best-effort
   }
 }
 
 export async function authChangePassword(oldPassword: string, newPassword: string): Promise<{ status: string; detail: string }> {
-  return requestJson("/v2/auth/change-password", {
+  return requestJson(API.V2.AUTH.CHANGE_PASSWORD, {
     method: "POST",
     body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
   })
 }
 
 export async function authListUsers(): Promise<Array<{ user_id: string; role: string; created_at: string; last_login: string | null }>> {
-  return requestJson("/v2/auth/users")
+  return requestJson(API.V2.AUTH.USERS)
 }
 
 export async function getDatasets(): Promise<Dataset[]> {
-  const resp = await requestJson<{ items?: Dataset[]; datasets?: Dataset[] }>("/v2/datasets")
+  const resp = await requestJson<{ items?: Dataset[]; datasets?: Dataset[] }>(API.V2.DATASETS)
   return resp.items || resp.datasets || []
 }
 
@@ -367,18 +382,18 @@ export async function registerDataset(data: {
   source_path?: string;
   metadata?: Record<string, unknown>;
 }): Promise<Dataset> {
-  return requestJson("/v2/datasets/register", {
+  return requestJson(`${API.V2.DATASETS}/register`, {
     method: "POST",
     body: JSON.stringify(data),
   })
 }
 
 export async function getDataset(datasetId: string): Promise<Dataset> {
-  return requestJson(`/v2/datasets/${datasetId}`)
+  return requestJson(`${API.V2.DATASETS}/${datasetId}`)
 }
 
 export async function getAllRuns(limit: number = 50, offset: number = 0): Promise<{ items: RunSummary[]; total: number }> {
-  const resp = await requestJson<unknown>(`/v2/runs?limit=${limit}&offset=${offset}`)
+  const resp = await requestJson<unknown>(`${API.V2.RUNS}?limit=${limit}&offset=${offset}`)
   if (Array.isArray(resp)) {
     return { items: resp as RunSummary[], total: resp.length }
   }
@@ -387,40 +402,133 @@ export async function getAllRuns(limit: number = 50, offset: number = 0): Promis
 }
 
 export async function getRunDetail(runId: string): Promise<Run> {
-  return requestJson(`/v2/runs/${runId}`)
+  return requestJson(`${API.V2.RUNS}/${runId}`)
 }
 
 export async function getSystemManifest(): Promise<SystemManifest> {
-  return requestJson("/v2/system/manifest")
+  return requestJson(`${API.V2.SYSTEM}/manifest`)
 }
 
 export async function cleanupSystem(maxAgeDays?: number): Promise<{ deleted_sessions: number; deleted_runs: number }> {
-  return requestJson("/v2/system/cleanup", {
+  return requestJson(`${API.V2.SYSTEM}/cleanup`, {
     method: "POST",
     body: JSON.stringify(maxAgeDays ? { max_age_days: maxAgeDays } : {}),
   })
 }
 
 export async function registerPluginTool(spec: PluginToolSpec): Promise<{ status: string; name: string }> {
-  return requestJson("/v2/plugins/tools", {
+  return requestJson(API.V2.PLUGINS.TOOLS, {
     method: "POST",
     body: JSON.stringify(spec),
   })
 }
 
 export async function unregisterPluginTool(toolName: string): Promise<{ status: string; name: string }> {
-  return requestJson(`/v2/plugins/tools/${encodeURIComponent(toolName)}`, {
+  return requestJson(`${API.V2.PLUGINS.TOOLS}/${encodeURIComponent(toolName)}`, {
     method: "DELETE",
   })
 }
 
 export async function listPluginTools(): Promise<Array<{ name: string; display_name: string; category: string; pack_name: string }>> {
-  return requestJson("/v2/plugins/tools")
+  return requestJson(API.V2.PLUGINS.TOOLS)
 }
 
 export async function testPluginTool(toolName: string, toolInput: Record<string, unknown>): Promise<PluginToolTestResult> {
-  return requestJson(`/v2/plugins/tools/${encodeURIComponent(toolName)}/test`, {
+  return requestJson(`${API.V2.PLUGINS.TOOLS}/${encodeURIComponent(toolName)}/test`, {
     method: "POST",
     body: JSON.stringify(toolInput),
+  })
+}
+
+export async function listKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
+  return requestJson<KnowledgeDocument[]>(API.V2.KNOWLEDGE.DOCUMENTS)
+}
+
+export async function getKnowledgeDocument(documentId: string): Promise<KnowledgeDocument> {
+  return requestJson(`${API.V2.KNOWLEDGE.DOCUMENTS}/${encodeURIComponent(documentId)}`)
+}
+
+export async function deleteKnowledgeDocument(documentId: string): Promise<{ status: string; document_id: string }> {
+  return requestJson(`${API.V2.KNOWLEDGE.DOCUMENTS}/${encodeURIComponent(documentId)}`, {
+    method: "DELETE",
+  })
+}
+
+export async function ingestKnowledgeDocument(data: {
+  document_id: string;
+  title: string;
+  source?: string;
+  text: string;
+  metadata?: Record<string, unknown>;
+}): Promise<{ document_id: string; chunk_count: number; success: boolean; message: string }> {
+  return requestJson(API.V2.KNOWLEDGE.INGEST, {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+}
+
+export async function queryKnowledge(data: {
+  query: string;
+  top_k?: number;
+  task_type?: string;
+  region?: string;
+  crop_type?: string;
+}): Promise<{ request_id: string; success: boolean; query: string; results: KnowledgeQueryResult[]; message: string }> {
+  return requestJson(API.V2.KNOWLEDGE.QUERY, {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+}
+
+export async function runInference(data: {
+  image_path: string;
+  region?: string;
+  crop_type?: string;
+  task_type?: string;
+  use_mock?: boolean;
+  extra_params?: Record<string, unknown>;
+}): Promise<{
+  request_id: string;
+  success: boolean;
+  message: string;
+  result?: {
+    mask_uri: string;
+    affected_area: number;
+    confidence: number;
+    model_name: string;
+    model_version: string;
+    artifact_uri: string;
+    class_distribution?: Array<{ class_value: number; label?: string; count: number; ratio: number; mean_confidence?: number }>;
+    class_labels?: Record<string, string>;
+    polygons?: Array<{ id: string; points: Array<[number, number]> }>;
+  };
+}> {
+  return requestJson(API.V2.INFERENCE.RUN, {
+    method: "POST",
+    body: JSON.stringify(data),
+  })
+}
+
+export async function batchInference(tasks: Array<{
+  image_path?: string;
+  region?: string;
+  crop_type?: string;
+  task_type?: string;
+  use_mock?: boolean;
+  extra_params?: Record<string, unknown>;
+}>): Promise<{
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: Array<{
+    request_id: string;
+    success: boolean;
+    message: string;
+    result?: Record<string, unknown>;
+  }>;
+}> {
+  return requestJson(API.V2.INFERENCE.BATCH, {
+    method: "POST",
+    body: JSON.stringify({ tasks }),
   })
 }

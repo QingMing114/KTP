@@ -12,6 +12,7 @@ export function buildArtifactOpenHref(artifact: { uri?: string }): string | null
   if (!uri) return null
   if (uri.startsWith("mock://")) return null
   if (uri.startsWith("http://") || uri.startsWith("https://")) return uri
+  if (uri.startsWith("/v2/")) return uri
   if (uri.startsWith("/") || uri.startsWith("file://")) {
     return `/v2/artifacts/open?path=${encodeURIComponent(uri)}`
   }
@@ -26,9 +27,13 @@ export function isMockArtifact(artifact: { uri?: string }): boolean {
 export function getArtifactLabel(artifact: { artifact_type?: string }): string {
   const t = artifact?.artifact_type ?? ""
   if (t === "report_card") return "查看报告"
+  if (t === "lai_html_report") return "查看 LAI 报告"
+  if (t === "apsim_report") return "查看产量报告"
   if (t === "visualization_card") return "查看仪表盘"
   if (t === "inference_card") return "查看推理结果"
   if (t === "registry_card") return "查看模型产物"
+  if (t === "simulation_data") return "查看模拟数据"
+  if (t === "simulation_log") return "查看运行日志"
   return "打开产物"
 }
 

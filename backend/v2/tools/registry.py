@@ -13,6 +13,7 @@ from v2.adapters.python_services.ktp_rag import (
 )
 from v2.shared.schemas import ObservationV2, PackArtifactView, ToolSpecV2
 from v2.tools.apsim_adapter import run_apsim_crop_simulation
+from v2.tools.apsim_report_handler import run_apsim_yield_report
 from v2.tools.handlers import (
     build_ktp_build_report_handler,
     build_ktp_build_visualization_handler,
@@ -23,6 +24,7 @@ from v2.tools.handlers import (
     build_ktp_trigger_training_handler,
     run_demo_fail,
     run_demo_pack_answer,
+    run_lai_html_report,
     run_prosail_build_lut,
     run_prosail_invert_lai,
     run_prosail_invert_lai_tif,
@@ -83,6 +85,23 @@ class ToolRegistryV2:
                 f"Available: {list(self.definitions.keys())}"
             )
         return self.get_definition(tool_name).handler(**tool_input)
+
+    _EXECUTOR_TOOL_PREFIXES = ("prosail.", "apsim.", "workspace.")
+
+    def get_executor_subset(self) -> "ToolRegistryV2":
+        """Return a restricted registry with only physical tool subset for executor_30b."""
+        from copy import deepcopy
+
+        subset_defs = {
+            name: defn
+            for name, defn in self.definitions.items()
+            if any(name.startswith(prefix) for prefix in self._EXECUTOR_TOOL_PREFIXES)
+        }
+        return ToolRegistryV2(
+            definitions=subset_defs,
+            ktp_knowledge_adapter=None,  # executor 不做知识检索
+            ktp_service_bundle=self.ktp_service_bundle,
+        )
 
 
 def build_default_tool_registry(
@@ -532,8 +551,10 @@ def build_default_tool_registry(
                     usage_hint="Use when user asks for LAI inversion or leaf area index estimation from vegetation indices.",
                     input_schema={
                         "reflectance": "object",
+                        "image_path": "string?",
                         "lut_path": "string?",
                         "method": "string?",
+                        "options": "object?",
                     },
                     safety_level="caution",
                     surface_visibility="web",
@@ -568,6 +589,41 @@ def build_default_tool_registry(
                 ),
                 handler=run_prosail_invert_lai_tif,
             ),
+            "prosail.lai_html_report": ToolDefinition(
+                spec=ToolSpecV2(
+                    name="prosail.lai_html_report",
+                    display_name="PROSAIL LAI 反演 HTML 报告",
+                    description=(
+                        "完整的 PROSAIL LUT LAI 反演流程：读取 5 波段 GeoTIFF（B2/B3/B4/B7/B8），"
+                        "逐像元 LUT top-1% 均值策略反演 LAI，生成含空间分布图、直方图、NDVI-LAI 散点图、"
+                        "像元点击详情的自包含 HTML 交互报告，可在浏览器中直接查看。"
+                    ),
+                    visibility="public",
+                    category="remote_sensing",
+                    pack_name="prosail",
+                    usage_hint=(
+                        "当用户提供 TIF 文件路径并要求做 LAI 分析、生成报告或可视化时优先使用本工具。"
+                        "需要 5 个波段（B2/B3/B4/B7/B8）。"
+                    ),
+                    input_schema={
+                        "image_path": "string",
+                        "lut_path": "string?",
+                        "output_dir": "string?",
+                        "scene_constraints": "object?",
+                    },
+                    safety_level="caution",
+                    surface_visibility="web",
+                    enabled_by_default=True,
+                    capabilities=[
+                        "lai_inversion",
+                        "html_report_generation",
+                        "vegetation_parameter_estimation",
+                        "geospatial_processing",
+                    ],
+                    produces_artifacts=["lai_html_report"],
+                ),
+                handler=run_lai_html_report,
+            ),
             "apsim.crop_simulation": ToolDefinition(
                 spec=ToolSpecV2(
                     name="apsim.crop_simulation",
@@ -594,6 +650,33 @@ def build_default_tool_registry(
                     produces_artifacts=["simulation_data", "simulation_log"],
                 ),
                 handler=run_apsim_crop_simulation,
+            ),
+            "apsim.yield_report": ToolDefinition(
+                spec=ToolSpecV2(
+                    name="apsim.yield_report",
+                    display_name="APSIM 产量估算报告",
+                    description="运行 APSIM 作物生长模拟并生成交互式 HTML 产量分析报告，展示 LAI 时序、生物量曲线、生长阶段和最终产量估算。",
+                    visibility="public",
+                    category="crop_simulation",
+                    pack_name="apsim",
+                    usage_hint="Use when the user asks for yield estimation, crop yield prediction, APSIM yield report, or 产量估算/估产/测产.",
+                    input_schema={
+                        "crop_type": "string?",
+                        "region": "string?",
+                        "start_year": "integer?",
+                        "end_year": "integer?",
+                        "sowing_date": "string?",
+                        "cultivar": "string?",
+                        "db_path": "string?",
+                        "query": "string?",
+                    },
+                    safety_level="safe",
+                    is_macro=False,
+                    capabilities=["yield_prediction", "crop_simulation", "html_report_generation"],
+                    requires_context=["query"],
+                    produces_artifacts=["apsim_report"],
+                ),
+                handler=run_apsim_yield_report,
             ),
         }
     )

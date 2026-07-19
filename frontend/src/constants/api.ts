@@ -13,9 +13,21 @@ export const API = {
       LOGIN: '/v2/auth/login',
       REGISTER: '/v2/auth/register',
       ME: '/v2/auth/me',
+      LOGOUT: '/v2/auth/logout',
+      CHANGE_PASSWORD: '/v2/auth/change-password',
+      USERS: '/v2/auth/users',
     },
     PLUGINS: {
       TOOLS: '/v2/plugins/tools',
+    },
+    KNOWLEDGE: {
+      DOCUMENTS: '/v2/knowledge/documents',
+      INGEST: '/v2/knowledge/documents/ingest',
+      QUERY: '/v2/knowledge/query',
+    },
+    INFERENCE: {
+      RUN: '/v2/inference/run',
+      BATCH: '/v2/inference/batch',
     },
   },
   HEALTH: '/health',

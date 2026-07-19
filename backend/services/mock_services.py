@@ -1,4 +1,4 @@
-"""Mock service adapters reserved for replacement in later phases."""
+"""Fallback service adapters providing default/mock responses when real services are unavailable."""
 
 from __future__ import annotations
 

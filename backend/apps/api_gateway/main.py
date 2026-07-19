@@ -13,7 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from apps.api_gateway.clients.orchestrator_client import LocalOrchestratorClient
 from apps.api_gateway.config import get_api_gateway_config
 from apps.api_gateway.routers.chat import router as chat_router
 from apps.api_gateway.routers.conversation import router as conversation_router
@@ -22,16 +21,16 @@ from apps.api_gateway.routers.detect import router as detect_router
 from apps.api_gateway.routers.health import router as health_router
 from apps.api_gateway.routers.v2_ui import router as v2_ui_router
 from apps.api_gateway.routers.v2_artifacts import router as v2_artifacts_router
-from apps.api_gateway.routers.report import router as report_router
-from apps.api_gateway.routers.visualization import router as visualization_router
-from apps.api_gateway.routers.workflow import router as workflow_router
 from apps.api_gateway.routers.openai_adapter import router as openai_adapter_router
+from ktp_backend.auth import router as auth_router
 from apps.api_gateway.services.conversation_service import ConversationService
 from apps.api_gateway.services.conversation_store import ConversationStore
 from infra.llm.provider import AgentLLMError, AgentLLMProvider, get_agent_llm_provider
 from ktp_backend.api import install_backend_api
 from ktp_backend.gateway_bridge import GatewayRuntimeBridge
 from ktp_backend.runtime_host import build_backend_runtime_host, install_backend_runtime_host
+from api.canonical.router import install_canonical_product_api
+from shared.config.paths import get_lai_report_dir
 from shared.config.settings import get_settings
 from shared.logging import configure_logging
 from shared.schemas.common import PingResponse
@@ -67,9 +66,11 @@ settings = get_settings()
 configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_V2_WEB_DIST_DIR = _REPO_ROOT / "v2" / "apps" / "web" / "dist"
+_PROJECT_ROOT = _REPO_ROOT.parent
+_V2_WEB_DIST_DIR = _PROJECT_ROOT / "frontend" / "dist"
 
-_NO_AUTH_PATHS = {"/", "/health", "/docs", "/openapi.json", "/redoc", "/v2/artifacts/open"}
+_NO_AUTH_PATHS = {"/", "/health", "/docs", "/openapi.json", "/redoc", "/v2/artifacts/open", "/v2/auth/login", "/v2/auth/register"}
+_LAI_REPORTS_DIR = get_lai_report_dir()
 
 
 @asynccontextmanager
@@ -92,8 +93,6 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 def create_app(
     *,
-    orchestrator_client: LocalOrchestratorClient | None = None,
-    chat_service: object | None = None,
     llm_provider_override: AgentLLMProvider | None = None,
 ) -> FastAPI:
     """Create the FastAPI application for the API gateway."""
@@ -114,27 +113,37 @@ def create_app(
         redoc_url=None,
     )
 
-    cors_origins = settings.get_cors_origins()
+    cors_origins = settings.get_cors_origins
     application.add_middleware(CORSMiddleware, allow_origins=cors_origins, allow_methods=["*"], allow_headers=["*"])
 
     rate_limiter = RateLimiter(max_requests=settings.app_rate_limit, window_seconds=settings.app_rate_window)
 
-    if settings.app_auth_enabled and settings.app_auth_token:
+    if settings.app_auth_enabled:
         @application.middleware("http")
         async def auth_middleware(request, call_next):
-            if request.url.path in _NO_AUTH_PATHS or request.url.path.startswith("/v2/ui/dist") or request.url.path.startswith("/v2/plugins/"):
+            if request.url.path in _NO_AUTH_PATHS or request.url.path.startswith("/api/product/v1") or request.url.path.startswith("/v2/ui/dist") or request.url.path.startswith("/v2/reports/") or request.url.path.startswith("/v2/plugins/tools/") and request.url.path.endswith("/test"):
                 return await call_next(request)
             token = request.headers.get("Authorization", "").replace("Bearer ", "")
-            if token != settings.app_auth_token:
+            if not token:
+                logger.warning("auth_failed_no_token | ip=%s | path=%s", request.client.host if request.client else "unknown", request.url.path)
+                return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+            if settings.app_auth_token and token == settings.app_auth_token:
+                return await call_next(request)
+            try:
+                from ktp_backend.auth import decode_jwt
+                decode_jwt(token)
+                return await call_next(request)
+            except Exception:
                 logger.warning("auth_failed | ip=%s | path=%s", request.client.host if request.client else "unknown", request.url.path)
                 return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-            return await call_next(request)
     else:
-        logger.warning("API authentication is DISABLED. Set APP_AUTH_ENABLED=true and APP_AUTH_TOKEN for production.")
+        logger.warning("API authentication is DISABLED. Set APP_AUTH_ENABLED=true for production.")
 
     @application.middleware("http")
     async def rate_limit_middleware(request, call_next):
-        if request.url.path in _NO_AUTH_PATHS:
+        # 豁免无鉴权路径与长连接 SSE 流式端点：发消息/流式对话是核心动作，
+        # 且单条长连接不应计入按请求数的限流，否则正常对话会被自己的限流挡掉。
+        if request.url.path in _NO_AUTH_PATHS or request.url.path.endswith("/messages/stream") or (request.url.path.startswith("/api/product/v1/submissions/") and request.url.path.endswith("/events")):
             return await call_next(request)
         client_ip = request.client.host if request.client else "unknown"
         if not rate_limiter.is_allowed(client_ip):
@@ -172,16 +181,16 @@ def create_app(
         runtime_host_override=runtime_host,
     )
     install_backend_runtime_host(application, runtime_host)
-    application.state.orchestrator_client = orchestrator_client or LocalOrchestratorClient()
     application.state.conversation_service = ConversationService(
         conversation_store=conversation_store,
     )
     application.state.agent_llm_provider = resolved_llm_provider
-    application.state.gateway_agent_service = chat_service or GatewayRuntimeBridge(
+    application.state.gateway_agent_service = GatewayRuntimeBridge(
         runtime_store=runtime_host.runtime_store,
         runtime_engine=runtime_host.runtime_engine,
     )
     application.state.chat_service = application.state.gateway_agent_service
+    install_canonical_product_api(application, db_path=str(runtime_host.settings.sqlite_path))
     application.include_router(health_router)
     application.include_router(v2_ui_router)
     application.include_router(v2_artifacts_router)
@@ -189,16 +198,8 @@ def create_app(
     application.include_router(chat_router)
     application.include_router(conversation_router)
     application.include_router(detect_router)
-    application.include_router(workflow_router)
-    application.include_router(report_router)
-    application.include_router(visualization_router)
     application.include_router(openai_adapter_router, prefix="/v1")
-    try:
-        from apps.api_gateway.routers.services import router as services_router
-    except ModuleNotFoundError:
-        logger.exception("api_gateway_services_router_unavailable")
-    else:
-        application.include_router(services_router)
+    application.include_router(auth_router)
 
     if _V2_WEB_DIST_DIR.exists():
         application.mount(
@@ -206,6 +207,14 @@ def create_app(
             StaticFiles(directory=str(_V2_WEB_DIST_DIR)),
             name="v2-ui-dist",
         )
+
+    # Serve generated LAI HTML reports at /v2/reports/
+    _LAI_REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    application.mount(
+        "/v2/reports",
+        StaticFiles(directory=str(_LAI_REPORTS_DIR)),
+        name="v2-lai-reports",
+    )
 
     @application.get("/", response_model=PingResponse, tags=["system"])
     async def root() -> PingResponse:
@@ -229,7 +238,7 @@ def _resolve_optional_chat_llm_provider() -> AgentLLMProvider | None:
 try:
     app = create_app()
 except ModuleNotFoundError:
-    logger.exception("api_gateway_default_app_unavailable")
+    logger.warning("Full app creation failed — running in degraded mode")
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",

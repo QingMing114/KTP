@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 from services.mock_services import (
     MockConfidenceService,
@@ -42,16 +45,6 @@ if TYPE_CHECKING:
 KTP_DEFAULT_REGION = "henan"
 KTP_DEFAULT_CROP_TYPE = "wheat"
 KTP_DEFAULT_TASK_TYPE = "crop_health_detection"
-
-
-def _get_defaults():
-    try:
-        from shared.config.settings import get_settings
-        s = get_settings()
-        return s.ktp_default_region, s.ktp_default_crop_type, s.ktp_default_task_type
-    except Exception:
-        return KTP_DEFAULT_REGION, KTP_DEFAULT_CROP_TYPE, KTP_DEFAULT_TASK_TYPE
-
 
 class KtpServiceError(RuntimeError):
     """Raised when the real KTP service path cannot complete successfully."""
@@ -163,7 +156,7 @@ class KtpServiceBundle:
             context.model_lookup_backend = "real"
             return result
         except Exception as exc:
-            raise KtpServiceError(f"KTP model registry lookup failed: {exc}") from exc
+            raise KtpServiceError(f"模型注册查询失败: {exc}") from exc
 
     def ensure_inference(self, context: KtpExecutionContext) -> InferenceServiceResult:
         if context.inference_result is not None:
@@ -237,11 +230,8 @@ class KtpServiceBundle:
 
         if not lookup.model_exists:
             raise KtpServiceError(
-                lookup.reason
-                or (
-                    "KTP model registry does not contain a ready model for "
-                    f"{context.region}/{context.crop_type}/{context.task_type}."
-                )
+                f"未找到 {context.region}/{context.crop_type}/{context.task_type} 的已训练模型，"
+                "请先使用训练工具训练模型后再进行推理分析。"
             )
 
         try:
@@ -261,7 +251,7 @@ class KtpServiceBundle:
             context.inference_backend = "real"
             return result
         except Exception as exc:
-            raise KtpServiceError(f"KTP inference workflow failed: {exc}") from exc
+            raise KtpServiceError(f"推理服务调用失败: {exc}") from exc
 
     def ensure_knowledge(self, context: KtpExecutionContext) -> RagServiceResult:
         if context.rag_result is not None:
@@ -294,7 +284,7 @@ class KtpServiceBundle:
             context.rag_backend = "real"
             return result
         except RAGServiceClientError as exc:
-            raise KtpServiceError(f"KTP knowledge retrieval failed: {exc}") from exc
+            raise KtpServiceError(f"知识检索失败: {exc}") from exc
 
     def ensure_training(self, context: KtpExecutionContext) -> TrainingTriggerResult:
         if context.training_result is not None:
@@ -326,44 +316,39 @@ class KtpServiceBundle:
             context.training_backend = result.backend or "real"
             return result
         except Exception as exc:
-            raise KtpServiceError(f"KTP training trigger failed: {exc}") from exc
+            raise KtpServiceError(f"训练触发失败: {exc}") from exc
 
     def ensure_confidence(self, context: KtpExecutionContext) -> ConfidenceServiceResult:
         if context.confidence_result is not None:
             return context.confidence_result
 
-        inference = self.ensure_inference(context)
+        inference = context.inference_result
+        if inference is None:
+            try:
+                inference = self.ensure_inference(context)
+            except KtpServiceError:
+                logger.warning("ktp_inference_fallback_failed", exc_info=True)
         rag = self._get_or_maybe_load_knowledge(context)
 
-        if context.use_mock_backend:
-            result = self.mock_confidence.evaluate(
-                request_id=context.request_id,
-                inference_result=inference.model_dump(mode="json"),
-                rag_result=rag.model_dump(mode="json") if rag is not None else None,
-                report_result=context.report_result.model_dump(mode="json")
-                if context.report_result is not None
-                else None,
-                training_triggered=context.training_result is not None,
-                model_exists=bool(self.ensure_model_lookup(context).model_exists),
-                status="completed",
-                error_count=0,
-            )
-            context.confidence_result = result
-            context.confidence_backend = "mock"
-            context.backend_notes.append("置信度评估使用了模拟评分器。")
-            return result
+        inference_data = inference.model_dump(mode="json") if inference is not None else None
+        rag_data = rag.model_dump(mode="json") if rag is not None else None
+
+        try:
+            model_exists = bool(self.ensure_model_lookup(context).model_exists)
+        except KtpServiceError:
+            model_exists = False
 
         try:
             client = self._get_real_confidence_client()
             result = client.evaluate(
                 request_id=context.request_id,
-                inference_result=inference.model_dump(mode="json"),
-                rag_result=rag.model_dump(mode="json") if rag is not None else None,
+                inference_result=inference_data,
+                rag_result=rag_data,
                 report_result=context.report_result.model_dump(mode="json")
                 if context.report_result is not None
                 else None,
                 training_triggered=context.training_result is not None,
-                model_exists=bool(self.ensure_model_lookup(context).model_exists),
+                model_exists=model_exists,
                 status="completed",
                 error_count=0,
                 task_type=context.task_type,
@@ -372,33 +357,22 @@ class KtpServiceBundle:
             context.confidence_backend = "real"
             return result
         except Exception as exc:
-            raise KtpServiceError(f"KTP confidence evaluation failed: {exc}") from exc
+            raise KtpServiceError(f"置信度评估失败: {exc}") from exc
 
     def ensure_report(self, context: KtpExecutionContext) -> ReportServiceResult:
         if context.report_result is not None:
             return context.report_result
 
-        inference = self.ensure_inference(context)
+        inference = context.inference_result
+        if inference is None:
+            try:
+                inference = self.ensure_inference(context)
+            except KtpServiceError:
+                logger.warning("ktp_inference_fallback_failed", exc_info=True)
         rag = self._get_or_maybe_load_knowledge(context)
 
-        if context.use_mock_backend:
-            result = self.mock_report.build_report(
-                request_id=context.request_id,
-                task_type=context.task_type,
-                region=context.region,
-                crop_type=context.crop_type,
-                user_query=context.query,
-                inference_result=inference.model_dump(mode="json"),
-                rag_result=rag.model_dump(mode="json") if rag is not None else None,
-                confidence_result=context.confidence_result.model_dump(mode="json")
-                if context.confidence_result is not None
-                else None,
-                training_triggered=context.training_result is not None,
-            )
-            context.report_result = result
-            context.report_backend = "mock"
-            context.backend_notes.append("报告生成使用了模拟渲染器。")
-            return result
+        inference_data = inference.model_dump(mode="json") if inference is not None else None
+        rag_data = rag.model_dump(mode="json") if rag is not None else None
 
         try:
             client = self._get_real_report_client()
@@ -408,8 +382,8 @@ class KtpServiceBundle:
                 region=context.region,
                 crop_type=context.crop_type,
                 user_query=context.query,
-                inference_result=inference.model_dump(mode="json"),
-                rag_result=rag.model_dump(mode="json") if rag is not None else None,
+                inference_result=inference_data,
+                rag_result=rag_data,
                 confidence_result=context.confidence_result.model_dump(mode="json")
                 if context.confidence_result is not None
                 else None,
@@ -419,27 +393,36 @@ class KtpServiceBundle:
             context.report_backend = "real"
             return result
         except Exception as exc:
-            raise KtpServiceError(f"KTP report generation failed: {exc}") from exc
+            raise KtpServiceError(f"报告生成失败: {exc}") from exc
 
     def ensure_visualization(self, context: KtpExecutionContext) -> VisualizationServiceResult:
         if context.visualization_result is not None:
             return context.visualization_result
 
-        inference = self.ensure_inference(context)
+        inference = context.inference_result
+        if inference is None:
+            try:
+                inference = self.ensure_inference(context)
+            except KtpServiceError:
+                logger.warning("ktp_inference_fallback_failed", exc_info=True)
         rag = self._get_or_maybe_load_knowledge(context)
-        report = self.ensure_report(context)
-        confidence = self.ensure_confidence(context)
-        lookup = self.ensure_model_lookup(context)
-
-        if context.use_mock_backend:
-            result = self.mock_visualization.build_visualization(
-                request_id=context.request_id,
-                workflow_status="completed",
+        report = context.report_result
+        confidence = context.confidence_result
+        try:
+            lookup = self.ensure_model_lookup(context)
+        except KtpServiceError:
+            lookup = ModelRegistryResult(
+                model_exists=False,
+                model_id=None,
+                model_name=None,
+                model_version=None,
+                artifact_uri=None,
+                status=None,
+                reason="模型注册查询失败，使用默认值",
             )
-            context.visualization_result = result
-            context.visualization_backend = "mock"
-            context.backend_notes.append("可视化生成使用了模拟仪表盘。")
-            return result
+
+        inference_data = inference.model_dump(mode="json") if inference is not None else None
+        rag_data = rag.model_dump(mode="json") if rag is not None else None
 
         try:
             client = self._get_real_visualization_client()
@@ -451,17 +434,17 @@ class KtpServiceBundle:
                 region=context.region,
                 crop_type=context.crop_type,
                 image_path=context.image_path,
-                use_mock=context.use_mock_backend,
+                use_mock=False,
                 model_exists=lookup.model_exists,
                 model_id=lookup.model_id,
                 model_name=lookup.model_name,
                 model_version=lookup.model_version,
                 model_status=lookup.status,
                 artifact_uri=lookup.artifact_uri,
-                inference_result=inference.model_dump(mode="json"),
-                rag_result=rag.model_dump(mode="json") if rag is not None else None,
-                report_result=report.model_dump(mode="json"),
-                confidence_result=confidence.model_dump(mode="json"),
+                inference_result=inference_data,
+                rag_result=rag_data,
+                report_result=report.model_dump(mode="json") if report is not None else None,
+                confidence_result=confidence.model_dump(mode="json") if confidence is not None else None,
                 training_triggered=context.training_result is not None,
                 training_job_id=context.training_result.training_job_id
                 if context.training_result is not None
@@ -488,7 +471,7 @@ class KtpServiceBundle:
             context.visualization_backend = "real"
             return result
         except Exception as exc:
-            raise KtpServiceError(f"KTP visualization generation failed: {exc}") from exc
+            raise KtpServiceError(f"可视化生成失败: {exc}") from exc
 
     def _get_or_maybe_load_knowledge(self, context: KtpExecutionContext) -> RagServiceResult | None:
         if context.rag_result is not None:

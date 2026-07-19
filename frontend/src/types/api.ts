@@ -46,4 +46,6 @@ export interface SseEvent {
   delegation?: DelegationInfo;
   token_usage?: TokenUsage;
   assistant_part?: RunPart;
+  tool_progress?: { current: number; total: number; call_id?: string };
+  raw_data?: string;
 }

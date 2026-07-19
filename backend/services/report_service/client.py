@@ -83,6 +83,9 @@ class LocalReportServiceClient:
             confidence=self._build_confidence_section(confidence_result),
             extra_metadata={
                 "training_triggered": training_triggered,
+                "class_distribution": inference_result.get("class_distribution", []) if inference_result else [],
+                "class_labels": inference_result.get("class_labels", {}) if inference_result else {},
+                "target_classes": inference_result.get("target_classes", []) if inference_result else [],
             },
         )
         response = self._service.generate_report(report_request)

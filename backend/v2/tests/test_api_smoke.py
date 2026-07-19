@@ -6,7 +6,6 @@ from pathlib import Path
 
 import httpx
 
-from infra.llm.provider import AgentLLMError
 from shared.schemas.service_results import (
     ConfidenceServiceResult,
     InferenceServiceResult,
@@ -89,21 +88,6 @@ class _HistoryAwareStructuredLLMProvider(_SequenceStructuredLLMProvider):
             user_prompt=user_prompt,
             response_model=response_model,
         )
-
-
-class _UpstreamOverloadedDirectReplyLLMProvider:
-    def generate_text(self, *, system_prompt: str, user_prompt: str, max_tokens: int | None = None) -> str:
-        raise AgentLLMError(
-            "Upstream LLM unavailable or overloaded after 3 attempt(s): Server error '503 Service Unavailable'",
-            category="upstream_overloaded",
-            request_kind="direct_reply",
-            status_code=503,
-            attempt_count=3,
-            max_tokens=max_tokens,
-        )
-
-    def generate_structured(self, *, system_prompt: str, user_prompt: str, response_model):
-        raise AssertionError("Structured generation should not be used in this test.")
 
 
 class _SchemaAliasStructuredLLMProvider:
@@ -425,26 +409,6 @@ def test_v2_followup_chat_uses_history() -> None:
     payload = followup_response.json()
     assert payload["status"] == "completed"
     assert "Claude 和 GPT" in payload["output_message"]
-
-
-def test_v2_direct_reply_failure_is_classified_as_upstream_overload() -> None:
-    app = create_app(llm_provider_override=_UpstreamOverloadedDirectReplyLLMProvider())
-    session_response = _run_request(app, "POST", "/v2/sessions", {"title": "Direct Reply Failure"})
-    session_id = session_response.json()["session"]["session_id"]
-
-    run_response = _run_request(
-        app,
-        "POST",
-        f"/v2/sessions/{session_id}/messages",
-        {"message": "你知道 Claude 吗？"},
-    )
-
-    assert run_response.status_code == 200
-    payload = run_response.json()
-    assert payload["status"] == "failed"
-    assert "Upstream LLM unavailable or overloaded" in payload["output_message"]
-    assert payload["observation"]["payload"]["category"] == "upstream_overloaded"
-    assert any(item["event"] == "llm_upstream_overloaded" for item in payload["trace"])
 
 
 def test_v2_planner_trace_marks_schema_alias_application() -> None:

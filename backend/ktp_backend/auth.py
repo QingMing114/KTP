@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import base64
 import hashlib
-import hmac
-import json
 import logging
 import os
 import re
 import time
 
+import jwt
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
@@ -20,9 +18,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v2/auth", tags=["auth"])
 
 _JWT_SECRET = os.environ.get("APP_JWT_SECRET", "")
-if not _JWT_SECRET:
+_DEFAULT_SECRET_WARNING = "ktp-stable-jwt-secret-2024-a7f3b9c1e5d2"
+if not _JWT_SECRET or _JWT_SECRET == _DEFAULT_SECRET_WARNING:
     _JWT_SECRET = hashlib.sha256(os.urandom(32)).hexdigest()
-    logger.warning("APP_JWT_SECRET not set, using random secret (tokens invalid after restart)")
+    logger.warning(
+        "APP_JWT_SECRET not set or using default value. "
+        "Generated random secret — tokens will be invalid after restart. "
+        "Set APP_JWT_SECRET in .env for production use."
+    )
 
 _JWT_TTL_SECONDS = 86400 * 7
 
@@ -53,29 +56,17 @@ def _validate_user_id(user_id: str) -> None:
 
 
 def _encode_jwt(payload: AuthTokenPayload) -> str:
-    header = base64.urlsafe_b64encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode()).rstrip(b"=")
-    body = base64.urlsafe_b64encode(payload.model_dump_json().encode()).rstrip(b"=")
-    signing_input = header + b"." + body
-    sig = hmac.new(_JWT_SECRET.encode(), signing_input, hashlib.sha256).digest()
-    signature = base64.urlsafe_b64encode(sig).rstrip(b"=")
-    return (signing_input + b"." + signature).decode()
+    return jwt.encode(payload.model_dump(), _JWT_SECRET, algorithm="HS256")
 
 
 def decode_jwt(token: str) -> AuthTokenPayload:
-    parts = token.split(".")
-    if len(parts) != 3:
-        raise ValueError("Invalid JWT format")
-    header_b, body_b, sig_b = parts
-    signing_input = f"{header_b}.{body_b}".encode()
-    expected_sig = hmac.new(_JWT_SECRET.encode(), signing_input, hashlib.sha256).digest()
-    actual_sig = base64.urlsafe_b64decode(sig_b + "==")
-    if not hmac.compare_digest(expected_sig, actual_sig):
-        raise ValueError("Invalid JWT signature")
-    payload_json = base64.urlsafe_b64decode(body_b + "==")
-    payload = AuthTokenPayload.model_validate_json(payload_json)
-    if payload.exp > 0 and payload.exp < time.time():
-        raise ValueError("JWT expired")
-    return payload
+    try:
+        data = jwt.decode(token, _JWT_SECRET, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError as exc:
+        raise ValueError("JWT expired") from exc
+    except jwt.InvalidTokenError as exc:
+        raise ValueError(f"Invalid JWT: {exc}") from exc
+    return AuthTokenPayload.model_validate(data)
 
 
 def _require_auth(authorization: str) -> AuthTokenPayload:
@@ -98,6 +89,11 @@ def get_user_store() -> UserStore:
     return _user_store
 
 
+def set_user_store(store: UserStore) -> None:
+    global _user_store
+    _user_store = store
+
+
 def _to_public(user) -> PublicUserRecord:
     return PublicUserRecord(
         user_id=user.user_id,
@@ -111,8 +107,10 @@ def _to_public(user) -> PublicUserRecord:
 def register(body: AuthRegisterRequest) -> dict:
     _validate_user_id(body.user_id)
     store = get_user_store()
+    is_first_user = store.count_users() == 0
+    role = "admin" if is_first_user else "user"
     try:
-        user = store.create_user(body.user_id, body.password)
+        user = store.create_user(body.user_id, body.password, role=role)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     payload = AuthTokenPayload(user_id=user.user_id, role=user.role, exp=time.time() + _JWT_TTL_SECONDS)

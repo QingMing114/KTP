@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom'
 import { History as HistoryIcon, Search, Clock, Loader2, ChevronLeft, ChevronRight, ArrowLeft, MessageSquare } from 'lucide-react'
 import { escapeHtml, getStatusLabel, getStatusStyle, truncateId } from '../utils'
 import { RunSummary, Run, Session } from '../types'
+import SimulationArtifact from '../components/SimulationArtifact'
 import * as api from '../services/api'
+import { listConversations } from '../services/canonical'
 
 const STATUS_OPTIONS = [
   { value: '', label: '全部状态' },
@@ -29,13 +31,13 @@ const HistoryPage: React.FC = () => {
     try {
       const [result, sessionList] = await Promise.all([
         api.getAllRuns(pageSize, page * pageSize),
-        api.getSessions(),
+        listConversations(),
       ])
       setRuns(result.items || [])
       setTotal(result.total || 0)
       const sessionMap = new Map<string, Session>()
       for (const s of sessionList) {
-        sessionMap.set(s.session_id, s)
+        sessionMap.set(s.conversation_id, { session_id: s.conversation_id, title: s.title })
       }
       setSessions(sessionMap)
     } catch {
@@ -284,10 +286,14 @@ const HistoryPage: React.FC = () => {
                     <p className="text-stone-400 text-[11px] mb-1">产物 ({selectedRun.assistant_message.parts.filter(p => p.type === 'artifact').length})</p>
                     <div className="space-y-1.5">
                       {selectedRun.assistant_message.parts.filter(p => p.type === 'artifact' && p.artifact).map((part, i) => (
-                        <div key={i} className="text-[12px] bg-stone-50 rounded-lg px-3 py-2 text-stone-600">
-                          {escapeHtml(part.artifact!.title || '未命名产物')}
-                          {part.artifact!.artifact_type && <span className="ml-2 text-stone-400">({part.artifact!.artifact_type})</span>}
-                        </div>
+                        part.artifact!.artifact_type === "simulation_data" && part.artifact!.content ? (
+                          <SimulationArtifact key={i} title={part.artifact!.title} content={part.artifact!.content} />
+                        ) : (
+                          <div key={i} className="text-[12px] bg-stone-50 rounded-lg px-3 py-2 text-stone-600">
+                            {escapeHtml(part.artifact!.title || '未命名产物')}
+                            {part.artifact!.artifact_type && <span className="ml-2 text-stone-400">({part.artifact!.artifact_type})</span>}
+                          </div>
+                        )
                       ))}
                     </div>
                   </div>

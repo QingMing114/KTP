@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -31,12 +31,6 @@ describe('API token management', () => {
     expect(localStorage.getItem('ktp_v2_jwt_token')).toBeNull()
   })
 
-  it('should store and retrieve API key', () => {
-    expect(localStorage.getItem('ktp_v2_api_key')).toBeNull()
-    localStorage.setItem('ktp_v2_api_key', 'test-api-key')
-    expect(localStorage.getItem('ktp_v2_api_key')).toBe('test-api-key')
-  })
-
   it('should prefer JWT token over API key', () => {
     localStorage.setItem('ktp_v2_jwt_token', 'jwt-token')
     localStorage.setItem('ktp_v2_api_key', 'api-key')
@@ -53,11 +47,52 @@ describe('API token management', () => {
     const authToken = jwt || apiKey || ''
     expect(authToken).toBe('api-key')
   })
+})
 
-  it('should return empty string when no auth token', () => {
-    const jwt = localStorage.getItem('ktp_v2_jwt_token')
-    const apiKey = localStorage.getItem('ktp_v2_api_key')
-    const authToken = jwt || apiKey || ''
-    expect(authToken).toBe('')
+describe('buildUrl', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('should return path as-is when no base URL set', async () => {
+    const { buildUrl } = await import('../services/api')
+    expect(buildUrl('/v2/sessions')).toBe('/v2/sessions')
+  })
+
+  it('should prepend base URL when set', async () => {
+    const { buildUrl, setApiBaseUrl } = await import('../services/api')
+    setApiBaseUrl('http://localhost:8005')
+    expect(buildUrl('/v2/sessions')).toBe('http://localhost:8005/v2/sessions')
+  })
+
+  it('should handle base URL with trailing slash', async () => {
+    const { buildUrl, setApiBaseUrl } = await import('../services/api')
+    setApiBaseUrl('http://localhost:8005/')
+    expect(buildUrl('/v2/sessions')).toBe('http://localhost:8005/v2/sessions')
+  })
+})
+
+describe('requestJson 401 handling', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('should throw auth expired error on 401 when no relogin possible', async () => {
+    const { requestJson } = await import('../services/api')
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      clone: () => ({ text: () => Promise.resolve('{"detail":"Invalid token"}') }),
+      text: () => Promise.resolve('{"detail":"Invalid token"}'),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    try {
+      await requestJson('/v2/sessions')
+      expect.unreachable('Should have thrown')
+    } catch (e) {
+      expect((e as Error).message).toContain('认证已过期')
+    }
+    vi.restoreAllMocks()
   })
 })

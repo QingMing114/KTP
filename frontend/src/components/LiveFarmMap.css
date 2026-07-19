@@ -1,0 +1,98 @@
+.ktp-live-map .leaflet-draw {
+  margin-top: 14px;
+  margin-left: 14px;
+}
+
+.ktp-live-map .leaflet-draw-toolbar,
+.ktp-live-map .leaflet-draw-actions {
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 12px;
+  background: rgb(5 22 17 / 88%);
+  box-shadow: 0 14px 32px rgb(0 0 0 / 32%);
+  backdrop-filter: blur(14px);
+}
+
+.ktp-live-map .leaflet-draw-toolbar a {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 9%);
+  background-color: transparent;
+  filter: brightness(0) invert(1) opacity(.78);
+  transition: background-color 160ms ease, filter 160ms ease;
+}
+
+.ktp-live-map .leaflet-draw-toolbar a:first-child { border-radius: 11px 11px 0 0; }
+.ktp-live-map .leaflet-draw-toolbar a:last-child { border-bottom: 0; border-radius: 0 0 11px 11px; }
+
+.ktp-live-map .leaflet-draw-toolbar a:hover,
+.ktp-live-map .leaflet-draw-toolbar a.leaflet-draw-toolbar-button-enabled {
+  background-color: rgb(52 211 153 / 22%);
+  filter: brightness(0) saturate(100%) invert(85%) sepia(15%) saturate(1300%) hue-rotate(94deg) brightness(96%) contrast(88%);
+}
+
+.ktp-live-map .leaflet-draw-actions {
+  margin-left: 8px;
+  padding: 5px;
+  white-space: nowrap;
+}
+
+.ktp-live-map .leaflet-draw-actions li:first-child a,
+.ktp-live-map .leaflet-draw-actions a {
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #d1fae5;
+  font: 500 11px/28px ui-sans-serif, system-ui, sans-serif;
+  padding: 0 10px;
+  text-decoration: none;
+}
+
+.ktp-live-map .leaflet-draw-actions a:hover {
+  background: rgb(52 211 153 / 18%);
+  color: white;
+}
+
+.ktp-live-map .leaflet-draw-tooltip {
+  margin-left: 12px;
+  border: 1px solid rgb(110 231 183 / 32%);
+  border-radius: 8px;
+  background: rgb(5 35 26 / 94%);
+  color: #ecfdf5;
+  box-shadow: 0 10px 25px rgb(0 0 0 / 28%);
+  font: 500 11px/1.4 ui-sans-serif, system-ui, sans-serif;
+}
+
+.ktp-live-map .leaflet-draw-tooltip:before { border-right-color: rgb(5 35 26 / 94%); }
+.ktp-live-map .leaflet-draw-tooltip-subtext { color: #a7f3d0; }
+
+.ktp-live-map .leaflet-control-zoom {
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 12px;
+  background: rgb(5 22 17 / 88%);
+  box-shadow: 0 14px 32px rgb(0 0 0 / 32%);
+  backdrop-filter: blur(14px);
+}
+
+.ktp-live-map .leaflet-control-zoom a {
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 9%);
+  background: transparent;
+  color: #d1fae5;
+}
+
+.ktp-live-map .leaflet-control-zoom a:last-child { border-bottom: 0; }
+.ktp-live-map .leaflet-control-zoom a:hover { background: rgb(52 211 153 / 18%); color: white; }
+.ktp-live-map .leaflet-control-attribution {
+  border-radius: 6px 0 0;
+  background: rgb(5 22 17 / 76%);
+  color: rgb(203 213 225 / 78%);
+  font: 10px/1.35 ui-sans-serif, system-ui, sans-serif;
+}
+
+.ktp-live-map .leaflet-control-attribution a { color: #a7f3d0; }
+
+.ktp-live-map .leaflet-draw-actions li { margin: 0; }
+.ktp-live-map .leaflet-draw-actions li + li { margin-top: 2px; }

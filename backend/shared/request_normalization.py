@@ -61,7 +61,7 @@ _REGION_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 _CROP_ALIASES: dict[str, tuple[str, ...]] = {
-    "hair": ("hair", "vegetation"),
+    "hair": ("hair",),
     "lai": ("lai", "叶面积", "通用"),
     "wheat": ("wheat", "winter wheat", "spring wheat", "小麦"),
     "rice": ("rice", "paddy", "水稻", "稻田"),

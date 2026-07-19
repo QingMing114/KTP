@@ -1,0 +1,1 @@
+"""External satellite-imagery providers."""

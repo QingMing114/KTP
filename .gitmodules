@@ -1,0 +1,4 @@
+[submodule "ApsimX"]
+	path = ApsimX
+	url = https://github.com/APSIMInitiative/ApsimX.git
+	branch = master

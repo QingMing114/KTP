@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Database, Plus, ArrowLeft, X, Loader2, Search, MapPin, FileCode, Clock } from 'lucide-react'
 import { escapeHtml, formatRelativeTime } from '../utils'
 import { Dataset } from '../types'
-import * as api from '../services/api'
+import { listDatasets, createDataset } from '../services/canonical'
 
 const DATA_TYPE_LABELS: Record<string, string> = {
   raster: '栅格影像',
@@ -32,8 +32,17 @@ const DatasetsPage: React.FC = () => {
   const loadDatasets = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await api.getDatasets()
-      setDatasets(data)
+      const data = await listDatasets()
+      setDatasets(data.map(d => ({
+        dataset_id: d.dataset_id,
+        name: d.display_name,
+        description: (d.metadata as Record<string, unknown>)?.['description'] as string ?? undefined,
+        data_type: (d.metadata as Record<string, unknown>)?.['data_type'] as string ?? undefined,
+        region: (d.metadata as Record<string, unknown>)?.['region'] as string ?? undefined,
+        source_path: d.source?.uri ?? undefined,
+        created_at: d.created_at,
+        updated_at: d.created_at,
+      })))
     } catch {
       setDatasets([])
     } finally {
@@ -64,12 +73,14 @@ const DatasetsPage: React.FC = () => {
     setRegistering(true)
     setError(null)
     try {
-      await api.registerDataset({
-        name: regForm.name.trim(),
-        description: regForm.description.trim() || undefined,
-        data_type: regForm.data_type || undefined,
-        region: regForm.region.trim() || undefined,
-        source_path: regForm.source_path.trim() || undefined,
+      await createDataset({
+        display_name: regForm.name.trim(),
+        source: { uri: regForm.source_path.trim() || regForm.name.trim(), kind: 'local_path' },
+        metadata: {
+          description: regForm.description.trim() || undefined,
+          data_type: regForm.data_type || undefined,
+          region: regForm.region.trim() || undefined,
+        } as Record<string, unknown>,
       })
       setRegForm({ name: '', description: '', data_type: 'raster', region: '', source_path: '' })
       setShowRegister(false)

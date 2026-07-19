@@ -65,6 +65,42 @@ class DocumentStore:
             if (chunk := self.get_chunk(chunk_id)) is not None
         ]
 
+    def list_documents(self) -> list[dict[str, Any]]:
+        """Return metadata for all ingested documents."""
+        results: list[dict[str, Any]] = []
+        for doc_id, doc in self._documents.items():
+            results.append({
+                "document_id": doc.get("document_id", doc_id),
+                "title": doc.get("title", ""),
+                "source": doc.get("source", ""),
+                "metadata": doc.get("metadata", {}),
+                "chunk_count": len(doc.get("chunk_ids", [])),
+            })
+        return results
+
+    def get_document(self, document_id: str) -> dict[str, Any] | None:
+        """Return metadata for a single document, or None if not found."""
+        doc = self._documents.get(document_id)
+        if doc is None:
+            return None
+        return {
+            "document_id": doc.get("document_id", document_id),
+            "title": doc.get("title", ""),
+            "source": doc.get("source", ""),
+            "metadata": doc.get("metadata", {}),
+            "chunk_ids": doc.get("chunk_ids", []),
+            "chunk_count": len(doc.get("chunk_ids", [])),
+        }
+
+    def delete_document(self, document_id: str) -> bool:
+        """Remove a document and its chunks. Returns True if found and deleted."""
+        doc = self._documents.pop(document_id, None)
+        if doc is None:
+            return False
+        for chunk_id in doc.get("chunk_ids", []):
+            self._chunks.pop(chunk_id, None)
+        return True
+
     def save(self) -> None:
         """Persist documents and chunks to disk."""
         self._root_dir.mkdir(parents=True, exist_ok=True)

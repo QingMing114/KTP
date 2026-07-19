@@ -16,8 +16,9 @@ from v2.shared.schemas import AgentStepV2, AgentToolCallV2, RequestContextV2, Se
 class ChatFirstPlanner:
     """Structured chat-first planner that delegates step selection to the shared LLM."""
 
-    def __init__(self, *, llm_provider: AgentLLMProvider | None) -> None:
+    def __init__(self, *, llm_provider: AgentLLMProvider | None, system_prompt_suffix: str = "") -> None:
         self._llm_provider = llm_provider
+        self._system_prompt_suffix = system_prompt_suffix
 
     def plan(
         self,
@@ -49,10 +50,10 @@ class ChatFirstPlanner:
             message=message,
             request_context=request_context,
             visible_tools=visible_tools,
+            tool_history=tool_history,
         )
 
-    @staticmethod
-    def _build_system_prompt(*, request_context: RequestContextV2) -> str:
+    def _build_system_prompt(self, *, request_context: RequestContextV2) -> str:
         task_mode_rules = (
             "conversation_mode=task: 用户有明确的任务需求，优先选择最匹配的工具执行，不要选无关工具。"
             if request_context.conversation_mode == "task"
@@ -61,7 +62,12 @@ class ChatFirstPlanner:
         return (
             "你是 KTP Chat-First Agent 的 planner。"
             "严格输出一个符合 AgentStepV2 的 JSON 对象。"
-            "action 只能是 reply、clarify、call_tools、fail。"
+            "action 只能是 reply、clarify、call_tools、delegate、fail。"
+            "【delegate 说明】将物理计算任务委派给专用执行智能体（executor_30b）："
+            "当用户需要运行 PROSAIL LAI 反演（prosail.lai_html_report）、"
+            "APSIM 产量模拟（apsim.*）等物理模型计算时使用 delegate，"
+            "委派时需设置 delegation_target='executor_30b'、delegation_goal='<具体任务描述>'。"
+            "对话、文档检索等非物理计算任务不要使用 delegate。"
             "【路由决策】根据用户意图选择最合适的工具，不要机械地匹配关键词："
             "闲聊/问候/身份/一般知识/不需要工具 → reply；"
             "需要工具才能完成 → call_tools；"
@@ -79,22 +85,24 @@ class ChatFirstPlanner:
             "ktp.trigger_training — 训练模型"
             "prosail.simulation — 植被光谱模拟"
             "prosail.build_lut / prosail.load_lut — 查找表构建/加载"
+            "prosail.lai_html_report — TIF影像LAI反演并生成交互报告（像元级进度+场景参数搜索空间推理+BLAS加速），提供TIF做LAI分析时的首选"
             "prosail.invert_lai — 单像素LAI反演"
-            "prosail.invert_lai_tif — 批量LAI反演(tif)"
+            "prosail.invert_lai_tif — 批量LAI反演仅输出tif（用户明确不要报告时用）"
             "apsim.crop_simulation — APSIM作物生长模拟"
             "workspace.search / workspace.read_file / workspace.write — 工作区文件操作"
             "【选择原则】"
             "1. 用户需要端到端分析 → ktp.analysis_pipeline"
             "2. 用户只需要某个步骤 → 选对应子工具"
             "3. 用户明确指定工具 → 按用户要求选择"
-            "4. 用户需要LAI反演且要报告 → ktp.analysis_pipeline"
-            "5. 用户只需LAI数值 → prosail.invert_lai 或 prosail.invert_lai_tif"
+            "4. 用户提供TIF影像并要LAI反演 → prosail.lai_html_report（默认，含像元进度/场景参数推理/BLAS加速/交互报告）"
+            "5. 用户明确只要TIF输出或LAI数值、不要报告 → prosail.invert_lai_tif（tif）或 prosail.invert_lai（单像素）"
             "6. 用户需要作物模拟 → apsim.crop_simulation"
             "7. 不要因为提到领域词就盲目调工具"
             "reply/clarify/fail 要写 response_message。call_tools 要写 tool_calls。"
             "默认使用用户语言，简洁自然。"
             "【防循环】tool_history 中已有相同工具成功结果时必须 reply，绝不重复调用。"
             f"{task_mode_rules}"
+            f"{self._system_prompt_suffix}"
         )
 
     @staticmethod
@@ -141,21 +149,74 @@ class ChatFirstPlanner:
         message: str,
         request_context: RequestContextV2,
         visible_tools: list[ToolSpecV2],
+        tool_history: list[dict[str, object]] | None = None,
     ) -> AgentStepV2:
         if step.tool_calls is None:
             step.tool_calls = []
 
         visible_tool_names = {tool.name for tool in visible_tools}
+
+        if step.action == "call_tools" and step.tool_calls and tool_history:
+            import json as _json
+            successful_tool_signatures = set()
+            for item in tool_history:
+                if item.get("status") == "success":
+                    tool_name = item.get("tool_name", "")
+                    tool_input = item.get("tool_input", {})
+                    try:
+                        input_hash = _json.dumps(tool_input, sort_keys=True)
+                    except (TypeError, ValueError):
+                        input_hash = str(tool_input)
+                    successful_tool_signatures.add((tool_name, input_hash))
+            duplicate_calls = []
+            for tc in step.tool_calls:
+                try:
+                    tc_input_hash = _json.dumps(tc.tool_input, sort_keys=True)
+                except (TypeError, ValueError):
+                    tc_input_hash = str(tc.tool_input)
+                if (tc.tool_name, tc_input_hash) in successful_tool_signatures:
+                    duplicate_calls.append(tc)
+            if duplicate_calls:
+                last_summary = ""
+                for item in reversed(tool_history):
+                    if item.get("tool_name") == duplicate_calls[0].tool_name and item.get("status") == "success":
+                        last_summary = str(item.get("summary", ""))[:300]
+                        break
+                return AgentStepV2(
+                    action="reply",
+                    reasoning=f"工具 {duplicate_calls[0].tool_name} 已成功执行，直接回复结果，避免重复调用。",
+                    response_message=last_summary or f"工具 {duplicate_calls[0].tool_name} 已执行完成。",
+                    tool_calls=[],
+                )
         if step.action == "fail":
-            fallback_step = ChatFirstPlanner._fallback_step_for_tool_intent(
-                message=message,
-                request_context=request_context,
-                visible_tool_names=visible_tool_names,
+            has_successful_tool = tool_history and any(
+                item.get("status") == "success" for item in tool_history
             )
-            if fallback_step is not None:
-                return fallback_step
+            if not has_successful_tool:
+                fallback_step = ChatFirstPlanner._fallback_step_for_tool_intent(
+                    message=message,
+                    request_context=request_context,
+                    visible_tool_names=visible_tool_names,
+                )
+                if fallback_step is not None:
+                    return fallback_step
         if step.action != "call_tools":
             step.tool_calls = []
+            has_successful_tool = tool_history and any(
+                item.get("status") == "success" for item in tool_history
+            )
+            is_task_mode = (
+                request_context
+                and getattr(request_context, "conversation_mode", None) == "task"
+            )
+            if not has_successful_tool and is_task_mode:
+                fallback_step = ChatFirstPlanner._fallback_step_for_tool_intent(
+                    message=message,
+                    request_context=request_context,
+                    visible_tool_names=visible_tool_names,
+                )
+                if fallback_step is not None:
+                    return fallback_step
             return step
 
         if not step.tool_calls:
@@ -206,8 +267,8 @@ class ChatFirstPlanner:
             return calls
         lowered = message.lower()
         _intent_rules: list[tuple[set[str], str]] = [
-            ({"apsim", "作物模拟", "作物生长", "crop simulation", "crop model"}, "apsim.crop_simulation"),
-            ({"prosail", "光谱模拟", "spectral", "reflectance"}, "prosail.simulation"),
+            ({"apsim", "作物模拟", "作物生长", "crop simulation", "crop model", "生长过程", "生长模拟", "播种到收获", "生长周期", "生育期模拟"}, "apsim.crop_simulation"),
+            ({"prosail", "光谱模拟", "spectral", "reflectance", "光谱反射率", "反射率模拟", "反射率计算", "光谱计算"}, "prosail.simulation"),
             ({"lai反演", "invert lai", "反演lai"}, "prosail.invert_lai"),
         ]
         for keywords, correct_tool in _intent_rules:
@@ -369,11 +430,45 @@ class ChatFirstPlanner:
         lowered = message.lower()
         if any(
             keyword in lowered
-            for keyword in ("apsim", "作物模拟", "作物生长", "crop simulation", "crop model")
+            for keyword in ("apsim", "作物模拟", "作物生长", "crop simulation", "crop model", "生长过程", "生长模拟", "播种到收获", "生长周期", "生育期模拟")
         ) and "apsim.crop_simulation" in visible_tool_names:
             return "apsim.crop_simulation"
         if any(keyword in lowered for keyword in ("训练", "train")) and "ktp.trigger_training" in visible_tool_names:
             return "ktp.trigger_training"
+        if any(
+            keyword in lowered
+            for keyword in ("prosail", "光谱模拟", "spectral simulation", "reflectance simulation", "光谱反射率", "反射率模拟", "反射率计算", "光谱计算")
+        ) and "prosail.simulation" in visible_tool_names:
+            return "prosail.simulation"
+        if any(
+            keyword in lowered
+            for keyword in ("lai反演", "invert lai", "反演lai", "lai inversion", "反演lai值", "反演 lai")
+        ) and "prosail.invert_lai" in visible_tool_names:
+            tif_image_path = request_context.image_path or extract_image_path_from_text(message)
+            if tif_image_path:
+                tif_suffix = tif_image_path.lower()
+                if tif_suffix.endswith(('.tif', '.tiff')) or any(keyword in lowered for keyword in ("tif", "geotiff", "geospatial", "影像", "多光谱", "multispectral")):
+                    # TIF + LAI 反演默认走富功能报告工具：像元级进度、PROSAIL 场景参数搜索空间推理、
+                    # BLAS 向量化加速、交互式 HTML 报告。仅当用户明确只要 TIF/数值、不要报告时退回裸工具。
+                    wants_bare = any(
+                        k in lowered
+                        for k in ("不要报告", "无需报告", "不用报告", "只要tif", "只要 tif", "仅tif", "只输出tif", "只要数值", "只要lai值", "只需数值")
+                    )
+                    if not wants_bare and "prosail.lai_html_report" in visible_tool_names:
+                        return "prosail.lai_html_report"
+                    if "prosail.invert_lai_tif" in visible_tool_names:
+                        return "prosail.invert_lai_tif"
+            return "prosail.invert_lai"
+        if any(
+            keyword in lowered
+            for keyword in ("写入文件", "写文件", "write file", "保存文件")
+        ) and "workspace.write" in visible_tool_names:
+            return "workspace.write"
+        if any(
+            keyword in lowered
+            for keyword in ("读取文件", "读文件", "read file", "查看文件内容")
+        ) and "workspace.read_file" in visible_tool_names:
+            return "workspace.read_file"
         return None
 
     @staticmethod

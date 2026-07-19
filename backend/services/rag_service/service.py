@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from services.rag_service.chunking.text_chunker import TextChunker
 from services.rag_service.config import RAGServiceConfig, get_rag_service_config
@@ -127,6 +128,21 @@ class RAGService:
             results=results,
             message=message,
         )
+
+    def list_documents(self) -> list[dict[str, Any]]:
+        """Return metadata for all ingested documents."""
+        return self._document_store.list_documents()
+
+    def get_document(self, document_id: str) -> dict[str, Any] | None:
+        """Return metadata for a single document."""
+        return self._document_store.get_document(document_id)
+
+    def delete_document(self, document_id: str) -> bool:
+        """Delete a document and its chunks from the store."""
+        deleted = self._document_store.delete_document(document_id)
+        if deleted:
+            self._document_store.save()
+        return deleted
 
     def get_health_snapshot(self) -> dict[str, str]:
         """Return health details for service and dependency visibility."""

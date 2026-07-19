@@ -47,6 +47,8 @@ class ReportBuilder:
             request=request,
             generated_at=generated_at.isoformat(),
             chart_context=chart_context,
+            extra=chart_context,
+            report_id=report_id,
         )
         return ReportResult(
             report_id=report_id,

@@ -1,3 +1,5 @@
+import type { CanonicalManifest } from '../services/canonical/manifestClient'
+
 export interface Session {
   session_id: string;
   title: string;
@@ -167,28 +169,32 @@ export interface Attachment {
   kind: "local_path";
   name?: string;
   path: string;
+  dataset_id?: string;
+  size?: number;
 }
 
-export interface ThinkingStep {
-  type: 'planning' | 'delegating' | 'delegated_back' | 'tool_calling' | 'reasoning' | 'error';
-  label: string;
-  detail?: string;
-  toolInput?: string;
-  toolOutput?: string;
-  toolStatus?: string;
-  artifacts?: Artifact[];
-  artifact?: Artifact;
+export type SubmissionStatus = "queued" | "running" | "cancelling" | "cancelled" | "completed" | "failed"
+export type SubmissionStage  = "accepted" | "processing" | "finalizing" | "completed" | "failed"
+
+export interface PendingArtifactRef {
+  artifact_id: string
+  kind: string
+  title: string
+  view_url: string
+  download_url?: string
 }
 
-export interface PendingRun {
-  sessionId: string;
-  message: string;
-  attachments: Attachment[];
-  parts: RunPart[];
-  status: string;
-  runId: string | null;
-  thinkingSteps: ThinkingStep[];
-  tokenUsage?: TokenUsage;
+export interface PendingSubmission {
+  submission_id: string | null
+  conversation_id: string
+  message: string
+  attachments: Attachment[]
+  status: SubmissionStatus
+  stage: SubmissionStage
+  run_id: string | null
+  parts: RunPart[]
+  artifacts: PendingArtifactRef[]
+  error?: { code: string; message: string }
 }
 
 export interface LoadingState {
@@ -207,7 +213,7 @@ export interface SessionMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   parts?: RunPart[];
-  thinkingSteps?: ThinkingStep[];
+  run_id?: string;   // canonical run id, populated by Phase 2 for debug drawer access
   timestamp?: string;
 }
 
@@ -230,24 +236,24 @@ export interface ReplayResponse {
 }
 
 export interface PluginToolEndpoint {
-  adapter: 'http_api'
-  url: string
-  method: 'GET' | 'POST'
-  headers?: Record<string, string>
-  timeout?: number
+  adapter: 'http_api';
+  url: string;
+  method: 'GET' | 'POST';
+  headers?: Record<string, string>;
+  timeout?: number;
 }
 
 export interface PluginToolSpec {
-  name: string
-  display_name: string
-  description: string
-  category: string
-  pack_name: string
-  usage_hint?: string
-  input_schema: Record<string, string>
-  safety_level: 'safe' | 'caution' | 'dangerous'
-  endpoint: PluginToolEndpoint
-  enabled: boolean
+  name: string;
+  display_name: string;
+  description: string;
+  category: string;
+  pack_name: string;
+  usage_hint?: string;
+  input_schema: Record<string, string>;
+  safety_level: 'safe' | 'caution' | 'dangerous';
+  endpoint: PluginToolEndpoint;
+  enabled: boolean;
 }
 
 export interface PluginToolTestResult {
@@ -266,6 +272,24 @@ export interface PluginToolTestResult {
   }>
 }
 
+export interface KnowledgeDocument {
+  document_id: string
+  title: string
+  source: string
+  metadata?: Record<string, unknown>
+  chunk_count?: number
+  chunk_ids?: string[]
+}
+
+export interface KnowledgeQueryResult {
+  chunk_id: string
+  document_id: string
+  text: string
+  source: string
+  score: number
+  metadata?: Record<string, unknown>
+}
+
 export interface AppState {
   apiBaseUrl: string;
   auth: AuthState;
@@ -276,7 +300,7 @@ export interface AppState {
   sessionRuns: Run[];
   selectedRunId: string | null;
   selectedRun: Run | null;
-  pendingRun: PendingRun | null;
+  pendingSubmission: PendingSubmission | null;
   replayResponse: ReplayResponse | null;
   tools: Tool[];
   agents: Agent[];
@@ -287,6 +311,7 @@ export interface AppState {
   backendOnline: boolean;
   conversationMode: "chat" | "task";
   useMock: boolean;
+  manifest: CanonicalManifest | null;
 }
 
 export interface AppContextType {

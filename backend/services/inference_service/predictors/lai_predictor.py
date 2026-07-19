@@ -15,7 +15,9 @@ from services.inference_service.loaders.model_loader import LoadedModel
 
 logger = logging.getLogger(__name__)
 
-PROSAIL_LUT_DIR = Path("/home/D/liumeng/ktp_product/prosail_python")
+# Resolve the PROSAIL package/LUT dir relative to the backend root so it works
+# on any host (was previously a hardcoded developer Linux path).
+PROSAIL_LUT_DIR = Path(__file__).resolve().parents[3] / "prosail_python"
 
 
 class LAIPredictor(BasePredictor):

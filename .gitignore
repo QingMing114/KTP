@@ -21,6 +21,7 @@ venv/
 *.swo
 *~
 var/
+reports/
 *.sqlite3
 *.db
 references/
@@ -48,3 +49,6 @@ ktp_release/
 # Data directories
 backend/data/
 backend/plugins/
+
+# Machine-bound deployment secrets
+deploy/license.key

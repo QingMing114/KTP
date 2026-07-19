@@ -2,17 +2,19 @@ import React, { useRef, useEffect, useState, useCallback, useLayoutEffect, useMe
 import { useAppContext } from '../context/AppContext'
 import { useArtifactClick } from '../hooks/useArtifactClick'
 import { Link } from 'react-router-dom'
-import { Bot, ExternalLink, X, Sparkles, AlertTriangle, ArrowUp, StopCircle, Paperclip, Loader2, RefreshCw, ArrowDown, Download, Keyboard, MessageSquare, Zap } from 'lucide-react'
+import { Bot, ExternalLink, X, Sparkles, AlertTriangle, ArrowUp, StopCircle, Paperclip, Loader2, RefreshCw, ArrowDown, Download, Keyboard, MessageSquare, Zap, FileText, FileJson, FileDown } from 'lucide-react'
 import { escapeHtml, buildArtifactOpenHref, isMockArtifact, getArtifactLabel } from '../utils'
-import { SessionMessage, Run, RunPart, ThinkingStep, PendingRun, Attachment, Tool } from '../types'
+import { SessionMessage, Run, RunPart, PendingSubmission, Attachment, Tool } from '../types'
 import MarkdownRenderer from './MarkdownRenderer'
-import ThinkingProcess from './ThinkingProcess'
 import ToolCallBlock from './ToolCallBlock'
 import ToolResultBlock from './ToolResultBlock'
 import StreamingMarkdown from './StreamingMarkdown'
+import DebugDrawer from './DebugDrawer'
 import TokenUsageBadge from './TokenUsageBadge'
 import ShortcutsOverlay from './ShortcutsOverlay'
+import SimulationArtifact from './SimulationArtifact'
 import * as api from '../services/api'
+import { createDataset } from '../services/canonical'
 
 function formatMessageTime(dateStr?: string): string {
   if (!dateStr) return ""
@@ -71,7 +73,7 @@ const ChatInterface: React.FC = () => {
   } = useAppContext()
 
   const { artifactError, handleArtifactClick, clearArtifactError } = useArtifactClick()
-  const isEmpty = state.sessionMessages.length === 0 && !state.pendingRun
+  const isEmpty = state.sessionMessages.length === 0 && !state.pendingSubmission
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -82,8 +84,9 @@ const ChatInterface: React.FC = () => {
   const uploadErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const messageCount = state.sessionMessages.length
-  const pendingPartsCount = state.pendingRun?.parts.length ?? 0
-  const thinkingStepsCount = state.pendingRun?.thinkingSteps?.length ?? 0
+  const pendingPartsCount = state.pendingSubmission?.parts.length ?? 0
+  const prevMessageCountRef = useRef(messageCount)
+  const prevSessionIdRef = useRef(state.selectedSessionId)
 
   const handleScroll = useCallback(() => {
     if (!scrollRef.current) return
@@ -93,14 +96,28 @@ const ChatInterface: React.FC = () => {
   }, [])
 
   useEffect(() => {
-    if (scrollRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
-      if (distanceFromBottom < 200) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-      }
+    const sessionChanged = state.selectedSessionId !== prevSessionIdRef.current
+    prevSessionIdRef.current = state.selectedSessionId
+    const newMessageArrived = messageCount > prevMessageCountRef.current
+    prevMessageCountRef.current = messageCount
+
+    if (!scrollRef.current) return
+
+    if (sessionChanged) {
+      requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+        }
+      })
+      return
     }
-  }, [messageCount, pendingPartsCount, thinkingStepsCount])
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+    if (distanceFromBottom < 200 || newMessageArrived) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [messageCount, pendingPartsCount, state.selectedSessionId])
 
   useLayoutEffect(() => {
     if (textareaRef.current) {
@@ -121,7 +138,7 @@ const ChatInterface: React.FC = () => {
         textareaRef.current?.focus()
       }
       if (e.key === 'Escape') {
-        if (state.pendingRun) stopGeneration()
+        if (state.pendingSubmission) stopGeneration()
         setShowShortcuts(false)
       }
       if (isMod && e.shiftKey && e.key === 'P') {
@@ -131,7 +148,7 @@ const ChatInterface: React.FC = () => {
     }
     window.addEventListener('keydown', handleGlobalKeyDown)
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [state.pendingRun, stopGeneration, refreshAll])
+  }, [state.pendingSubmission, stopGeneration, refreshAll])
 
   useEffect(() => {
     return () => {
@@ -175,7 +192,23 @@ const ChatInterface: React.FC = () => {
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
         const result = await api.uploadFile(file)
-        addAttachment({ kind: "local_path", path: result.path, name: result.name })
+        try {
+          const dataset = await createDataset({
+            source: { kind: 'local_path', uri: result.path },
+            display_name: result.name,
+            defaults: { task_type: 'lai_inversion' },
+          })
+          addAttachment({
+            kind: 'local_path',
+            path: result.path,
+            name: result.name,
+            size: result.size,
+            dataset_id: dataset.dataset_id,
+          })
+        } catch {
+          // Dataset registration failed — still add attachment without dataset_id (graceful degradation)
+          addAttachment({ kind: 'local_path', path: result.path, name: result.name, size: result.size })
+        }
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "上传失败"
@@ -194,12 +227,6 @@ const ChatInterface: React.FC = () => {
     const lines = messages.map(m => {
       const role = m.role === 'user' ? '**用户**' : '**KTP**'
       let content = m.content
-      if (m.thinkingSteps && m.thinkingSteps.length > 0) {
-        const stepsText = m.thinkingSteps
-          .map(s => `  - [${s.type}] ${s.label}${s.detail ? ': ' + s.detail : ''}`)
-          .join('\n')
-        content += `\n\n<details><summary>思考过程 (${m.thinkingSteps.length}步)</summary>\n\n${stepsText}\n\n</details>`
-      }
       if (m.parts && m.parts.length > 0) {
         const toolParts = m.parts.filter((p: RunPart) => p.type === 'tool_call' || p.type === 'tool_result')
         if (toolParts.length > 0) {
@@ -221,6 +248,55 @@ const ChatInterface: React.FC = () => {
     URL.revokeObjectURL(url)
   }
 
+  function exportAsHtml() {
+    const messages = state.sessionMessages
+    if (messages.length === 0) return
+    const bodyLines = messages.map(m => {
+      const role = m.role === 'user' ? '用户' : 'KTP'
+      const roleClass = m.role === 'user' ? 'color:#1a1a1a;font-weight:600' : 'color:#2563eb;font-weight:600'
+      let content = m.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      content = content.replace(/`(.*?)`/g, '<code style="background:#f1f5f9;padding:1px 4px;border-radius:3px;font-size:0.9em">$1</code>')
+      content = content.replace(/\n/g, '<br>')
+      return `<div style="margin-bottom:16px;padding:12px;border-radius:8px;background:${m.role === 'user' ? '#fafaf9' : '#f0f9ff'}"><div style="${roleClass};margin-bottom:4px;font-size:0.9em">${role}</div><div style="font-size:0.9em;line-height:1.6">${content}</div></div>`
+    })
+    const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>KTP 对话报告</title><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:800px;margin:0 auto;padding:20px;color:#1a1a1a;background:#fff}h1{font-size:1.4em;color:#1a1a1a;border-bottom:1px solid #e5e5e5;padding-bottom:8px}.meta{color:#6b7280;font-size:0.8em;margin-bottom:20px}</style></head><body><h1>KTP 对话报告</h1><div class="meta">导出时间: ${new Date().toLocaleString('zh-CN')}</div>${bodyLines.join('\n')}</body></html>`
+    const blob = new Blob([html], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ktp-report-${new Date().toISOString().slice(0, 10)}.html`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function exportAsJson() {
+    const messages = state.sessionMessages
+    if (messages.length === 0) return
+    const data = {
+      export_time: new Date().toISOString(),
+      session_id: state.selectedSessionId,
+      messages: messages.map(m => ({
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp,
+        parts: m.parts?.filter((p: RunPart) => p.type === 'tool_call' || p.type === 'tool_result').map((p: RunPart) => ({
+          type: p.type,
+          tool_name: p.tool_invocation?.tool_name,
+          display_name: p.tool_invocation?.display_name,
+          status: p.tool_invocation?.status,
+        })),
+      })),
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ktp-chat-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function renderComposer() {
     return (
       <div className="w-full max-w-2xl mx-auto px-4 pb-4">
@@ -234,6 +310,10 @@ const ChatInterface: React.FC = () => {
             {state.composer.attachments.map((attachment, index) => (
               <div key={index} className="bg-stone-100 text-stone-500 rounded-md px-2 py-0.5 text-xs flex items-center gap-1">
                 {escapeHtml(attachment.name ?? attachment.path ?? '')}
+                {attachment.dataset_id
+                  ? <span title="已注册为 Dataset" className="text-green-500 ml-0.5">✓</span>
+                  : <span title="注册中或未注册" className="text-stone-400 ml-0.5">○</span>
+                }
                 <button type="button" className="text-stone-300 hover:text-stone-500" onClick={() => handleAttachmentRemove(index)}>
                   <X size={10} />
                 </button>
@@ -271,7 +351,7 @@ const ChatInterface: React.FC = () => {
             style={{ color: '#44403c', backgroundColor: 'transparent', border: 'none' }}
             className="flex-1 px-3 py-3 text-sm outline-none resize-none max-h-[160px] placeholder:text-stone-300"
           />
-          {state.pendingRun ? (
+          {state.pendingSubmission ? (
             <button
               type="button"
               onClick={stopGeneration}
@@ -310,14 +390,35 @@ const ChatInterface: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             {state.sessionMessages.length > 0 && (
-              <button
-                type="button"
-                onClick={exportConversation}
-                className="text-[11px] text-stone-300 hover:text-stone-500 transition-colors flex items-center gap-1"
-                title="导出对话"
-              >
-                <Download size={10} /> 导出
-              </button>
+              <div className="relative group">
+                <button
+                  type="button"
+                  className="text-[11px] text-stone-300 hover:text-stone-500 transition-colors flex items-center gap-1"
+                  title="导出"
+                >
+                  <Download size={10} /> 导出
+                </button>
+                <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-stone-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-20">
+                  <button
+                    onClick={exportConversation}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-600 hover:bg-stone-50 rounded-t-lg"
+                  >
+                    <FileText size={12} /> Markdown
+                  </button>
+                  <button
+                    onClick={exportAsHtml}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-600 hover:bg-stone-50"
+                  >
+                    <FileDown size={12} /> HTML 报告
+                  </button>
+                  <button
+                    onClick={exportAsJson}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-600 hover:bg-stone-50 rounded-b-lg"
+                  >
+                    <FileJson size={12} /> JSON 数据
+                  </button>
+                </div>
+              </div>
             )}
             <button
               type="button"
@@ -378,16 +479,19 @@ const ChatInterface: React.FC = () => {
       return (
         <React.Fragment key={key}>
           {renderUserMessage(user.content, run?.input_context?.attachments ?? [], key, user.timestamp)}
-          {assistant && (run ? renderAssistantMessage(run, assistant, isLast && isFailed) : renderSimpleAssistantMessage(assistant.content, assistant.parts, assistant.thinkingSteps, assistant.timestamp))}
+          {assistant && (run ? renderAssistantMessage(run, assistant, isLast && isFailed) : renderSimpleAssistantMessage(assistant.content, assistant.parts, assistant.timestamp, assistant.run_id))}
         </React.Fragment>
       )
     })
   }
 
-  function renderSimpleAssistantMessage(content: string, parts?: RunPart[], thinkingSteps?: ThinkingStep[], timestamp?: string) {
-    const hasThinkingSteps = thinkingSteps && thinkingSteps.length > 0
-    const filteredParts = hasThinkingSteps && parts
-      ? parts.filter((p: RunPart) => p.type !== "tool_call" && p.type !== "tool_result" && p.type !== "artifact")
+  function renderSimpleAssistantMessage(content: string, parts?: RunPart[], timestamp?: string, run_id?: string) {
+    const filteredParts = parts
+      ? parts.filter((p: RunPart) => {
+          if (p.type === "tool_call" || p.type === "tool_result") return false
+          if (p.type === "artifact" && p.artifact?.artifact_type !== "simulation_data") return false
+          return true
+        })
       : parts
     return (
       <div className="flex gap-3">
@@ -395,12 +499,12 @@ const ChatInterface: React.FC = () => {
           <Bot size={14} className="text-stone-500" />
         </div>
         <div className="flex-1 min-w-0">
-          {hasThinkingSteps && <ThinkingProcess steps={thinkingSteps!} isActive={false} onArtifactClick={handleArtifactClick} />}
+          {run_id && <DebugDrawer run_id={run_id} isLoading={false} />}
           {filteredParts && filteredParts.length > 0 ? (
             <div className="space-y-3">
               {filteredParts.map((part: RunPart, index: number) => renderAssistantPart(part, index, true))}
             </div>
-          ) : !hasThinkingSteps ? (
+          ) : !run_id ? (
             <div className="text-[15px] text-stone-800 leading-relaxed">
               <MarkdownRenderer content={content} />
             </div>
@@ -430,7 +534,7 @@ const ChatInterface: React.FC = () => {
         </div>
       )}
       {isEmpty ? (
-        <div className="flex-1 flex flex-col items-center justify-center px-6">
+        <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-6">
           <div className="mb-8 text-center">
             <h1 className="text-2xl font-semibold text-stone-700 mb-2">你好，有什么可以帮你的？</h1>
             <p className="text-stone-400 text-sm">选择一个快捷操作，或直接输入你的问题</p>
@@ -462,13 +566,13 @@ const ChatInterface: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className="flex-1 overflow-y-auto relative" ref={scrollRef} onScroll={handleScroll} role="log" aria-live="polite">
+          <div className="flex-1 min-h-0 overflow-y-auto relative" ref={scrollRef} onScroll={handleScroll} role="log" aria-live="polite">
             <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
               {renderSessionMessages()}
-              {state.pendingRun && state.pendingRun.sessionId === state.selectedSessionId && (
+              {state.pendingSubmission && state.pendingSubmission.conversation_id === state.selectedSessionId && (
                 <React.Fragment key="pending">
-                  {renderUserMessage(state.pendingRun.message, state.pendingRun.attachments, "pending-user")}
-                  {renderPendingAssistantMessage(state.pendingRun)}
+                  {renderUserMessage(state.pendingSubmission.message, state.pendingSubmission.attachments, "pending-user")}
+                  {renderPendingAssistantMessage(state.pendingSubmission)}
                 </React.Fragment>
               )}
             </div>
@@ -483,7 +587,7 @@ const ChatInterface: React.FC = () => {
               </button>
             )}
           </div>
-          <div className="bg-gradient-to-t from-stone-50 via-stone-50 to-transparent pt-2">
+          <div className="shrink-0 bg-gradient-to-t from-stone-50 via-stone-50 to-transparent pt-2">
             <form onSubmit={(e) => { e.preventDefault(); sendMessage() }}>
               {renderComposer()}
             </form>
@@ -516,125 +620,25 @@ const ChatInterface: React.FC = () => {
     )
   }
 
-  function extractThinkingStepsFromRun(run: Run): ThinkingStep[] {
-    const steps: ThinkingStep[] = []
-
-    if (run.agent_steps && run.agent_steps.length > 0) {
-      for (const as of run.agent_steps) {
-        const actionLabel = as.action === "reply" ? "直接回复"
-          : as.action === "call_tools" ? "调用工具"
-          : as.action === "clarify" ? "请求澄清"
-          : as.action === "delegate_agent" ? "委派专家"
-          : as.action === "fail" ? "失败"
-          : as.action
-        if (as.reasoning) {
-          steps.push({ type: "reasoning", label: `决策：${actionLabel}`, detail: as.reasoning })
-        }
-        if (as.tool_calls && as.tool_calls.length > 0) {
-          for (const tc of as.tool_calls) {
-            const toolName = tc.display_name || tc.tool_name || "工具"
-            const matchingTi = run.tool_invocations?.find(
-              ti => ti.tool_name === tc.tool_name && ti.is_user_visible !== false
-            )
-            const toolInput = matchingTi?.tool_input
-              ? JSON.stringify(matchingTi.tool_input, null, 2)
-              : undefined
-            const toolOutput = matchingTi?.output_summary || undefined
-            const toolStatus = matchingTi?.status === "success" ? "completed"
-              : matchingTi?.status === "error" ? "error"
-              : matchingTi?.status === "running" ? "running"
-              : matchingTi?.status
-            const matchingArtifacts = run.artifacts?.filter(
-              a => a.pack_name === tc.tool_name || a.pack_name === matchingTi?.category
-            )
-            steps.push({
-              type: "tool_calling",
-              label: `调用 ${toolName}`,
-              toolInput,
-              toolOutput,
-              toolStatus,
-              artifacts: matchingArtifacts && matchingArtifacts.length > 0 ? matchingArtifacts : undefined,
-            })
-          }
-        }
-        if (as.response_message && as.action === "reply" && !as.tool_calls?.length) {
-          break
-        }
-      }
-    } else {
-      const pd = run.planner_decision
-      if (pd && pd.reasoning) {
-        const actionLabel = pd.action === "reply" ? "直接回复"
-          : pd.action === "call_tools" ? "调用工具"
-          : pd.action === "clarify" ? "请求澄清"
-          : pd.action
-        steps.push({ type: "reasoning", label: `决策：${actionLabel}`, detail: pd.reasoning })
-      }
-      if (run.tool_invocations) {
-        for (const ti of run.tool_invocations) {
-          if (ti.is_user_visible === false) continue
-          const toolName = ti.display_name || ti.tool_name || "工具"
-          const toolInput = ti.tool_input ? JSON.stringify(ti.tool_input, null, 2) : undefined
-          const toolStatus = ti.status === "success" ? "completed"
-            : ti.status === "error" ? "error"
-            : ti.status === "running" ? "running"
-            : ti.status
-          steps.push({
-            type: "tool_calling",
-            label: `调用 ${toolName}`,
-            toolInput,
-            toolOutput: ti.output_summary || undefined,
-            toolStatus,
-          })
-        }
-      }
-    }
-
-    if (run.trace && Array.isArray(run.trace)) {
-      const traceSteps: ThinkingStep[] = []
-      for (const entry of run.trace) {
-        const event = entry.event
-        const detail = entry.detail || ""
-        if (event === "delegation_started" && detail) {
-          traceSteps.push({ type: "delegating", label: "委派专家", detail })
-        } else if (event === "delegation_completed" && detail) {
-          traceSteps.push({ type: "delegated_back", label: "专家返回", detail })
-        } else if (event === "direct_reply_selected" && detail) {
-          traceSteps.push({ type: "reasoning", label: "直接回复", detail })
-        } else if (event === "agent_step_selected" && detail) {
-          traceSteps.push({ type: "planning", label: "规划步骤", detail })
-        } else if (event === "request_context_loaded" && detail) {
-          traceSteps.push({ type: "planning", label: "加载请求上下文", detail })
-        }
-      }
-      if (traceSteps.length > 0 && steps.length === 0) {
-        steps.push(...traceSteps)
-      }
-    }
-
-    return steps
-  }
-
   function renderAssistantMessage(run: Run, sessionMsg?: SessionMessage, showRetry?: boolean) {
     const parts = run.assistant_message?.parts?.length
       ? run.assistant_message.parts
       : sessionMsg?.parts?.length
         ? sessionMsg.parts
         : [{ type: run.status === "failed" ? "error" as const : "text" as const, text: run.output_message, status: run.status }]
-    const thinkingSteps = sessionMsg?.thinkingSteps?.length
-      ? sessionMsg.thinkingSteps
-      : extractThinkingStepsFromRun(run)
-    const hasThinkingSteps = thinkingSteps.length > 0
-    const filteredParts = hasThinkingSteps
-      ? parts.filter((p: RunPart) => p.type !== "tool_call" && p.type !== "tool_result" && p.type !== "artifact")
-      : parts
+    const debugRunId = sessionMsg?.run_id ?? run.run_id
+    const filteredParts = parts.filter((p: RunPart) => {
+      if (p.type === "tool_call" || p.type === "tool_result") return false
+      if (p.type === "artifact" && p.artifact?.artifact_type !== "simulation_data") return false
+      return true
+    })
     return (
       <div className="flex gap-3">
         <div className="w-7 h-7 rounded-full bg-stone-200 flex items-center justify-center shrink-0 mt-0.5">
           <Bot size={14} className="text-stone-500" />
         </div>
         <div className="flex-1 min-w-0 space-y-3">
-          {hasThinkingSteps && <ThinkingProcess steps={thinkingSteps} isActive={false} onArtifactClick={handleArtifactClick} />}
+          {debugRunId && <DebugDrawer run_id={debugRunId} isLoading={false} />}
           {filteredParts.map((part: RunPart, index: number) => renderAssistantPart(part, index, true))}
           <TokenUsageBadge usage={run.token_usage} />
           {showRetry && (
@@ -651,13 +655,13 @@ const ChatInterface: React.FC = () => {
     )
   }
 
-  function renderPendingAssistantMessage(pendingRun: PendingRun) {
-    const hasThinking = pendingRun.thinkingSteps && pendingRun.thinkingSteps.length > 0
-    const hasParts = pendingRun.parts.length > 0
-    const isStillThinking = pendingRun.status === "streaming" && !hasParts
-    const filteredParts = hasThinking
-      ? pendingRun.parts.filter((p: RunPart) => p.type !== "tool_call" && p.type !== "tool_result" && p.type !== "artifact")
-      : pendingRun.parts
+  function renderPendingAssistantMessage(pending: PendingSubmission) {
+    const hasParts = pending.parts.length > 0
+    const filteredParts = pending.parts.filter((p: RunPart) => {
+      if (p.type === "tool_call" || p.type === "tool_result") return false
+      if (p.type === "artifact" && p.artifact?.artifact_type !== "simulation_data") return false
+      return true
+    })
 
     return (
       <div className="flex gap-3">
@@ -665,8 +669,7 @@ const ChatInterface: React.FC = () => {
           <Bot size={14} className="text-stone-500" />
         </div>
         <div className="flex-1 min-w-0 space-y-3">
-          {hasThinking && <ThinkingProcess steps={pendingRun.thinkingSteps} isActive={isStillThinking} onArtifactClick={handleArtifactClick} />}
-          {!hasParts && !hasThinking && (
+          {!hasParts && (
             <div className="flex items-center gap-1.5 py-1">
               <div className="w-1.5 h-1.5 bg-stone-300 rounded-full animate-bounce"></div>
               <div className="w-1.5 h-1.5 bg-stone-300 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
@@ -674,7 +677,7 @@ const ChatInterface: React.FC = () => {
             </div>
           )}
           {filteredParts.map((part: RunPart, index: number) => renderAssistantPart(part, index, false))}
-          {pendingRun.status === "completed" && <TokenUsageBadge usage={pendingRun.tokenUsage} />}
+          <DebugDrawer run_id={pending.run_id} isLoading={true} />
         </div>
       </div>
     )
@@ -682,6 +685,13 @@ const ChatInterface: React.FC = () => {
 
   function renderAssistantPart(part: RunPart, index: number, isHistory: boolean = false) {
     if (part.type === "artifact" && part.artifact) {
+      if (part.artifact.artifact_type === "simulation_data" && part.artifact.content) {
+        return (
+          <div key={index} className="my-1">
+            <SimulationArtifact title={part.artifact.title} content={part.artifact.content} />
+          </div>
+        )
+      }
       const openHref = buildArtifactOpenHref(part.artifact)
       const mock = isMockArtifact(part.artifact)
       const label = getArtifactLabel(part.artifact)

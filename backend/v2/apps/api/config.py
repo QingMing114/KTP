@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import ClassVar
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,6 +25,7 @@ class V2ApiSettings(BaseSettings):
     sqlite_path: str = Field(default="/tmp/ktp_v2_runtime.sqlite3")
     cors_allow_origins: str = Field(default="*")
 
+    @property
     def cors_origins_list(self) -> list[str]:
         origins = [origin.strip() for origin in self.cors_allow_origins.split(",") if origin.strip()]
         return origins or ["*"]
