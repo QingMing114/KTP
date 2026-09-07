@@ -27,7 +27,7 @@ The service exposes:
   "request_id": "req-001",
   "success": true,
   "result": {
-    "mask_uri": "/tmp/ktp_masks/req-001_mask.png",
+    "mask_uri": "var/runtime/masks/req-001_mask.png",
     "affected_area": 64.0,
     "confidence": 0.91,
     "polygons": [

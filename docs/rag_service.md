@@ -69,6 +69,6 @@ That means:
 ## Validation
 
 ```bash
-/tmp/ktp-py311/bin/pytest tests/test_chunker.py tests/test_vectorstore.py tests/test_rag_api.py
-/tmp/ktp-py311/bin/pytest tests/test_orchestrator_flow.py
+python -m pytest tests/test_chunker.py tests/test_vectorstore.py tests/test_rag_api.py
+python -m pytest tests/test_orchestrator_flow.py
 ```

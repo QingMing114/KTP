@@ -59,11 +59,11 @@ Coverage goals:
 
 ### Minimal regression set
 
-- [tests/data/chat_runtime_eval_cases.json](/home/D/liumeng/ktp/tests/data/chat_runtime_eval_cases.json)
+- [tests/data/chat_runtime_eval_cases.json](../tests/data/chat_runtime_eval_cases.json)
 
 ### Broader regression set
 
-- [tests/data/chat_runtime_eval_cases_full.json](/home/D/liumeng/ktp/tests/data/chat_runtime_eval_cases_full.json)
+- [tests/data/chat_runtime_eval_cases_full.json](../tests/data/chat_runtime_eval_cases_full.json)
 
 Run the broader set:
 
@@ -80,7 +80,7 @@ export API_GATEWAY_CHAT_AGENT_RUNTIME_ENABLED=true
 export API_GATEWAY_CHAT_AGENT_SHADOW_COMPARE_ENABLED=true
 export API_GATEWAY_CHAT_AGENT_LEGACY_FALLBACK_ENABLED=false
 export API_GATEWAY_CHAT_AGENT_MAX_REPLANS=2
-/tmp/ktp-py311/bin/python scripts/start_gateway_qwen_local.py --port 18080
+python scripts/start_gateway_qwen_local.py --port 18080
 ```
 
 Then validate:

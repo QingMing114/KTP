@@ -73,9 +73,9 @@ The repository currently includes runnable foundations for:
   - trace viewers
   - deterministic dry replay inspection
 - Local run command:
-  - `/tmp/ktp-py311/bin/python -m uvicorn v2.apps.api.main:app --host 0.0.0.0 --port 18180`
+  - `python -m uvicorn v2.apps.api.main:app --host 0.0.0.0 --port 18180`
 - Main product host command:
-  - `/tmp/ktp-py311/bin/python -m uvicorn apps.api_gateway.main:app --host 0.0.0.0 --port 18080`
+  - `python -m uvicorn apps.api_gateway.main:app --host 0.0.0.0 --port 18080`
 
 ### `v2/apps/web/`
 
@@ -93,9 +93,9 @@ The repository currently includes runnable foundations for:
 - The UI now defaults to same-origin API calls when hosted by the gateway. When served from port `4173`, it defaults to `http://127.0.0.1:18180`.
 - `dist/` includes checked-in browser-ready files so the product page can run without a local Node toolchain.
 - Local static demo run:
-  - `cd /home/D/liumeng/ktp/v2/apps/web && python -m http.server 4173`
+  - `cd frontend && python -m http.server 4173`
 - Optional TypeScript rebuild when Node tooling exists:
-  - `cd /home/D/liumeng/ktp/v2/apps/web && npm install && npm run build`
+  - `cd frontend && npm install && npm run build`
 
 ### `v2/runtime/`
 
@@ -490,7 +490,7 @@ The repository currently includes runnable foundations for:
   - the public KTP single-agent product on top of the V2 runtime
   - legacy orchestrator/chat-runtime code kept for migration safety
 - The authoritative roadmap for the second track is documented in:
-  - [docs/agent_runtime_roadmap.md](/home/D/liumeng/ktp/docs/agent_runtime_roadmap.md)
+  - [docs/agent_runtime_roadmap.md](agent_runtime_roadmap.md)
 - Current implementation status of that roadmap:
   - V2 shared schemas, registries, runtime store, and bounded engine are in place
   - the gateway now mounts V2 in-process and uses it as the live `/chat` and `/detect` path
@@ -617,12 +617,12 @@ The repository currently includes runnable foundations for:
 ## Common Validation Commands
 
 ```bash
-/tmp/ktp-py311/bin/python -m uvicorn apps.api_gateway.main:app --host 0.0.0.0 --port 18080
-/tmp/ktp-py311/bin/pytest v2/tests/test_api_smoke.py v2/tests/test_registry_smoke.py v2/tests/test_ktp_pack_smoke.py tests/test_api_gateway_chat.py tests/test_api_gateway_chat_ui.py tests/test_api_gateway_detect.py -q
-/tmp/ktp-py311/bin/pytest tests/test_inference_api.py tests/test_baldness_rf_pipeline.py
-/tmp/ktp-py311/bin/pytest tests/test_chunker.py tests/test_vectorstore.py tests/test_rag_api.py
-/tmp/ktp-py311/bin/pytest tests/test_report_builder.py tests/test_report_api.py tests/test_confidence_service.py tests/test_confidence_api.py
-/tmp/ktp-py311/bin/pytest tests/test_visualization_service.py tests/integration/test_gateway_to_orchestrator.py
+python -m uvicorn apps.api_gateway.main:app --host 0.0.0.0 --port 18080
+python -m pytest v2/tests/test_api_smoke.py v2/tests/test_registry_smoke.py v2/tests/test_ktp_pack_smoke.py tests/test_api_gateway_chat.py tests/test_api_gateway_chat_ui.py tests/test_api_gateway_detect.py -q
+python -m pytest tests/test_inference_api.py tests/test_baldness_rf_pipeline.py
+python -m pytest tests/test_chunker.py tests/test_vectorstore.py tests/test_rag_api.py
+python -m pytest tests/test_report_builder.py tests/test_report_api.py tests/test_confidence_service.py tests/test_confidence_api.py
+python -m pytest tests/test_visualization_service.py tests/integration/test_gateway_to_orchestrator.py
 ```
 
 ## Local Notes

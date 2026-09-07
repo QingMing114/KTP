@@ -1,0 +1,41 @@
+name: quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install backend and test dependencies
+        run: python -m pip install -e "./backend[dev]"
+      - name: Run controlled backend baseline
+        env:
+          PYTHONPATH: backend
+          PYTHONIOENCODING: utf-8
+        run: python -m pytest backend/tests backend/v2/tests tests/test_product_protocol_api.py -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test -- --reporter=dot
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build

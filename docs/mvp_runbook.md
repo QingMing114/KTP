@@ -4,18 +4,18 @@
 
 ```bash
 cp .env.example .env
-/tmp/ktp-py311/bin/pip install -e .[dev]
+python -m pip install -e .[dev]
 ```
 
 Recommended local overrides:
 
 ```bash
 export ORCHESTRATOR_DATABASE_URL=sqlite:///./demo_registry.db
-export VECTORSTORE_DIR=/tmp/ktp_rag_store
-export REPORT_OUTPUT_DIR=/tmp/ktp_reports
-export MASK_OUTPUT_DIR=/tmp/ktp_masks
-export ORCHESTRATOR_INFERENCE_MASK_OUTPUT_DIR=/tmp/ktp_masks
-export VISUALIZATION_OUTPUT_DIR=/tmp/ktp_visualizations
+export VECTORSTORE_DIR=./var/runtime/rag_store
+export REPORT_OUTPUT_DIR=./var/reports
+export MASK_OUTPUT_DIR=./var/runtime/masks
+export ORCHESTRATOR_INFERENCE_MASK_OUTPUT_DIR=./var/runtime/masks
+export VISUALIZATION_OUTPUT_DIR=./var/visualizations
 ```
 
 Default shared planner/executor model:
@@ -24,7 +24,7 @@ Default shared planner/executor model:
 export AGENT_LLM_BACKEND=openai_compatible
 export AGENT_LLM_OPENAI_API_BASE=http://127.0.0.1:8000/v1
 export AGENT_LLM_OPENAI_API_KEY=sk-dummy
-export AGENT_LLM_OPENAI_MODEL_NAME=/home/D/yuanshuai/.cache/modelscope/hub/models/Qwen/Qwen3.5-27B
+export AGENT_LLM_OPENAI_MODEL_NAME=qwen-plus
 export AGENT_LLM_CHAT_MAX_NEW_TOKENS=256
 export AGENT_LLM_STRUCTURED_MAX_NEW_TOKENS=384
 ```
@@ -41,7 +41,7 @@ If chat/runtime traffic shares the same `8000` upstream with batch jobs, expect 
 ## Start Local Qwen Gateway
 
 ```bash
-/tmp/ktp-py311/bin/python scripts/start_gateway_qwen_local.py --port 18080
+python scripts/start_gateway_qwen_local.py --port 18080
 ```
 
 This command:
@@ -84,7 +84,9 @@ curl http://127.0.0.1:18080/workflow/req-demo-001/visualization
 ## Run Real Baldness Demo
 
 ```bash
-/tmp/ktp-py311/bin/python scripts/demo_baldness_real_flow.py
+python scripts/demo_baldness_real_flow.py \
+  --source-image-path ../dev-data/baldness/MULTI.tif \
+  --model-path ./var/models/baldness/rf_model.pkl
 ```
 
 This path:
@@ -93,13 +95,13 @@ This path:
 - registers the real RF model in a local SQLite registry
 - ingests one baldness interpretation document into the local RAG store
 - runs `use_mock=false`
-- writes the final structured response to `/tmp/ktp_baldness_real_flow/response.json`
-- writes the workflow dashboard under `/tmp/ktp_baldness_real_flow/visualizations/<request_id>/dashboard.html`
+- writes the final structured response to `var/runtime/baldness_real_flow/response.json`
+- writes the workflow dashboard under `var/runtime/baldness_real_flow/visualizations/<request_id>/dashboard.html`
 
 ## Start Gateway Manually
 
 ```bash
-/tmp/ktp-py311/bin/python -m uvicorn apps.api_gateway.main:app --host 0.0.0.0 --port 18080
+python -m uvicorn apps.api_gateway.main:app --host 0.0.0.0 --port 18080
 ```
 
 ## Check Health
@@ -116,5 +118,5 @@ The direct manual `uvicorn` route is still available, but then you must prepare 
 ## Run Integration Tests
 
 ```bash
-/tmp/ktp-py311/bin/pytest tests/integration tests/e2e
+python -m pytest tests/integration tests/e2e
 ```

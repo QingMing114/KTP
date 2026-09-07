@@ -19,7 +19,7 @@ export V2_API_SQLITE_PATH="$BACKEND_DIR/data/ktp_v2_runtime.sqlite3"
 export AGENT_LLM_BACKEND=openai_compatible
 export AGENT_LLM_OPENAI_API_BASE=http://127.0.0.1:8000/v1
 export AGENT_LLM_OPENAI_API_KEY=EMPTY
-export AGENT_LLM_OPENAI_MODEL_NAME="/home/D/yuanshuai/.cache/modelscope/hub/models/Qwen/Qwen3.5-27B"
+export AGENT_LLM_OPENAI_MODEL_NAME="${AGENT_LLM_OPENAI_MODEL_NAME:-qwen-plus}"
 export AGENT_LLM_REQUEST_TIMEOUT_SECONDS=180
 export KTP_LICENSE_SKIP=1
 

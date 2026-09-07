@@ -55,5 +55,5 @@ That keeps rendering replaceable for future:
 ## Validation
 
 ```bash
-/tmp/ktp-py311/bin/pytest tests/test_report_builder.py tests/test_report_api.py
+python -m pytest tests/test_report_builder.py tests/test_report_api.py
 ```

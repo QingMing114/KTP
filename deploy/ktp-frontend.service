@@ -1,0 +1,18 @@
+[Unit]
+Description=KTP static frontend and API proxy
+After=network-online.target ktp-backend.service
+Wants=network-online.target
+Requires=ktp-backend.service
+
+[Service]
+Type=simple
+User=yuehao
+WorkingDirectory=/data/yuehao/apps/ktp/app
+Environment=BACKEND_URL=http://127.0.0.1:8005
+Environment=FRONTEND_PORT=3002
+ExecStart=/data/yuehao/conda-envs/ktp-prod/bin/python /data/yuehao/apps/ktp/app/deploy/serve_frontend.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

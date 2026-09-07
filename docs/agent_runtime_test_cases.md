@@ -14,9 +14,9 @@ The cases are split into two groups:
 Primary files:
 
 - minimal seed set:
-  - [tests/data/chat_runtime_eval_cases.json](/home/D/liumeng/ktp/tests/data/chat_runtime_eval_cases.json)
+  - [tests/data/chat_runtime_eval_cases.json](../tests/data/chat_runtime_eval_cases.json)
 - broader regression set:
-  - [tests/data/chat_runtime_eval_cases_full.json](/home/D/liumeng/ktp/tests/data/chat_runtime_eval_cases_full.json)
+  - [tests/data/chat_runtime_eval_cases_full.json](../tests/data/chat_runtime_eval_cases_full.json)
 
 Run the broad set:
 

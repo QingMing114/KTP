@@ -261,14 +261,14 @@ Client ←── SSE ─── FastAPI (async) ── Queue ── Thread (sync)
 ### 启动后端
 
 ```bash
-cd /home/D/liumeng/ktp_product
-/home/D/liumeng/miniconda3/envs/rsys/bin/python -m uvicorn v2.apps.api.main:app --host 0.0.0.0 --port 18190
+cd backend
+python -m uvicorn v2.apps.api.main:app --host 0.0.0.0 --port 18190
 ```
 
 ### 启动前端
 
 ```bash
-cd /home/D/liumeng/ktp_product/v2/apps/web
+cd frontend
 npm run dev -- --host 0.0.0.0 --port 3001
 ```
 

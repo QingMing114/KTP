@@ -1,0 +1,16 @@
+[Unit]
+Description=KTP FastAPI backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=yuehao
+WorkingDirectory=/data/yuehao/apps/ktp/app/backend
+EnvironmentFile=/data/yuehao/apps/ktp/app/backend/.env
+ExecStart=/data/yuehao/conda-envs/ktp-prod/bin/python -m uvicorn apps.api_gateway.main:app --host 0.0.0.0 --port 8005 --timeout-keep-alive 30
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

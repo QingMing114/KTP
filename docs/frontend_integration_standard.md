@@ -12,7 +12,7 @@ Use this as the implementation standard for:
 Do not couple new frontend code to current `/v2` payload details.  
 The stable contract is the canonical product protocol:
 
-- [canonical_product_protocol.md](/home/D/liumeng/ktp_product/docs/canonical_product_protocol.md)
+- [canonical_product_protocol.md](canonical_product_protocol.md)
 
 ## Current Backend Status
 

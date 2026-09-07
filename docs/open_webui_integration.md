@@ -25,7 +25,7 @@ curl -s http://127.0.0.1:18080/v2/datasets/register \
   -H 'Content-Type: application/json' \
   -d '{
     "source_type":"local_path",
-    "source_uri":"/tmp/ktp_baldness_real_flow/inputs/req-baldness-real-001_crop.tif",
+    "source_uri":"./var/runtime/baldness_real_flow/inputs/req-baldness-real-001_crop.tif",
     "display_name":"req-baldness-real-001_crop.tif",
     "region":"scalp",
     "crop_type":"hair",
@@ -45,10 +45,10 @@ Because the dataset registry now persists default task context, the backend can 
 ## Automated Verification
 
 ```bash
-cd /home/D/liumeng/ktp_product
-/home/D/liumeng/miniconda3/envs/rsys/bin/python scripts/check_openai_dataset_chat.py \
+cd backend
+python scripts/check_openai_dataset_chat.py \
   --api-key sk-ktp-local \
-  --source-uri /tmp/ktp_baldness_real_flow/inputs/req-baldness-real-001_crop.tif \
+  --source-uri ./var/runtime/baldness_real_flow/inputs/req-baldness-real-001_crop.tif \
   --message "请对这张头皮多光谱影像做真实斑秃识别，并生成分析报告、置信度说明和可视化。" \
   --region scalp \
   --crop-type hair \

@@ -228,109 +228,225 @@ SSE 事件包括 `submission.accepted`、`submission.updated`、`run.started`、
 
 ## 从零开始配置
 
-以下流程分为“源码开发”和“Docker 单机部署”。生产建议运行于 Linux（Ubuntu 22.04+/Debian 12+）；Windows/macOS 可借助 Docker Desktop 进行本地开发，但 `deploy/*.sh` 是 Bash 脚本。
+### 1. 准备环境
 
-### 1. 准备前置条件
+请先安装：
 
-| 场景 | 必需组件 |
-| --- | --- |
-| 所有场景 | Git、网络访问或已部署的 OpenAI 兼容 LLM、可写持久化磁盘。 |
-| 源码后端 | Python 3.11、`pip`、GDAL/Rasterio 所需系统库（建议使用官方 Python wheel 或容器）。 |
-| 源码前端 | Node.js 20 LTS、npm 10+。 |
-| Docker 部署 | Docker Engine 24+、Docker Compose v2、至少 8 GB 可用磁盘；真实模型与影像任务需要按模型规模准备 CPU/GPU、内存和存储。 |
-| PROSAIL | 随后端代码提供；LAI 报告模板必须可读。 |
-| APSIM | APSIM Next Gen `Models` 可执行文件、对应 `APSIM_ROOT` 和可执行权限。Docker 基线镜像不打包仓库外层 `ApsimX/`。 |
-| Sentinel-2 搜索/读取 | 可访问配置的 STAC 与资产签名服务；生产环境需要配置出网、超时和重试策略。 |
+| 工具 | 建议版本 | 检查命令 |
+| --- | --- | --- |
+| Git | 较新版本 | `git --version` |
+| Python | 3.11 | `python --version` 或 `py -3.11 --version` |
+| Node.js | 20 LTS | `node --version` |
+| npm | 10+ | `npm --version` |
 
-准备部署时还应规划独立目录或卷，至少分离：运行时 SQLite、报告/Artifact、RAG 向量库、模型文件、输入影像和日志。不要将这些可变数据保存在会被镜像重建覆盖的容器层中。
+真实对话还需要一个可用的大模型服务。对新人而言，最简单的方式是使用阿里云百炼；仅检查页面和接口时也可以先使用项目内置的 `heuristic` 模式，不需要 API Key。
 
-### 2. 配置 LLM 服务
+### 2. 申请阿里云百炼 API Key
 
-KTP 不在默认 Docker Compose 中启动大模型。请先确保一个 OpenAI 兼容服务可访问，例如 `http://<llm-host>:8000/v1`，并记录模型名称与 API Key。生产环境不要使用 `EMPTY` 或示例密钥。
+1. 登录[阿里云百炼控制台](https://bailian.console.aliyun.com/?tab=model)。首次使用时，按页面提示开通服务；账号未完成实名认证时需要先认证。
+2. 在控制台右上角确认服务地域，例如“中国（北京）”。API Key、模型和 API Host 必须属于同一地域。
+3. 进入“API Key”页面，点击“创建 API Key”。个人开发可以先选择默认业务空间；团队项目建议按项目划分业务空间和权限。
+4. 创建完成后，立即复制并妥善保存页面显示的完整 API Key 和 API Host。完整 Key 关闭弹窗后通常无法再次查看。
+5. 模型 ID 初次可使用 `qwen-plus`。其他可用模型及地域差异以[百炼模型列表](https://help.aliyun.com/zh/model-studio/models)为准。
 
-推荐配置：
+官方参考：[获取 API Key](https://help.aliyun.com/zh/model-studio/get-api-key) · [OpenAI 兼容接口](https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope)
 
-```dotenv
-AGENT_LLM_BACKEND=openai_compatible
-AGENT_LLM_OPENAI_API_BASE=https://llm.example.com/v1
-AGENT_LLM_OPENAI_API_KEY=replace-with-secret
-AGENT_LLM_OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
-AGENT_LLM_OPENAI_DISABLE_THINKING=true
-AGENT_LLM_REQUEST_TIMEOUT_SECONDS=180
+中国（北京）地域当前的 OpenAI 兼容地址形如：
+
+```text
+https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
 ```
 
-可在无模型的功能测试中设置 `AGENT_LLM_BACKEND=heuristic`。使用 `subprocess_qwen` 时，必须额外提供具有 `torch`、`transformers` 和模型权重的 Python 运行环境；该模式不适合作为未评估的生产默认值。
+请优先复制控制台实际显示的 API Host，不要照抄 `<WorkspaceId>`。不同地域的地址不同，旧账号也可能仍在使用其他官方兼容地址。
 
-### 3. 源码开发环境
+> KTP 不直接读取 `DASHSCOPE_API_KEY`。下一步需要把百炼 Key 写入项目自己的 `AGENT_LLM_OPENAI_API_KEY` 配置。
+
+### 3. 安装依赖
+
+#### Windows PowerShell
 
 在项目根目录执行：
 
+```powershell
+py -3.11 -m venv backend/.venv
+.\backend\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\backend\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+
+Copy-Item backend/.env.example backend/.env
+
+Set-Location frontend
+npm ci
+Set-Location ..
+```
+
+如果系统没有 `py` 命令，但 `python --version` 显示为 3.11，可把第一行改为 `python -m venv backend/.venv`。
+
+#### macOS / Linux
+
 ```bash
-cd ktp
 python3.11 -m venv backend/.venv
 backend/.venv/bin/python -m pip install --upgrade pip
 backend/.venv/bin/python -m pip install -r backend/requirements.txt
 
 cp backend/.env.example backend/.env
+
 cd frontend
 npm ci
 cd ..
 ```
 
-编辑 `backend/.env`。下列示例可启动一个本地、持久化、使用远端 OpenAI 兼容模型的开发环境；所有路径应替换为服务器上的绝对路径。
+如果 `rasterio`、`faiss-cpu` 等依赖安装失败，请先确认正在使用 Python 3.11 和 64 位环境。Linux 还可能需要 GDAL 等系统库；不想处理本机依赖时，可改用 Docker 环境。
+
+### 4. 配置后端
+
+打开 `backend/.env`，先用下面这组最小开发配置替换对应内容：
 
 ```dotenv
+# 本地开发
 APP_ENV=development
 APP_HOST=127.0.0.1
 APP_PORT=8005
 APP_AUTH_ENABLED=false
+APP_JWT_SECRET=change-me-local-development-secret-at-least-32-chars
 APP_CORS_ORIGINS=http://127.0.0.1:3000
 
-DATABASE_URL=sqlite:////absolute/path/to/ktp/backend/data/model_registry.sqlite3
+# 本地 SQLite
+DATABASE_URL=sqlite:///./ktp_model_registry.sqlite3
 V2_API_STORE_BACKEND=sqlite
-V2_API_SQLITE_PATH=/absolute/path/to/ktp/backend/data/ktp_v2_runtime.sqlite3
+V2_API_SQLITE_PATH=./ktp_v2_runtime.sqlite3
 
+# 阿里云百炼
 AGENT_LLM_BACKEND=openai_compatible
-AGENT_LLM_OPENAI_API_BASE=http://127.0.0.1:8000/v1
-AGENT_LLM_OPENAI_API_KEY=replace-me
-AGENT_LLM_OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
+AGENT_LLM_OPENAI_API_BASE=https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+AGENT_LLM_OPENAI_API_KEY=sk-替换为你申请的百炼Key
+AGENT_LLM_OPENAI_MODEL_NAME=qwen-plus
+AGENT_LLM_OPENAI_DISABLE_THINKING=false
 AGENT_LLM_REQUEST_TIMEOUT_SECONDS=180
-
-LAI_REPORT_OUTPUT_DIR=/absolute/path/to/ktp/reports
-LAI_REPORT_TEMPLATE_PATH=/absolute/path/to/ktp_product/dev-data/new/lai_report_v3.html
-LAI_INVERSION_BATCH=512
 ```
 
-启动后端和前端：
+配置时请注意：
 
-```bash
-# Terminal 1
-cd ktp/backend
-.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8005 --reload
+- `AGENT_LLM_OPENAI_API_BASE` 使用百炼控制台显示的实际 API Host，并保留末尾的 `/compatible-mode/v1`。
+- Base URL 中不要再追加 `/chat/completions`，KTP 会自动追加该路径。
+- `AGENT_LLM_OPENAI_API_KEY` 填完整 Key，不要保留示例值 `EMPTY`。
+- `AGENT_LLM_OPENAI_MODEL_NAME` 填模型 ID，例如 `qwen-plus`，不要填写模型展示名称。
+- `.env` 已被 Git 忽略。不要把 API Key 写入 README、源代码、截图或提交记录。
 
-# Terminal 2
-cd ktp/frontend
+如果暂时没有百炼 Key，只想确认项目能否启动，可改为：
+
+```dotenv
+AGENT_LLM_BACKEND=heuristic
+```
+
+`heuristic` 只提供确定性的兜底逻辑，不能代表真实大模型效果。
+
+### 5. 启动项目
+
+打开两个终端，均从项目根目录开始。
+
+#### Windows PowerShell
+
+终端 1——启动后端：
+
+```powershell
+Set-Location backend
+.\.venv\Scripts\python.exe -m uvicorn apps.api_gateway.main:app --host 127.0.0.1 --port 8005 --reload
+```
+
+终端 2——启动前端：
+
+```powershell
+Set-Location frontend
 npm run dev
 ```
 
-打开 `http://127.0.0.1:3000`。开发服务器默认把请求代理至 `http://127.0.0.1:8005`；如后端端口不同，创建 `frontend/.env.local`：
+#### macOS / Linux
 
-```dotenv
-VITE_API_PROXY_TARGET=http://127.0.0.1:<backend-port>
+终端 1——启动后端：
+
+```bash
+cd backend
+.venv/bin/python -m uvicorn apps.api_gateway.main:app --host 127.0.0.1 --port 8005 --reload
 ```
 
-首次运行真实推理前，需要注册一个 `ready` 模型，其 `artifact_uri` 指向本机可读的模型文件，并提供多类别预测语义。首次运行真实 LAI 前，需要准备输入 GeoTIFF、LUT 和报告模板。可用 `use_mock=true` 验证产品链路，但不得将 mock 结果作为业务结论。
+终端 2——启动前端：
 
-### 4. 可选的 APSIM 配置
+```bash
+cd frontend
+npm run dev
+```
 
-在承载后端进程的主机或容器内提供 APSIM Linux 发布物，并设置：
+浏览器通常会自动打开 <http://127.0.0.1:3000>。如果没有自动打开，请手动访问该地址。
+
+### 6. 验证是否成功
+
+先检查后端：
+
+```bash
+curl http://127.0.0.1:8005/health
+```
+
+能收到 JSON 响应说明后端已经监听。随后打开前端并发送一条简单消息，例如：
+
+```text
+你好，请介绍一下你能完成哪些遥感分析任务。
+```
+
+如果使用百炼配置，后端日志中不应出现 `401`、`invalid_api_key` 或上游 `404`。如果使用 `heuristic`，页面可以工作，但回复能力会明显受限。
+
+### 7. 常见问题
+
+#### 百炼返回 401 或 `invalid_api_key`
+
+- 检查 Key 是否复制完整，前后是否带有多余空格或引号。
+- 检查 Key 与 API Host 是否来自同一地域、同一业务空间。
+- 确认 Key 有权访问 `AGENT_LLM_OPENAI_MODEL_NAME` 指定的模型。
+- 如果 Key 曾经出现在提交记录或聊天截图中，请立即去百炼控制台重置或删除它。
+
+#### 大模型接口返回 404
+
+最常见原因是 Base URL 配错。正确配置写到 `/compatible-mode/v1` 即可：
+
+```dotenv
+AGENT_LLM_OPENAI_API_BASE=https://<你的API-Host>/compatible-mode/v1
+```
+
+不要把 `/chat/completions` 写进环境变量；也不要把 DashScope 原生接口的 `/api/v1` 与 OpenAI 兼容接口混用。
+
+#### 前端提示后端不可用
+
+1. 访问 <http://127.0.0.1:8005/health>，确认后端已启动。
+2. 确认后端使用 `8005` 端口，且没有被其他程序占用。
+3. 如果后端改用了其他端口，创建 `frontend/.env.local`：
+
+   ```dotenv
+   VITE_API_PROXY_TARGET=http://127.0.0.1:你的后端端口
+   ```
+
+4. 修改后重启 `npm run dev`。
+
+#### Python 提示找不到模块
+
+确保从 `backend/` 目录运行 Uvicorn，并使用刚创建的虚拟环境 Python。不要混用系统 Python 和 `.venv` 中的 Python。
+
+#### SQLite 提示无法打开数据库
+
+快速开始使用的是相对于 `backend/` 的数据库路径。请确认该目录可写，并从 `backend/` 目录启动后端。生产环境应改为明确的持久化路径或外部数据库，并做好备份。
+
+#### 首次安装很慢
+
+后端包含 Rasterio、FAISS、SciPy 等科学计算依赖，前端也需要下载 npm 依赖。首次安装耗时较长是正常现象。网络受限时请使用团队统一的可信镜像源，不要随意下载来历不明的二进制包。
+
+### 8. 可选：配置 APSIM
+
+在运行后端的主机或容器中准备 APSIM 发布物，并在 `backend/.env` 中设置：
 
 ```dotenv
 APSIM_ROOT=/opt/apsim
 APSIM_MODELS_BIN=/opt/apsim/bin/Release/net8.0/linux-x64/publish/Models
 ```
 
-验证 `APSIM_MODELS_BIN` 存在、可执行，且 `APSIM_ROOT` 中包含所需模板与依赖。缺失时 `apsim.crop_simulation` 会显式失败，不会生成伪造模拟结果。
+`APSIM_MODELS_BIN` 必须存在且可执行，`APSIM_ROOT` 中需要包含任务使用的模板和依赖。未配置时，普通对话和其他工具仍可使用；调用 `apsim.crop_simulation` 时会明确失败，不会伪造模拟结果。
 
 ## 部署上线
 

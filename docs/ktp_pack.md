@@ -96,7 +96,7 @@ Flow rules:
 Start the main gateway host:
 
 ```bash
-cd /home/D/liumeng/ktp
+cd backend
 python -m uvicorn apps.api_gateway.main:app --host 0.0.0.0 --port 18080
 ```
 
@@ -115,7 +115,7 @@ Recommended local split:
 Standalone V2 API is still available:
 
 ```bash
-cd /home/D/liumeng/ktp
+cd backend
 python -m uvicorn v2.apps.api.main:app --host 0.0.0.0 --port 18180
 ```
 
@@ -133,7 +133,7 @@ Then use prompts such as:
 Pack-focused tests:
 
 ```bash
-cd /home/D/liumeng/ktp
+cd backend
 python -m pytest v2/tests/test_ktp_pack_smoke.py -q
 ```
 

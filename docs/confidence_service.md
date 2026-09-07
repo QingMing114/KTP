@@ -48,5 +48,5 @@ This structure is already consumable by:
 ## Validation
 
 ```bash
-/tmp/ktp-py311/bin/pytest tests/test_confidence_service.py tests/test_confidence_api.py
+python -m pytest tests/test_confidence_service.py tests/test_confidence_api.py
 ```

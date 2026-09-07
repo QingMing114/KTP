@@ -3,7 +3,7 @@
 ## Local setup
 
 ```bash
-cd /home/D/liumeng/ktp_product
+cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -U pip
@@ -13,7 +13,7 @@ pip install -e ".[dev]"
 ## Start backend
 
 ```bash
-cd /home/D/liumeng/ktp_product
+cd backend
 python scripts/start_product_backend.py
 ```
 
@@ -33,4 +33,3 @@ Default OpenAI-compatible upstream:
 - `http://127.0.0.1:8000/v1`
 
 Override via `.env`.
-

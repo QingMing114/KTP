@@ -75,8 +75,8 @@ Implemented in this round:
 Start the main gateway host on `18080`:
 
 ```bash
-cd /home/D/liumeng/ktp
-/tmp/ktp-py311/bin/python -m uvicorn apps.api_gateway.main:app --host 0.0.0.0 --port 18080
+cd backend
+python -m uvicorn apps.api_gateway.main:app --host 0.0.0.0 --port 18080
 ```
 
 Main checks:
@@ -102,17 +102,17 @@ Recommended local port split:
 Standalone V2 API is still available for isolated work:
 
 ```bash
-cd /home/D/liumeng/ktp
-/tmp/ktp-py311/bin/python -m uvicorn v2.apps.api.main:app --host 0.0.0.0 --port 18180
+cd backend
+python -m uvicorn v2.apps.api.main:app --host 0.0.0.0 --port 18180
 ```
 
 Start the V2 API with persistent SQLite storage:
 
 ```bash
-cd /home/D/liumeng/ktp
+cd backend
 export V2_API_STORE_BACKEND=sqlite
-export V2_API_SQLITE_PATH=/tmp/ktp_v2_runtime.sqlite3
-/tmp/ktp-py311/bin/python -m uvicorn v2.apps.api.main:app --host 0.0.0.0 --port 18180
+export V2_API_SQLITE_PATH=./var/data/ktp_v2_runtime.sqlite3
+python -m uvicorn v2.apps.api.main:app --host 0.0.0.0 --port 18180
 ```
 
 Standalone V2 health check:
@@ -190,7 +190,7 @@ Replay now performs a deterministic dry run:
 Frontend skeleton TypeScript check:
 
 ```bash
-cd /home/D/liumeng/ktp/v2/apps/web
+cd frontend
 npm install
 npm run check
 ```
@@ -198,7 +198,7 @@ npm run check
 Frontend demo without Node:
 
 ```bash
-cd /home/D/liumeng/ktp/v2/apps/web
+cd frontend
 python -m http.server 4173
 ```
 
@@ -207,8 +207,8 @@ python -m http.server 4173
 Run the main gateway/V2 regression subset:
 
 ```bash
-cd /home/D/liumeng/ktp
-/tmp/ktp-py311/bin/pytest \
+cd backend
+python -m pytest \
   v2/tests/test_api_smoke.py \
   v2/tests/test_registry_smoke.py \
   v2/tests/test_ktp_pack_smoke.py \
@@ -229,6 +229,6 @@ cd /home/D/liumeng/ktp
 
 Every new V2 module must update:
 
-- [docs/system_manual.md](/home/D/liumeng/ktp/docs/system_manual.md)
+- [docs/system_manual.md](system_manual.md)
 - this file
 - the relevant API/frontend/pack docs

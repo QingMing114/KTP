@@ -14,10 +14,10 @@ It answers a narrower and more useful question:
 
 This document should be read together with:
 
-- [claude_code_architecture_comparison.md](/home/D/liumeng/ktp_product/docs/claude_code_architecture_comparison.md)
-- [multi_agent_single_entry.md](/home/D/liumeng/ktp_product/docs/multi_agent_single_entry.md)
-- [canonical_product_protocol.md](/home/D/liumeng/ktp_product/docs/canonical_product_protocol.md)
-- [frontend_integration_standard.md](/home/D/liumeng/ktp_product/docs/frontend_integration_standard.md)
+- [claude_code_architecture_comparison.md](claude_code_architecture_comparison.md)
+- [multi_agent_single_entry.md](multi_agent_single_entry.md)
+- [canonical_product_protocol.md](canonical_product_protocol.md)
+- [frontend_integration_standard.md](frontend_integration_standard.md)
 
 ## Executive Summary
 

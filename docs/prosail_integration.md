@@ -7,7 +7,7 @@ PROSAIL 是一个用于植被光谱模拟和叶面积指数（LAI）反演的模
 ## 2. 集成过程
 
 ### 2.1 准备工作
-- 解压并放置 PROSAIL 算法代码到 `/home/D/liumeng/ktp_product/prosail_python` 目录
+- PROSAIL 算法代码位于仓库相对目录 `backend/prosail_python`
 - 确保 PROSAIL 核心文件（`prosail.py`、`prosail_core.py` 和 `prosail_api.py`）可用
 
 ### 2.2 工具实现

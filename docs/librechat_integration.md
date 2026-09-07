@@ -61,8 +61,8 @@ If both services run inside the same Docker network, use the backend service nam
 Start the backend:
 
 ```bash
-cd /home/D/liumeng/ktp_product
-/home/D/liumeng/miniconda3/envs/rsys/bin/python scripts/start_product_backend.py
+cd backend
+python scripts/start_product_backend.py
 ```
 
 Find the Ubuntu host IP for Windows clients:
@@ -74,17 +74,17 @@ hostname -I | awk '{print $1}'
 Optional provider smoke check:
 
 ```bash
-cd /home/D/liumeng/ktp_product
-/home/D/liumeng/miniconda3/envs/rsys/bin/python scripts/check_librechat_provider.py --api-key sk-ktp-local
+cd backend
+python scripts/check_librechat_provider.py --api-key sk-ktp-local
 ```
 
 Optional dataset-backed async workflow check:
 
 ```bash
-cd /home/D/liumeng/ktp_product
-/home/D/liumeng/miniconda3/envs/rsys/bin/python scripts/check_dataset_async_flow.py \
+cd backend
+python scripts/check_dataset_async_flow.py \
   --api-key sk-ktp-local \
-  --source-uri /tmp/ktp_baldness_real_flow/inputs/req-baldness-real-001_crop.tif \
+  --source-uri ./var/runtime/baldness_real_flow/inputs/req-baldness-real-001_crop.tif \
   --message "请对这张头皮多光谱影像做真实斑秃识别，并生成分析报告、置信度说明和可视化。" \
   --region scalp \
   --crop-type hair \
@@ -121,12 +121,12 @@ The backend will resolve the dataset record and inherit stored `region/crop_type
 If you want a CLI-style smoke check that mimics LibreChat's `/v1` usage:
 
 ```bash
-cd /home/D/liumeng/ktp_product
-/home/D/liumeng/miniconda3/envs/rsys/bin/python scripts/check_openai_dataset_chat.py \
+cd backend
+python scripts/check_openai_dataset_chat.py \
   --client-name librechat \
   --ref-mode text \
   --api-key sk-ktp-local \
-  --source-uri /tmp/ktp_baldness_real_flow/inputs/req-baldness-real-001_crop.tif \
+  --source-uri ./var/runtime/baldness_real_flow/inputs/req-baldness-real-001_crop.tif \
   --message "请对这张头皮多光谱影像做真实斑秃识别，并生成分析报告、置信度说明和可视化。" \
   --region scalp \
   --crop-type hair \

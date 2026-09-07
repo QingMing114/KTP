@@ -15,10 +15,10 @@ V1 remains:
 
 For the live V1 technical description, use:
 
-- [../system_manual.md](/home/D/liumeng/ktp/docs/system_manual.md)
-- [../workflow.md](/home/D/liumeng/ktp/docs/workflow.md)
-- [../integration.md](/home/D/liumeng/ktp/docs/integration.md)
-- [../mvp_runbook.md](/home/D/liumeng/ktp/docs/mvp_runbook.md)
+- [../system_manual.md](../system_manual.md)
+- [../workflow.md](../workflow.md)
+- [../integration.md](../integration.md)
+- [../mvp_runbook.md](../mvp_runbook.md)
 
 ## Freeze Notes
 
@@ -31,8 +31,8 @@ For the live V1 technical description, use:
 Core V1 gateway/orchestrator workflow:
 
 ```bash
-cd /home/D/liumeng/ktp
-/tmp/ktp-py311/bin/python scripts/start_gateway_qwen_local.py --port 18080
+cd backend
+python scripts/start_gateway_qwen_local.py --port 18080
 ```
 
 Health:
@@ -45,5 +45,5 @@ curl http://127.0.0.1:18080/services/health
 Regression:
 
 ```bash
-/tmp/ktp-py311/bin/pytest tests/integration tests/e2e
+python -m pytest tests/integration tests/e2e
 ```
