@@ -95,4 +95,43 @@ describe('requestJson 401 handling', () => {
     }
     vi.restoreAllMocks()
   })
+
+  it('clears all stored credentials and notifies the app on 401', async () => {
+    const { onAuthExpired, requestJson } = await import('../services/api')
+    localStorage.setItem('ktp_v2_jwt_token', 'expired-jwt')
+    localStorage.setItem('ktp_v2_api_key', 'invalid-api-key')
+    const expired = vi.fn()
+    onAuthExpired(expired)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      clone: () => ({ text: () => Promise.resolve('{"detail":"Invalid token"}') }),
+    }))
+
+    await expect(requestJson('/v2/sessions')).rejects.toThrow()
+
+    expect(localStorage.getItem('ktp_v2_jwt_token')).toBeNull()
+    expect(localStorage.getItem('ktp_v2_api_key')).toBeNull()
+    expect(expired).toHaveBeenCalledOnce()
+    onAuthExpired(null)
+    vi.restoreAllMocks()
+  })
+
+  it('preserves the login error instead of treating bad credentials as an expired session', async () => {
+    const { authLogin, onAuthExpired } = await import('../services/api')
+    const expired = vi.fn()
+    onAuthExpired(expired)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      clone: () => ({ text: () => Promise.resolve('{"detail":"Invalid credentials"}') }),
+    }))
+
+    await expect(authLogin('admin', 'wrong-password')).rejects.toThrow('401 Invalid credentials')
+    expect(expired).not.toHaveBeenCalled()
+    onAuthExpired(null)
+    vi.restoreAllMocks()
+  })
 })

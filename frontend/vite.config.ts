@@ -35,10 +35,6 @@ export default defineConfig(({ mode }) => {
             })
           },
         },
-        '/chat': {
-          target: apiProxyTarget,
-          changeOrigin: true,
-        },
         '/health': {
           target: apiProxyTarget,
           changeOrigin: true,

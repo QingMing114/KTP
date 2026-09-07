@@ -26,8 +26,9 @@ function loadInitialAuth(): AuthState {
         }
       }
     } catch {
-      api.clearJwtToken()
+      // Invalid persisted credentials are handled below.
     }
+    api.clearJwtToken()
   }
   return { isAuthenticated: false, user: null, token: null }
 }
@@ -148,7 +149,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         case 'submission.cancelled':
           return {
             ...prev,
-            pendingSubmission: { ...sub, status: 'cancelled' as const, stage: 'failed' as const },
+            pendingSubmission: { ...sub, status: 'cancelled' as const, stage: 'cancelled' as const },
           }
 
         case 'submission.updated':
@@ -193,6 +194,21 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   }, [])
 
   const refreshSessions = useCallback(async (options: { preferredSessionId?: string; preferredRunId?: string } = {}) => {
+    if (!api.getJwtToken() && !api.getApiKey()) {
+      setState(prev => ({
+        ...prev,
+        sessions: [],
+        selectedSessionId: null,
+        selectedSession: null,
+        sessionMessages: [],
+        sessionRuns: [],
+        selectedRunId: null,
+        selectedRun: null,
+        errorMessage: null,
+        loading: { ...prev.loading, sessions: false },
+      }))
+      return
+    }
     setState(prev => ({ ...prev, loading: { ...prev.loading, sessions: true } }))
     try {
       const conversations = await listConversations()
@@ -215,6 +231,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
           selectedRunId: null,
           selectedRun: null,
           replayResponse: null,
+          errorMessage: null,
           loading: { ...prev.loading, sessions: false }
         }))
         return
@@ -233,6 +250,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         selectedRunId: null,
         selectedRun: null,
         replayResponse: null,
+        errorMessage: null,
         loading: { ...prev.loading, sessions: false }
       }))
 
@@ -585,8 +603,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     setState(prev => ({
       ...prev,
       auth: { isAuthenticated: true, user, token: result.access_token },
+      errorMessage: null,
     }))
-  }, [])
+    refreshAll()
+  }, [refreshAll])
 
   const register = useCallback(async (userId: string, password: string) => {
     const result = await api.authRegister(userId, password)
@@ -595,12 +615,15 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     setState(prev => ({
       ...prev,
       auth: { isAuthenticated: true, user, token: result.access_token },
+      errorMessage: null,
     }))
-  }, [])
+    refreshAll()
+  }, [refreshAll])
 
   const logout = useCallback(() => {
     api.authLogout()
     api.clearJwtToken()
+    api.clearApiKey()
     setState(prev => ({
       ...prev,
       auth: { isAuthenticated: false, user: null, token: null },
@@ -608,6 +631,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       selectedSessionId: null,
       selectedSession: null,
       sessionMessages: [],
+      sessionRuns: [],
+      selectedRunId: null,
+      selectedRun: null,
+      errorMessage: null,
     }))
   }, [])
 
@@ -624,6 +651,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       setState(prev => ({
         ...prev,
         auth: { isAuthenticated: false, user: null, token: null },
+        sessions: [],
+        selectedSessionId: null,
+        selectedSession: null,
+        sessionMessages: [],
+        sessionRuns: [],
+        selectedRunId: null,
+        selectedRun: null,
       }))
     })
     return () => api.onAuthExpired(null)

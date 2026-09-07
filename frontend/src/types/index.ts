@@ -174,7 +174,7 @@ export interface Attachment {
 }
 
 export type SubmissionStatus = "queued" | "running" | "cancelling" | "cancelled" | "completed" | "failed"
-export type SubmissionStage  = "accepted" | "processing" | "finalizing" | "completed" | "failed"
+export type SubmissionStage  = "accepted" | "processing" | "finalizing" | "completed" | "failed" | "cancelled"
 
 export interface PendingArtifactRef {
   artifact_id: string

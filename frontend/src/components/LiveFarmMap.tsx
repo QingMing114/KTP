@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
-import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet'
+import { GeoJSON, ImageOverlay, MapContainer, TileLayer, useMap } from 'react-leaflet'
 import type { LatLngBoundsExpression } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet-draw'
 import 'leaflet-draw/dist/leaflet.draw.css'
 import './LiveFarmMap.css'
 import { MapPin } from 'lucide-react'
-import type { LiveFarm } from '../services/spatialClient'
+import type { LaiMapOverlay, LiveFarm } from '../services/spatialClient'
+import { buildUrl, getApiKey, getJwtToken } from '../services/api'
 import { formatAoiArea, formatLeafletArea, validateAoiGeometry, type AoiGeometry } from '../utils/aoiGeometry'
 
 export type { AoiGeometry } from '../utils/aoiGeometry'
@@ -36,6 +37,11 @@ interface Props {
   onAoiError: (message: string) => void
   clearVersion: number
   aoiAreaHectares: number | null
+  laiOverlay: LaiMapOverlay | null
+  overlayVisible: boolean
+  overlayOpacity: number
+  onOverlayVisibleChange: (visible: boolean) => void
+  onOverlayOpacityChange: (opacity: number) => void
 }
 
 const defaultCenter: Position = [38.55, 101.3]
@@ -63,6 +69,16 @@ function FarmFocus({ farm }: { farm?: LiveFarm }) {
     const bounds: LatLngBoundsExpression | null = points.length ? points : null
     if (bounds) map.fitBounds(bounds, { padding: [44, 44], maxZoom: 13 })
   }, [farm, map])
+  return null
+}
+
+function OverlayFocus({ overlay }: { overlay: LaiMapOverlay | null }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!overlay) return
+    const [west, south, east, north] = overlay.bounds
+    map.fitBounds([[south, west], [north, east]], { padding: [44, 44], maxZoom: 16 })
+  }, [map, overlay])
   return null
 }
 
@@ -168,7 +184,40 @@ export default function LiveFarmMap({
   onAoiError,
   clearVersion,
   aoiAreaHectares,
+  laiOverlay,
+  overlayVisible,
+  overlayOpacity,
+  onOverlayVisibleChange,
+  onOverlayOpacityChange,
 }: Props) {
+  const [satelliteEnabled, setSatelliteEnabled] = useState(false)
+  const [overlayImageUrl, setOverlayImageUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!laiOverlay?.url) {
+      setOverlayImageUrl(null)
+      return
+    }
+    setOverlayImageUrl(null)
+    const controller = new AbortController()
+    let objectUrl: string | null = null
+    const token = getJwtToken() || getApiKey()
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
+    void fetch(buildUrl(laiOverlay.url), { headers, signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`LAI overlay request failed: ${response.status}`)
+        objectUrl = URL.createObjectURL(await response.blob())
+        setOverlayImageUrl(objectUrl)
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) console.error('Unable to load protected LAI overlay', error)
+        setOverlayImageUrl(null)
+      })
+    return () => {
+      controller.abort()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [laiOverlay?.url])
   const selectedFarm = farms.find((farm) => farm.farm_id === selectedFarmId)
   const mapFarms = useMemo(() => farms.map((farm) => ({
     ...farm,
@@ -177,11 +226,43 @@ export default function LiveFarmMap({
 
   return <div className="absolute inset-0 z-30 bg-[#12382c]" aria-label="农场分析地图">
     <MapContainer center={defaultCenter} zoom={8} zoomControl className="ktp-live-map h-full w-full">
-      <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      <TileLayer
+        attribution={satelliteEnabled
+          ? 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+          : '&copy; OpenStreetMap contributors'}
+        url={satelliteEnabled
+          ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+          : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'}
+      />
       <FarmFocus farm={selectedFarm} />
+      <OverlayFocus overlay={laiOverlay} />
       <DrawControl onAoiChange={onAoiChange} onAoiError={onAoiError} clearVersion={clearVersion} />
       {mapFarms.map((farm) => <GeoJSON key={farm.farm_id} data={farm.feature as never} style={{ color: farm.farm_id === selectedFarmId ? '#86efac' : '#e2e8f0', weight: farm.farm_id === selectedFarmId ? 3 : 2, fillColor: '#10b981', fillOpacity: farm.farm_id === selectedFarmId ? 0.3 : 0.12 }} eventHandlers={{ click: () => onFarmSelect(farm.farm_id) }} />)}
+      {laiOverlay && overlayImageUrl && overlayVisible && <ImageOverlay
+        url={overlayImageUrl}
+        bounds={[[laiOverlay.bounds[1], laiOverlay.bounds[0]], [laiOverlay.bounds[3], laiOverlay.bounds[2]]]}
+        opacity={overlayOpacity}
+        zIndex={350}
+      />}
     </MapContainer>
+    <label className="absolute right-5 top-5 z-[500] flex cursor-pointer items-center gap-2 rounded-lg border border-white/15 bg-slate-950/85 px-3 py-2 text-xs text-slate-100 shadow-xl backdrop-blur">
+      <input aria-label="卫星图层" type="checkbox" checked={satelliteEnabled} onChange={(event) => setSatelliteEnabled(event.target.checked)} className="accent-emerald-400" />
+      卫星图层
+    </label>
+    {laiOverlay && <div className="absolute bottom-5 left-5 z-[500] w-48 rounded-lg border border-white/15 bg-slate-950/85 p-3 text-[10px] text-slate-200 shadow-xl backdrop-blur">
+      <label className="flex cursor-pointer items-center justify-between gap-3 font-medium text-emerald-100">
+        <span>LAI 结果图层</span>
+        <input type="checkbox" checked={overlayVisible} onChange={(event) => onOverlayVisibleChange(event.target.checked)} className="accent-emerald-400" />
+      </label>
+      <label className="mt-2 block text-slate-400">
+        透明度 {Math.round(overlayOpacity * 100)}%
+        <input aria-label="LAI 图层透明度" type="range" min="0" max="1" step="0.05" value={overlayOpacity} onChange={(event) => onOverlayOpacityChange(Number(event.target.value))} className="mt-1 w-full accent-emerald-400" />
+      </label>
+      {laiOverlay.colorScale.length > 1 && <div className="mt-2">
+        <div className="h-2 rounded" style={{ background: `linear-gradient(90deg, ${laiOverlay.colorScale.map((stop) => `${stop.color} ${(stop.value / 7) * 100}%`).join(', ')})` }} />
+        <div className="mt-1 flex justify-between text-[9px] text-slate-400"><span>0</span><span>LAI m²/m²</span><span>7</span></div>
+      </div>}
+    </div>}
     <div className="pointer-events-none absolute bottom-5 right-5 z-[500] flex items-center gap-2 rounded-lg border border-white/15 bg-slate-950/80 px-3 py-2 text-[10px] text-slate-200 shadow-xl backdrop-blur">
       {aoiAreaHectares == null ? <span>尚未选择 AOI</span> : <><span className="rounded bg-cyan-300/15 px-1.5 py-0.5 font-medium text-cyan-100">当前 AOI</span><strong className="text-cyan-100">{formatAoiArea(aoiAreaHectares)}</strong><span className="text-slate-400">可编辑或删除</span></>}
     </div>

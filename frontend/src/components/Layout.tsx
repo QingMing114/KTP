@@ -5,8 +5,9 @@ import LoginModal from './LoginModal'
 import { useAppContext } from '../context/AppContext'
 import { logger } from '../utils/logger'
 import { ToastContainer } from './Toast'
-import { Bot, MessageSquare, Activity, FileText, Plus, Loader2, WifiOff, Key, PanelLeftClose, PanelLeft, LogOut, User, Wrench, Database, History, Settings, Menu, X, BookOpen, Image, MapPin, Layers } from 'lucide-react'
+import { Bot, MessageSquare, Activity, FileText, Plus, Loader2, WifiOff, Key, PanelLeftClose, PanelLeft, LogOut, User, Wrench, Database, History, Settings, Menu, X, BookOpen, Image, MapPin, Layers, Sprout } from 'lucide-react'
 import { getApiKey, setApiKey as saveApiKey } from '../services/api'
+import { CHAT_PATH, DEFAULT_PRODUCT_PATH, YIELD_ESTIMATE_PATH } from '../productRoutes'
 
 const Layout: React.FC = () => {
   const location = useLocation()
@@ -51,7 +52,7 @@ const Layout: React.FC = () => {
     try {
       const session = await createSession("新对话")
       await selectSession(session.session_id)
-      navigate('/')
+      navigate(CHAT_PATH)
     } catch (error) {
       logger.error("Failed to create session:", error)
     } finally {
@@ -63,13 +64,15 @@ const Layout: React.FC = () => {
     {
       label: '核心',
       items: [
-        { path: '/', icon: MessageSquare, label: '对话' },
+        { path: DEFAULT_PRODUCT_PATH, icon: MapPin, label: '地图工作台' },
+        { path: CHAT_PATH, icon: MessageSquare, label: '对话' },
       ],
     },
     {
       label: '分析',
       items: [
         { path: '/analysis', icon: Activity, label: '分析工具' },
+        { path: YIELD_ESTIMATE_PATH, icon: Sprout, label: '产量估计' },
         { path: '/image-analysis', icon: Image, label: '影像分析' },
         { path: '/batch-analysis', icon: Layers, label: '批量分析' },
       ],
@@ -79,7 +82,6 @@ const Layout: React.FC = () => {
       items: [
         { path: '/knowledge', icon: BookOpen, label: '知识库' },
         { path: '/datasets', icon: Database, label: '数据集' },
-        { path: '/workspace', icon: MapPin, label: '地图' },
       ],
     },
     {

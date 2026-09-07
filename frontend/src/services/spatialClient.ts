@@ -1,5 +1,19 @@
+import { canonicalJson, canonicalSseStream } from './canonical/request'
+
 export interface LiveFarm { farm_id: string; name: string; location_label: string; area_hectares: number; geometry: unknown }
-export interface LiveImageryCandidate { item_id: string; acquired_at: string; cloud_cover?: number; thumbnail_url?: string; is_recommended: boolean }
+export interface LiveImageryCandidate {
+  item_id: string
+  collection: string
+  acquired_at: string
+  cloud_cover?: number
+  coverage_percent?: number
+  thumbnail_url?: string
+  platform?: string
+  item_version?: string
+  asset_fingerprint?: string
+  selection_token?: string
+  is_recommended: boolean
+}
 export interface LaiAnalysisRequest { aoi: { geometry: object; source: 'drawn'; area_hectares: number }; imagery_item_id: string; imagery_snapshot?: LiveImageryCandidate; farm_id?: string; parameters?: { target_resolution_m?: number } }
 export interface LaiPixelProgress {
   processed_pixels: number
@@ -14,10 +28,12 @@ export interface LaiAnalysis {
   detail: string
   progress_data: Partial<LaiPixelProgress>
   updated_at?: string
+  completed_at?: string
   artifact_ids: string[]
   result: Record<string, unknown>
 }
 export interface LaiAnalysisEvent {
+  event_id?: string
   kind: 'progress' | 'result' | 'error'
   stage: string
   detail: string
@@ -25,64 +41,77 @@ export interface LaiAnalysisEvent {
   data: Record<string, unknown>
   timestamp?: string
 }
-
-const base = '/api/product/v1'
-
-function firstValidationMessage(detail: unknown): string | null {
-  if (!Array.isArray(detail)) return null
-  const message = detail.find((item) => item && typeof item === 'object' && 'msg' in item)?.msg
-  return typeof message === 'string' ? message : null
+export interface LaiColorStop { value: number; color: string }
+export interface LaiMapOverlay {
+  url: string
+  bounds: [number, number, number, number]
+  opacity: number
+  colorScale: LaiColorStop[]
+}
+export interface LaiAnalysisProducts {
+  reportUrl: string
+  rasterUrl: string
+  overlay: LaiMapOverlay | null
 }
 
-async function apiErrorMessage(response: Response, fallback: string): Promise<string> {
-  try {
-    const payload = await response.json() as {
-      error?: { message?: unknown; detail?: { reason?: unknown } }
-      detail?: unknown
-    }
-    const message = typeof payload.error?.message === 'string' ? payload.error.message : null
-    const reason = typeof payload.error?.detail?.reason === 'string' ? payload.error.detail.reason : null
-    if (message && reason && reason !== message) return `${message}（${reason}）`
-    if (message) return message
-    if (typeof payload.detail === 'string') return payload.detail
-    const validationMessage = firstValidationMessage(payload.detail)
-    if (validationMessage) return `${fallback}：${validationMessage}`
-  } catch {
-    // Some proxy failures return HTML or an empty response body.
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+export function readLaiAnalysisProducts(result: Record<string, unknown>): LaiAnalysisProducts {
+  const overlay = recordValue(result.map_overlay)
+  const rawBounds = overlay?.bounds
+  const bounds = Array.isArray(rawBounds) && rawBounds.length === 4 && rawBounds.every((value) => typeof value === 'number' && Number.isFinite(value))
+    ? rawBounds as [number, number, number, number]
+    : null
+  const rawScale = Array.isArray(overlay?.color_scale) ? overlay.color_scale : []
+  const colorScale = rawScale.flatMap((stop) => (
+    Array.isArray(stop)
+    && stop.length === 2
+    && typeof stop[0] === 'number'
+    && Number.isFinite(stop[0])
+    && typeof stop[1] === 'string'
+      ? [{ value: stop[0], color: stop[1] }]
+      : []
+  ))
+  const overlayUrl = typeof overlay?.url === 'string' ? overlay.url : ''
+  const opacity = typeof overlay?.opacity === 'number' && Number.isFinite(overlay.opacity)
+    ? Math.min(1, Math.max(0, overlay.opacity))
+    : 0.72
+
+  return {
+    reportUrl: typeof result.report_uri === 'string' ? result.report_uri : '',
+    rasterUrl: typeof result.lai_raster_uri === 'string' ? result.lai_raster_uri : '',
+    overlay: overlayUrl && bounds ? { url: overlayUrl, bounds, opacity, colorScale } : null,
   }
-  return `${fallback}（HTTP ${response.status}）`
-}
-
-async function requestJson<T>(input: RequestInfo | URL, init: RequestInit | undefined, fallback: string): Promise<T> {
-  const response = await fetch(input, init)
-  if (!response.ok) throw new Error(await apiErrorMessage(response, fallback))
-  return response.json() as Promise<T>
 }
 
 export async function fetchLiveFarms(): Promise<LiveFarm[]> {
-  const payload = await requestJson<{ items: LiveFarm[] }>(`${base}/farms`, undefined, '无法加载示范农场')
+  const payload = await canonicalJson<{ items: LiveFarm[] }>('/farms')
   return payload.items
 }
 
 export async function searchLiveImagery(body: object): Promise<LiveImageryCandidate[]> {
-  const payload = await requestJson<{ items: LiveImageryCandidate[] }>(`${base}/imagery/search`, {
+  const payload = await canonicalJson<{ items: LiveImageryCandidate[] }>('/imagery/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  }, 'Sentinel 影像检索失败')
+  })
   return payload.items
 }
 
 export async function createLaiAnalysis(body: LaiAnalysisRequest): Promise<LaiAnalysis> {
-  return requestJson<LaiAnalysis>(`${base}/lai-analyses`, {
+  return canonicalJson<LaiAnalysis>('/lai-analyses', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  }, '无法创建 LAI 分析任务')
+  })
 }
 
 export async function getLaiAnalysis(analysisId: string): Promise<LaiAnalysis> {
-  return requestJson<LaiAnalysis>(`${base}/lai-analyses/${encodeURIComponent(analysisId)}`, undefined, '无法获取 LAI 分析状态')
+  return canonicalJson<LaiAnalysis>(`/lai-analyses/${encodeURIComponent(analysisId)}`)
 }
 
 export function streamLaiAnalysis(
@@ -91,16 +120,10 @@ export function streamLaiAnalysis(
   onError: () => void,
   onOpen?: () => void,
 ): () => void {
-  const source = new EventSource(`${base}/lai-analyses/${encodeURIComponent(analysisId)}/events`)
-  source.onopen = () => onOpen?.()
-  source.addEventListener('analysis.event', (message) => {
-    try {
-      onEvent(JSON.parse((message as MessageEvent<string>).data) as LaiAnalysisEvent)
-    } catch {
-      onError()
-    }
-  })
-  // Keep the source open: EventSource reconnects automatically using the server retry hint.
-  source.onerror = () => onError()
-  return () => source.close()
+  return canonicalSseStream<LaiAnalysisEvent>(
+    `/lai-analyses/${encodeURIComponent(analysisId)}/events`,
+    onEvent,
+    () => onError(),
+    onOpen,
+  )
 }

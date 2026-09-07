@@ -2,6 +2,7 @@ import type { SseEvent, SessionCreateResponse, RunReplayResponse, MetadataRespon
 import type { Session, Run, Dataset, RunSummary, SystemManifest, PluginToolSpec, PluginToolTestResult, KnowledgeDocument, KnowledgeQueryResult } from '../types'
 import { API } from '../constants/api'
 import { logger } from '../utils/logger'
+import { IncrementalSseDecoder } from './sseDecoder'
 
 const DEFAULT_API_BASE_URL = ""
 const API_BASE_STORAGE_KEY = "ktp_v2_api_base_url"
@@ -24,10 +25,20 @@ export function clearJwtToken(): void {
   localStorage.removeItem(JWT_TOKEN_STORAGE_KEY)
 }
 
+export function clearApiKey(): void {
+  localStorage.removeItem(API_KEY_STORAGE_KEY)
+}
+
 let _onAuthExpired: (() => void) | null = null
 
 export function onAuthExpired(callback: (() => void) | null): void {
   _onAuthExpired = callback
+}
+
+export function handleAuthExpired(): void {
+  clearJwtToken()
+  clearApiKey()
+  _onAuthExpired?.()
 }
 
 export function getApiKey(): string {
@@ -102,9 +113,9 @@ export async function requestJson<T = unknown>(path: string, init?: RequestInit)
       } catch {
         detail = response.statusText
       }
-      if (response.status === 401) {
-        clearJwtToken()
-        if (_onAuthExpired) _onAuthExpired()
+      const isCredentialRequest = path === API.V2.AUTH.LOGIN || path === API.V2.AUTH.REGISTER
+      if (response.status === 401 && !isCredentialRequest) {
+        handleAuthExpired()
         throw new Error("认证已过期，请重新登录")
       }
       if (response.status === 429) {
@@ -151,8 +162,7 @@ export async function requestEventStream(
         detail = response.statusText
       }
       if (response.status === 401) {
-        clearJwtToken()
-        if (_onAuthExpired) _onAuthExpired()
+        handleAuthExpired()
         throw new Error("认证已过期，请重新登录")
       }
       if (response.status === 429) {
@@ -167,7 +177,7 @@ export async function requestEventStream(
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
-    let buffer = ""
+    const eventDecoder = new IncrementalSseDecoder(parseSseBlock)
 
     while (true) {
       const { done, value } = await reader.read()
@@ -175,25 +185,12 @@ export async function requestEventStream(
         break
       }
       
-      buffer += decoder.decode(value ?? new Uint8Array(), { stream: true })
-      const blocks = buffer.split("\n\n")
-      buffer = blocks.pop() ?? ""
-      
-      blocks.forEach((block) => {
-        if (block.startsWith(": ")) return
-        const event = parseSseBlock(block)
-        if (event !== null) {
-          onEvent(event)
-        }
-      })
+      const chunk = decoder.decode(value ?? new Uint8Array(), { stream: true })
+      eventDecoder.push(chunk).forEach(onEvent)
     }
-    
-    if (buffer.trim()) {
-      const event = parseSseBlock(buffer)
-      if (event !== null) {
-        onEvent(event)
-      }
-    }
+
+    eventDecoder.push(decoder.decode()).forEach(onEvent)
+    eventDecoder.finish().forEach(onEvent)
   } catch (error) {
     if (onError) {
       onError(error instanceof Error ? error : new Error(String(error)))
@@ -307,6 +304,10 @@ export async function uploadFile(file: File): Promise<{ path: string; name: stri
         detail = typeof payload.detail === "string" ? payload.detail : JSON.stringify(payload.detail)
       } catch {
         detail = await response.text()
+      }
+      if (response.status === 401) {
+        handleAuthExpired()
+        throw new Error("认证已过期，请重新登录")
       }
       throw new Error(`上传失败: ${response.status} ${detail}`)
     }

@@ -1,5 +1,6 @@
 import React from 'react'
 import { escapeHtml } from '../utils'
+import MarkdownRenderer from './MarkdownRenderer'
 
 interface StreamingMarkdownProps {
   content: string
@@ -8,12 +9,7 @@ interface StreamingMarkdownProps {
 const StreamingMarkdown: React.FC<StreamingMarkdownProps> = ({ content }) => {
   const isLikelyMarkdown = content.includes('```') || content.includes('**') || content.includes('##') || content.includes('- ') || content.includes('| ') || /<[a-zA-Z][^>]*>/.test(content)
   if (isLikelyMarkdown) {
-    const MarkdownRenderer = React.lazy(() => import('./MarkdownRenderer'))
-    return (
-      <React.Suspense fallback={<span className="whitespace-pre-wrap">{escapeHtml(content)}</span>}>
-        <MarkdownRenderer content={content} />
-      </React.Suspense>
-    )
+    return <MarkdownRenderer content={content} />
   }
   return <span className="whitespace-pre-wrap">{escapeHtml(content)}</span>
 }

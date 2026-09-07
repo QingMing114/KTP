@@ -21,8 +21,9 @@ function loadInitialAuth(): AuthState {
         }
       }
     } catch {
-      api.clearJwtToken()
+      // Invalid persisted credentials are handled below.
     }
+    api.clearJwtToken()
   }
   return { isAuthenticated: false, user: null, token: null }
 }
