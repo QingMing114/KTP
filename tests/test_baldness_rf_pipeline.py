@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -12,7 +13,7 @@ from rasterio.transform import from_origin
 from ml.baldness_rf.pipeline import run_baldness_rf_pipeline
 
 EXTERNAL_RF_MODEL_PATH = Path(
-    "/home/D/liumeng/bantushibie/test/api_storage/models/rf_model.pkl"
+    os.environ.get("KTP_TEST_RF_MODEL_PATH", "var/models/baldness/rf_model.pkl")
 )
 
 

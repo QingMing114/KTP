@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from threading import Event
 from typing import Callable
 from uuid import uuid4
 
@@ -21,7 +22,8 @@ from v2.adapters.python_services.ktp_services import (
 )
 from v2.packs.registry import DomainPackRegistry
 from v2.policies.guard import PolicyGuard, PolicyGuardError
-from v2.shared.schemas import (
+from v2.runtime.cancellation import RuntimeCancellationError, raise_if_cancelled
+from schemas.runtime import (
     AssistantMessagePartV2,
     AssistantMessageV2,
     ExecutorActionV2,
@@ -151,6 +153,7 @@ class ToolExecutor:
         visible_agents,
         policy,
         event_emitter,
+        cancellation_event: Event | None = None,
     ) -> dict[str, object]:
         """Execute a single tool call and return a result dict.
 
@@ -158,6 +161,7 @@ class ToolExecutor:
 
         Mirrors ``BoundedRuntimeEngine._execute_single_tool_call`` exactly.
         """
+        raise_if_cancelled(cancellation_event)
         spec = self._tool_registry.get_definition(tool_call.tool_name).spec
         invocation = ToolInvocationView(
             call_id=tool_call.call_id or str(uuid4()),
@@ -241,7 +245,7 @@ class ToolExecutor:
             # require_approval mode — emit event and return awaiting state
             awaiting_invocation = invocation.model_copy(
                 update={
-                    "status": "awaiting_approval",
+                    "status": "approval_required",
                     "output_summary": "awaiting_approval",
                     "result_preview": "awaiting_approval",
                 }
@@ -254,12 +258,6 @@ class ToolExecutor:
                     detail=f"Tool {tool_call.tool_name} requires approval before execution.",
                 )
             )
-            observation = ObservationV2(
-                source=tool_call.tool_name,
-                status="awaiting_approval",
-                summary=f"Tool {tool_call.tool_name} is awaiting user approval.",
-                payload={"tool_name": tool_call.tool_name, "tool_input": tool_call.tool_input},
-            )
             append_assistant_part(
                 run,
                 AssistantMessagePartV2(
@@ -269,16 +267,10 @@ class ToolExecutor:
                     status="awaiting_approval",
                 ),
             )
-            event_emitter.emit(
-                event="submission.approval_required",
-                detail=f"Tool {tool_call.tool_name} requires user approval.",
-                observation=observation,
-                tool_invocation=awaiting_invocation,
-                run_status="awaiting_approval",
-            )
             return {
-                "blocked": True,
-                "observation": observation,
+                "blocked": False,
+                "approval_required": True,
+                "observation": None,
                 "final_message": f"Tool {tool_call.tool_name} is awaiting user approval.",
                 "history_item": {
                     "tool_name": tool_call.tool_name,
@@ -325,6 +317,7 @@ class ToolExecutor:
                     replan_count=0,
                     delegation_count=0,
                     event_emitter=event_emitter,
+                    cancellation_event=cancellation_event,
                 )
             elif tool_call.tool_name == "prosail.lai_html_report":
                 # Direct sub-tool selection — enrich with PROSAIL reasoning + pixel progress
@@ -353,6 +346,7 @@ class ToolExecutor:
                         tool_input = {**tool_input, "scene_constraints": _scene_result.constraints}
 
                 def _single_progress_sink(current: int, total: int) -> None:
+                    raise_if_cancelled(cancellation_event)
                     event_emitter.emit(
                         event="tool.progress",
                         detail=f"{current}/{total}",
@@ -365,17 +359,21 @@ class ToolExecutor:
 
                 from v2.tools.lai_report_handler import run_lai_html_report
 
+                raise_if_cancelled(cancellation_event)
                 observation, artifacts = run_lai_html_report(
                     progress_callback=_single_progress_sink,
                     **tool_input,
                 )
                 final_message = observation.summary
             else:
+                raise_if_cancelled(cancellation_event)
                 observation, artifacts = self._tool_registry.invoke(
                     tool_name=tool_call.tool_name,
                     tool_input=tool_call.tool_input,
                 )
                 final_message = observation.summary
+        except RuntimeCancellationError:
+            raise
         except PolicyGuardError as exc:
             observation = ObservationV2(
                 source=tool_call.tool_name,
@@ -444,6 +442,7 @@ class ToolExecutor:
 
         return {
             "blocked": False,
+            "approval_required": False,
             "observation": observation,
             "final_message": final_message,
             "history_item": {
@@ -468,11 +467,13 @@ class ToolExecutor:
         replan_count: int,
         delegation_count: int,
         event_emitter,
+        cancellation_event: Event | None = None,
     ) -> tuple[ObservationV2, list[PackArtifactView], str]:
         """Execute a full KTP pack flow (multi-step pipeline).
 
         Mirrors ``BoundedRuntimeEngine._execute_ktp_pack_flow`` exactly.
         """
+        raise_if_cancelled(cancellation_event)
         bundle = self._tool_registry.ktp_service_bundle
         if bundle is None:
             observation = ObservationV2(
@@ -548,6 +549,7 @@ class ToolExecutor:
                 pass
 
         for step_name in step_names:
+            raise_if_cancelled(cancellation_event)
             # PROSAIL reasoning before LAI report
             if step_name == "prosail.lai_html_report":
                 _scene_params = getattr(request_context, "scene_parameters", None)
@@ -606,6 +608,7 @@ class ToolExecutor:
 
                 def _make_progress_sink(call_id: str) -> Callable[[int, int], None]:
                     def _sink(current: int, total: int) -> None:
+                        raise_if_cancelled(cancellation_event)
                         event_emitter.emit(
                             event="tool.progress",
                             detail=f"{current}/{total}",
@@ -756,6 +759,8 @@ def _run_ktp_step(
     progress_sink: Callable[[int, int], None] | None = None,
 ) -> tuple[ObservationV2, list[PackArtifactView]]:
     """Run a single KTP pack-flow step. Mirrors BoundedRuntimeEngine._run_ktp_step."""
+    extra = context.extra_params or {}
+
     if step_name == "ktp.lookup_model_registry":
         bundle = tool_registry.ktp_service_bundle
         if bundle is None:
@@ -795,7 +800,6 @@ def _run_ktp_step(
     if step_name == "apsim.yield_report":
         from v2.tools.apsim_report_handler import run_apsim_yield_report
 
-        extra = context.extra_params or {}
         return run_apsim_yield_report(
             crop_type=context.crop_type or "wheat",
             region=context.region or "henan",

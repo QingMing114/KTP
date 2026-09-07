@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from threading import Event
 from typing import TYPE_CHECKING
 
-from schemas.runtime import AgentStepV2, RequestContextV2, RunDetail
+from schemas.runtime import AgentStepV2, PermissionPolicy, RequestContextV2, RunDetail
 from v2.runtime.planner import ChatFirstPlanner
+from v2.runtime.cancellation import raise_if_cancelled
 
 if TYPE_CHECKING:
     from infra.llm.provider import AgentLLMProvider
@@ -43,8 +45,12 @@ class SubExecutor:
         self,
         tool_registry: "ToolRegistryV2",
         llm_provider: "AgentLLMProvider | None",
+        policy: PermissionPolicy,
+        cancellation_event: Event | None = None,
     ) -> None:
         self._tool_registry = tool_registry
+        self._policy = policy
+        self._cancellation_event = cancellation_event
         self._planner = ChatFirstPlanner(
             llm_provider=llm_provider,
             system_prompt_suffix=_EXECUTOR_SYSTEM_PROMPT_SUFFIX,
@@ -75,6 +81,7 @@ class SubExecutor:
         artifacts: list = []
 
         for step_index in range(_EXECUTOR_MAX_STEPS):
+            raise_if_cancelled(self._cancellation_event)
             try:
                 agent_step: AgentStepV2 = self._planner.plan(
                     message=goal,
@@ -106,16 +113,33 @@ class SubExecutor:
                 return SubExecutionResult(success=False, summary="执行器未返回工具调用")
 
             for tool_call in agent_step.tool_calls:
+                raise_if_cancelled(self._cancellation_event)
                 result = self._executor.execute_tool_call(
                     run=parent_run,
                     request_context=request_context,
                     tool_call=tool_call,
                     visible_tools=visible_tools,
                     visible_agents=[],
-                    policy=None,
+                    policy=self._policy,
                     event_emitter=parent_emitter,
+                    cancellation_event=self._cancellation_event,
                 )
                 tool_history.append(result["history_item"])
+                if result.get("blocked"):
+                    return SubExecutionResult(
+                        success=False,
+                        summary=str(result.get("final_message") or "委派工具被策略拒绝"),
+                        artifacts=artifacts,
+                        tool_invocations=tool_history,
+                    )
+                observation = result.get("observation")
+                if getattr(observation, "status", None) == "error":
+                    return SubExecutionResult(
+                        success=False,
+                        summary=str(result.get("final_message") or "委派工具执行失败"),
+                        artifacts=artifacts,
+                        tool_invocations=tool_history,
+                    )
                 if result.get("artifacts"):
                     artifacts.extend(result["artifacts"])
 

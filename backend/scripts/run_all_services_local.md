@@ -10,8 +10,8 @@
 
 ```bash
 cp .env.example .env
-/tmp/ktp-py311/bin/pip install -e .[dev]
-/tmp/ktp-py311/bin/python scripts/start_gateway_qwen_local.py --port 18080
+python -m pip install -e .[dev]
+python scripts/start_gateway_qwen_local.py --port 18080
 ```
 
 In another shell:
@@ -33,7 +33,7 @@ curl -X POST http://127.0.0.1:18080/detect \
 For the standalone real baldness workflow demo:
 
 ```bash
-/tmp/ktp-py311/bin/python scripts/demo_baldness_real_flow.py
+python scripts/demo_baldness_real_flow.py
 ```
 
 ## Optional Health Checks

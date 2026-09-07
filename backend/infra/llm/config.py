@@ -9,6 +9,8 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.config.paths import LOGS_DIR
+
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _ENV_FILE = _PROJECT_ROOT / ".env"
 
@@ -135,7 +137,7 @@ class AgentLLMConfig(BaseSettings):
         validation_alias="AGENT_LLM_ALLOW_FALLBACK",
     )
     worker_log_path: str = Field(
-        default="/tmp/ktp_agent_llm_worker.log",
+        default=str(LOGS_DIR / "ktp_agent_llm_worker.log"),
         validation_alias="AGENT_LLM_WORKER_LOG_PATH",
     )
 

@@ -7,6 +7,8 @@ from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.config.paths import DATA_DIR
+
 
 class APIGatewayConfig(BaseSettings):
     """Settings used by the gateway chat and conversation integrations."""
@@ -18,7 +20,7 @@ class APIGatewayConfig(BaseSettings):
     )
 
     conversation_db_path: str = Field(
-        default="/tmp/ktp_gateway_conversations.sqlite3",
+        default=str(DATA_DIR / "ktp_gateway_conversations.sqlite3"),
         validation_alias="API_GATEWAY_CONVERSATION_DB_PATH",
     )
     conversation_history_limit: int = Field(

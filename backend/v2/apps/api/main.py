@@ -1,4 +1,9 @@
-"""Compatibility wrapper around the standalone KTP backend API."""
+"""Deprecated compatibility wrapper around the standalone KTP backend API.
+
+It is retained for `/v2/*` tests and debug clients.  Production deployment
+uses ``apps.api_gateway.main:app`` so canonical and compatibility routes share
+one ``BackendRuntimeHost``.
+"""
 
 from __future__ import annotations
 
@@ -56,5 +61,7 @@ def create_app(
 
 
 app = create_app()
+
+__deprecated__ = "Use apps.api_gateway.main:app for production deployment."
 
 __all__ = ["_encode_sse", "app", "create_app", "install_v2_api"]

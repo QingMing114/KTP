@@ -45,7 +45,7 @@ class _StubOpenAIChatService:
         assert messages[-1].content == "请分析这张影像"
         assert attachments == [
             AttachmentV2(
-                path="/home/D/liumeng/data/demo-field.tif",
+                path="data/demo-field.tif",
                 name="demo-field.tif",
             )
         ]
@@ -60,7 +60,7 @@ class _StubOpenAIChatService:
                     (),
                     {
                         "title": "Open report",
-                        "uri": "/home/D/liumeng/ktp_product/var/reports/report-001.html",
+                        "uri": "var/reports/report-001.html",
                     },
                 )()
             ]
@@ -114,7 +114,7 @@ class _StubStreamingOpenAIChatService(_StubOpenAIChatService):
                 "artifact_type": "report_card",
                 "title": "Open report",
                 "content": None,
-                "uri": "/home/D/liumeng/ktp_product/var/reports/report-001.html",
+                "uri": "var/reports/report-001.html",
             },
         )
         yield RunEventV2(
@@ -183,7 +183,7 @@ def test_openai_chat_completion_routes_into_gateway_bridge() -> None:
                                 {"type": "text", "text": "请分析这张影像"},
                                 {
                                     "type": "input_file",
-                                    "file_url": "file:///home/D/liumeng/data/demo-field.tif",
+                                    "file_url": "file:data/demo-field.tif",
                                 },
                             ],
                         },
@@ -197,7 +197,7 @@ def test_openai_chat_completion_routes_into_gateway_bridge() -> None:
         payload = response.model_dump(mode="json")
         content = payload["choices"][0]["message"]["content"]
         assert content.startswith("知道。Claude")
-        assert "/v2/artifacts/open?path=%2Fhome%2FD%2Fliumeng%2Fktp_product%2Fvar%2Freports%2Freport-001.html" in content
+        assert "/v2/artifacts/open?path=var%2Freports%2Freport-001.html" in content
 
     asyncio.run(_run())
 
@@ -234,7 +234,7 @@ def test_openai_chat_completion_streams_sse_chunks() -> None:
                     type("Msg", (), {"role": "system", "content": "Be helpful."})(),
                     type("Msg", (), {"role": "user", "content": "请分析这张影像"})(),
                 ],
-                attachments=[AttachmentV2(path="/home/D/liumeng/data/demo-field.tif", name="demo-field.tif")],
+                attachments=[AttachmentV2(path="data/demo-field.tif", name="demo-field.tif")],
                 user_id="demo-user",
                 conversation_id="conv-001",
                 client_capabilities={"client": "librechat"},

@@ -5,7 +5,7 @@ import asyncio
 import json
 from pathlib import Path
 from queue import SimpleQueue
-from threading import Thread
+from threading import Event, Thread
 from typing import Callable, Iterator
 from uuid import uuid4
 
@@ -19,9 +19,10 @@ from shared.request_normalization import (
 )
 from v2.agents.registry import AgentProfileRegistry
 from v2.packs.registry import DomainPackRegistry
-from v2.policies.guard import PolicyGuard
+from v2.policies.guard import PolicyGuard, PolicyGuardError
 from v2.policies.registry import PolicyRegistryV2
 from v2.runtime.events import RunEventEmitter
+from v2.runtime.cancellation import RuntimeCancellationError, raise_if_cancelled
 from v2.runtime.executor import (
     ToolExecutor,
     append_assistant_part,
@@ -32,12 +33,13 @@ from v2.runtime.memory_manager import MemoryManager
 from v2.runtime.observer import RunObserver
 from v2.runtime.planner import ChatFirstPlanner
 from v2.runtime.store import RuntimeStore
-from v2.shared.schemas import (
+from schemas.runtime import (
     AgentStepV2,
     AssistantMessagePartV2,
     AssistantMessageV2,
     AttachmentV2,
     DelegationResult,
+    ExecutorActionV2,
     ObservationV2,
     ReplayComparisonV2,
     ReplayResponseV2,
@@ -45,6 +47,7 @@ from v2.shared.schemas import (
     RunEventV2,
     RunDetail,
     RunStateV2,
+    RuntimeRunStatus,
     SessionMessage,
     TraceEventV2,
 )
@@ -76,6 +79,9 @@ class BoundedRuntimeEngine:
         pack_registry: DomainPackRegistry,
         llm_provider: AgentLLMProvider | None = None,
         memory_dir: str | None = None,
+        memory_top_k: int = 5,
+        memory_max_chars: int = 2_000,
+        memory_auto_write_enabled: bool = False,
     ) -> None:
         self._store = store
         self._tool_registry = tool_registry
@@ -92,6 +98,9 @@ class BoundedRuntimeEngine:
             pack_registry=pack_registry,
         )
         self._memory_manager = MemoryManager(memory_dir=memory_dir) if memory_dir else None
+        self._memory_top_k = memory_top_k
+        self._memory_max_chars = memory_max_chars
+        self._memory_auto_write_enabled = memory_auto_write_enabled
 
     def run(
         self,
@@ -100,6 +109,7 @@ class BoundedRuntimeEngine:
         user_message: str,
         user_id: str | None,
         request_context: RequestContextV2 | None = None,
+        cancellation_event: Event | None = None,
     ) -> RunDetail:
         run: RunDetail | None = None
         for event in self.stream(
@@ -107,6 +117,7 @@ class BoundedRuntimeEngine:
             user_message=user_message,
             user_id=user_id,
             request_context=request_context,
+            cancellation_event=cancellation_event,
         ):
             if event.run is not None:
                 run = event.run
@@ -121,6 +132,7 @@ class BoundedRuntimeEngine:
         user_message: str,
         user_id: str | None,
         request_context: RequestContextV2 | None = None,
+        cancellation_event: Event | None = None,
     ) -> Iterator[RunEventV2]:
         del user_id  # reserved for future actor-aware policy decisions
         session = self._store.get_session(session_id)
@@ -142,6 +154,7 @@ class BoundedRuntimeEngine:
                     persist_run=True,
                     replay_of_run_id=None,
                     event_sink=event_queue.put,
+                    cancellation_event=cancellation_event,
                 )
             except Exception as exc:  # pragma: no cover - forwarded after the queue drains
                 final_result["error"] = exc
@@ -220,6 +233,7 @@ class BoundedRuntimeEngine:
         persist_run: bool,
         replay_of_run_id: str | None,
         event_sink: Callable[[RunEventV2], None] | None,
+        cancellation_event: Event | None = None,
     ) -> RunDetail:
         session = self._store.get_session(session_id)
         if session is None:
@@ -232,6 +246,7 @@ class BoundedRuntimeEngine:
             persist_run=persist_run,
             replay_of_run_id=replay_of_run_id,
             event_sink=event_sink,
+            cancellation_event=cancellation_event,
         )
         if persist_run:
             session = self._store.get_session(session_id)
@@ -251,11 +266,13 @@ class BoundedRuntimeEngine:
         persist_run: bool,
         replay_of_run_id: str | None,
         event_sink: Callable[[RunEventV2], None] | None = None,
+        cancellation_event: Event | None = None,
     ) -> RunDetail:
         session = self._store.get_session(session_id)
         if session is None:
             raise KeyError(session_id)
 
+        raise_if_cancelled(cancellation_event)
         resolved_context = self._resolve_request_context(
             request_context=request_context,
             user_message=user_message,
@@ -324,20 +341,47 @@ class BoundedRuntimeEngine:
         )
         observer = RunObserver(max_steps=max_steps)
         tool_history: list[dict[str, object]] = []
-        self._execute_agent_loop(
-            run=run,
-            session_id=session_id,
-            user_message=user_message,
-            request_context=resolved_context,
-            visible_tools=visible_tools,
-            visible_agents=visible_agents,
-            policy=policy,
-            persist_messages=persist_messages,
-            previous_latest_run=previous_latest_run,
-            tool_history=tool_history,
-            emitter=emitter,
-            observer=observer,
-        )
+        try:
+            self._execute_agent_loop(
+                run=run,
+                session_id=session_id,
+                user_message=user_message,
+                request_context=resolved_context,
+                visible_tools=visible_tools,
+                visible_agents=visible_agents,
+                policy=policy,
+                persist_messages=persist_messages,
+                previous_latest_run=previous_latest_run,
+                tool_history=tool_history,
+                emitter=emitter,
+                observer=observer,
+                cancellation_event=cancellation_event,
+            )
+        except RuntimeCancellationError:
+            cancellation_message = "Run cancelled by request."
+            run.status = "cancelled"
+            run.output_message = cancellation_message
+            run.observation = ObservationV2(
+                source="agent.runtime",
+                status="error",
+                summary=cancellation_message,
+                payload={"reason": "cancelled"},
+            )
+            run.trace.append(
+                TraceEventV2(
+                    node="runtime",
+                    event="run_cancelled",
+                    detail="Stopped at a cooperative cancellation boundary.",
+                )
+            )
+            emitter.emit(
+                event="run.cancelled",
+                detail=cancellation_message,
+                observation=run.observation,
+                output_message=cancellation_message,
+                run_status="cancelled",
+                include_run=True,
+            )
 
         if persist_run:
             self._store.save_run(run)
@@ -358,7 +402,9 @@ class BoundedRuntimeEngine:
         tool_history: list[dict[str, object]],
         emitter: RunEventEmitter,
         observer: RunObserver,
+        cancellation_event: Event | None = None,
     ) -> None:
+        raise_if_cancelled(cancellation_event)
         session = self._store.get_session(session_id)
         if session is None:
             raise KeyError(session_id)
@@ -380,6 +426,7 @@ class BoundedRuntimeEngine:
                 max_context_tokens=max_context,
             )
         )
+        raise_if_cancelled(cancellation_event)
         # build_smart_context always returns at least as-trimmed messages;
         # use the compacted window for planning when it differs meaningfully.
         if len(context_messages) != len(recent_messages) or context_summary:
@@ -389,16 +436,27 @@ class BoundedRuntimeEngine:
             session.summary = context_summary
             self._store.save_session(session)
 
-        # Phase B.2: inject relevant project memory as a system-level context prefix.
+        # Phase B.2: retrieve project memory for the current planner request.
+        # Keep it out of session history: a history-window trim must not discard
+        # knowledge retrieved specifically for this turn.
+        memory_context = ""
         if self._memory_manager is not None and self._memory_manager.is_loaded:
-            memory_injection = self._memory_manager.build_context_injection(
+            memory_context = self._memory_manager.build_context_injection(
                 query=user_message,
-                top_k=5,
+                top_k=self._memory_top_k,
+                max_chars=self._memory_max_chars,
             )
-            if memory_injection:
-                recent_messages = [
-                    SessionMessage(role="system", content=memory_injection)
-                ] + list(recent_messages)
+            if memory_context:
+                run.trace.append(
+                    TraceEventV2(
+                        node="memory",
+                        event="memory_context_injected",
+                        detail=(
+                            f"Injected {len(memory_context)} characters of relevant Markdown knowledge "
+                            f"for the current request."
+                        ),
+                    )
+                )
 
         last_task_digest = self._build_last_task_digest(previous_latest_run)
         invalid_image_path_message = self._build_invalid_image_path_clarification(
@@ -469,6 +527,7 @@ class BoundedRuntimeEngine:
         delegation_count = 0
 
         for step_index in range(observer.max_steps):
+            raise_if_cancelled(cancellation_event)
             try:
                 agent_step = self._planner.plan(
                     message=user_message,
@@ -477,6 +536,7 @@ class BoundedRuntimeEngine:
                     recent_messages=recent_messages,
                     tool_history=tool_history,
                     last_task_digest=last_task_digest,
+                    memory_context=memory_context,
                 )
             except AgentLLMError as exc:
                 failure_message = self._describe_llm_failure(exc)
@@ -518,7 +578,57 @@ class BoundedRuntimeEngine:
                     include_run=True,
                 )
                 return
+            except Exception as exc:
+                # Planner adapters are external boundaries; an unexpected
+                # provider/stub error must still produce a terminal run event.
+                prior_tool_failure = (
+                    replan_count > 0
+                    and run.observation is not None
+                    and run.observation.status == "error"
+                )
+                failure_message = (
+                    run.observation.summary
+                    if prior_tool_failure and run.observation is not None
+                    else f"Planner failed: {exc}"
+                )
+                if not prior_tool_failure:
+                    run.observation = ObservationV2(
+                        source="agent.planner",
+                        status="error",
+                        summary=failure_message,
+                        payload={"step_index": step_index, "error_type": type(exc).__name__},
+                    )
+                append_assistant_part(
+                    run,
+                    AssistantMessagePartV2(type="error", text=failure_message, status="failed"),
+                )
+                run.trace.append(TraceEventV2(
+                    node="planner",
+                    event="planning_failed",
+                    detail=f"{type(exc).__name__}: {exc}",
+                ))
+                self._finalize_run(
+                    run=run,
+                    session_id=session_id,
+                    persist_messages=persist_messages,
+                    message=failure_message,
+                    status="failed",
+                    replan_count=replan_count,
+                    delegation_count=delegation_count,
+                    trace_event="run_failed",
+                    trace_detail="Run failed because replanning could not produce a valid next step.",
+                )
+                emitter.emit(
+                    event="run.failed",
+                    detail="Run failed because replanning could not produce a valid next step.",
+                    observation=run.observation,
+                    output_message=failure_message,
+                    run_status="failed",
+                    include_run=True,
+                )
+                return
 
+            raise_if_cancelled(cancellation_event)
             run.agent_steps.append(agent_step)
             run.planner_decision = agent_step
 
@@ -584,8 +694,51 @@ class BoundedRuntimeEngine:
                 return
 
             if agent_step.action == "delegate":
+                raise_if_cancelled(cancellation_event)
                 target = agent_step.delegation_target or "executor_30b"
                 goal = agent_step.delegation_goal or user_message
+
+                try:
+                    self._guard.validate_action(
+                        action=ExecutorActionV2(action_type="delegate", target_agent=target),
+                        policy=policy,
+                        visible_tools=visible_tools,
+                        visible_agents=visible_agents,
+                        replan_count=replan_count,
+                        delegation_count=delegation_count,
+                    )
+                except PolicyGuardError as exc:
+                    failure_message = f"Delegation rejected by policy: {exc}"
+                    run.observation = ObservationV2(
+                        source="agent.policy",
+                        status="error",
+                        summary=failure_message,
+                        payload={"delegation_target": target, "reason": str(exc)},
+                    )
+                    append_assistant_part(
+                        run,
+                        AssistantMessagePartV2(type="error", text=failure_message, status="failed"),
+                    )
+                    self._finalize_run(
+                        run=run,
+                        session_id=session_id,
+                        persist_messages=persist_messages,
+                        message=failure_message,
+                        status="failed",
+                        replan_count=replan_count,
+                        delegation_count=delegation_count,
+                        trace_event="run_failed",
+                        trace_detail=failure_message,
+                    )
+                    emitter.emit(
+                        event="run.failed",
+                        detail=failure_message,
+                        observation=run.observation,
+                        output_message=failure_message,
+                        run_status="failed",
+                        include_run=True,
+                    )
+                    return
 
                 emitter.emit(
                     event="run.progress",
@@ -602,6 +755,8 @@ class BoundedRuntimeEngine:
                 sub = SubExecutor(
                     tool_registry=executor_registry,
                     llm_provider=self._llm_provider,
+                    policy=policy,
+                    cancellation_event=cancellation_event,
                 )
 
                 # 执行委派任务
@@ -700,6 +855,8 @@ class BoundedRuntimeEngine:
                 )
                 return
 
+            raise_if_cancelled(cancellation_event)
+
             if not agent_step.tool_calls:
                 failure_message = "Planner selected call_tools but returned no tool calls."
                 append_assistant_part(
@@ -733,7 +890,9 @@ class BoundedRuntimeEngine:
                 )
                 return
 
+            replan_requested = False
             for tool_call in agent_step.tool_calls:
+                raise_if_cancelled(cancellation_event)
                 tool_result = self._executor.execute_tool_call(
                     run=run,
                     request_context=request_context,
@@ -742,16 +901,40 @@ class BoundedRuntimeEngine:
                     visible_agents=visible_agents,
                     policy=policy,
                     event_emitter=emitter,
+                    cancellation_event=cancellation_event,
                 )
                 tool_history.append(tool_result["history_item"])
-                run.observation = tool_result["observation"]
+                observation = tool_result.get("observation")
+                if isinstance(observation, ObservationV2):
+                    run.observation = observation
                 recent_messages = list(self._store.get_session(session_id).messages) if persist_messages else recent_messages
                 last_task_digest = self._build_current_task_digest(run)
+                if tool_result.get("approval_required"):
+                    approval_message = str(tool_result["final_message"])
+                    self._finalize_run(
+                        run=run,
+                        session_id=session_id,
+                        persist_messages=persist_messages,
+                        message=approval_message,
+                        status="awaiting_approval",
+                        replan_count=replan_count,
+                        delegation_count=delegation_count,
+                        trace_event="approval_required",
+                        trace_detail=approval_message,
+                    )
+                    emitter.emit(
+                        event="submission.approval_required",
+                        detail=approval_message,
+                        output_message=approval_message,
+                        run_status="awaiting_approval",
+                        include_run=True,
+                    )
+                    return
                 if tool_result["blocked"]:
-                    failure_message = tool_result["final_message"]
+                    failure_message = str(tool_result["final_message"])
                     append_assistant_part(
                         run,
-                        AssistantMessagePartV2(type="error", text=failure_message, status="approval_required"),
+                        AssistantMessagePartV2(type="error", text=failure_message, status="blocked"),
                     )
                     self._finalize_run(
                         run=run,
@@ -762,43 +945,64 @@ class BoundedRuntimeEngine:
                         replan_count=replan_count,
                         delegation_count=delegation_count,
                         trace_event="run_failed",
-                        trace_detail="Run failed because a requested tool requires approval.",
+                        trace_detail="Run failed because a requested tool was blocked by policy.",
                     )
                     emitter.emit(
                         event="run.failed",
-                        detail="Run failed because a requested tool requires approval.",
+                        detail="Run failed because a requested tool was blocked by policy.",
                         observation=run.observation,
                         output_message=failure_message,
                         run_status="failed",
                         include_run=True,
                     )
                     return
-                if tool_result["observation"].status == "error":
-                    failure_message = tool_result["final_message"]
-                    append_assistant_part(
-                        run,
-                        AssistantMessagePartV2(type="error", text=failure_message, status="failed"),
-                    )
-                    self._finalize_run(
-                        run=run,
-                        session_id=session_id,
-                        persist_messages=persist_messages,
-                        message=failure_message,
-                        status="failed",
-                        replan_count=replan_count,
-                        delegation_count=delegation_count,
-                        trace_event="run_failed",
-                        trace_detail="Run failed during tool execution.",
-                    )
+                if isinstance(observation, ObservationV2) and observation.status == "error":
+                    failure_message = str(tool_result["final_message"])
+                    try:
+                        self._guard.validate_replan(policy=policy, replan_count=replan_count)
+                    except PolicyGuardError:
+                        append_assistant_part(
+                            run,
+                            AssistantMessagePartV2(type="error", text=failure_message, status="failed"),
+                        )
+                        self._finalize_run(
+                            run=run,
+                            session_id=session_id,
+                            persist_messages=persist_messages,
+                            message=failure_message,
+                            status="failed",
+                            replan_count=replan_count,
+                            delegation_count=delegation_count,
+                            trace_event="run_failed",
+                            trace_detail="Run failed after exhausting the replan budget.",
+                        )
+                        emitter.emit(
+                            event="run.failed",
+                            detail="Run failed after exhausting the replan budget.",
+                            observation=run.observation,
+                            output_message=failure_message,
+                            run_status="failed",
+                            include_run=True,
+                        )
+                        return
+                    replan_count += 1
+                    run.replan_count = replan_count
+                    run.trace.append(TraceEventV2(
+                        node="policy_guard",
+                        event="replan_requested",
+                        detail=f"Authorized replan {replan_count}/{policy.max_replans} after tool failure.",
+                    ))
                     emitter.emit(
-                        event="run.failed",
-                        detail="Run failed during tool execution.",
-                        observation=run.observation,
-                        output_message=failure_message,
-                        run_status="failed",
-                        include_run=True,
+                        event="run.progress",
+                        detail=f"Tool failed; replanning ({replan_count}/{policy.max_replans}).",
+                        observation=observation,
+                        run_status="running",
                     )
-                    return
+                    replan_requested = True
+                    break
+
+            if replan_requested:
+                continue
 
             current_call_signature = observer.build_call_signature(agent_step.tool_calls or [])
             should_terminate, dup_count = observer.check_duplicate(current_call_signature)
@@ -1233,7 +1437,7 @@ class BoundedRuntimeEngine:
         session_id: str,
         persist_messages: bool,
         message: str,
-        status: str,
+        status: RuntimeRunStatus,
         replan_count: int,
         delegation_count: int,
         trace_event: str,
@@ -1254,6 +1458,7 @@ class BoundedRuntimeEngine:
             status == "completed"
             and self._memory_manager is not None
             and self._memory_manager.is_loaded
+            and self._memory_auto_write_enabled
             and run.input_message
         ):
             facts = self._extract_facts_from_exchange(

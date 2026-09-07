@@ -8,6 +8,8 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.config.paths import REPORTS_DIR
+
 
 def _default_template_dir() -> str:
     return str(Path(__file__).resolve().parent / "templates")
@@ -27,7 +29,7 @@ class ReportServiceConfig(BaseSettings):
         validation_alias="REPORT_SERVICE_NAME",
     )
     report_output_dir: str = Field(
-        default="/tmp/ktp_reports",
+        default=str(REPORTS_DIR),
         validation_alias="REPORT_OUTPUT_DIR",
     )
     report_template_dir: str = Field(

@@ -821,7 +821,7 @@ def run_prosail_simulation(
 def run_prosail_build_lut(
     *,
     params: dict | None = None,
-    output_path: str = "/tmp/prosail_lut.pkl",
+    output_path: str = "var/runtime/prosail_lut.pkl",
     query: str | None = None,
 ) -> tuple[ObservationV2, list[PackArtifactView]]:
     try:

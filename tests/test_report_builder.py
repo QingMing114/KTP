@@ -14,14 +14,14 @@ from services.report_service.schemas import (
     ReportRequest,
 )
 
+TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "backend" / "services" / "report_service" / "templates"
+
 
 def test_report_builder_renders_expected_sections(tmp_path: Path) -> None:
     config = ReportServiceConfig(
         REPORT_SERVICE_NAME="report-service",
         REPORT_OUTPUT_DIR=str(tmp_path / "reports"),
-        REPORT_TEMPLATE_DIR=str(
-            Path("/home/D/liumeng/ktp/services/report_service/templates")
-        ),
+        REPORT_TEMPLATE_DIR=str(TEMPLATE_DIR),
         EMBED_HTML_IN_RESPONSE=True,
         GENERATE_CHARTS=True,
     )

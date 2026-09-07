@@ -19,9 +19,10 @@ from ktp_backend.runtime_host import (
     build_backend_runtime_host,
     install_backend_runtime_host,
 )
+from v2.runtime.events import RunEventEmitter
 from v2.apps.api.config import V2ApiSettings, get_v2_api_settings
 from v2.shared.logging import configure_v2_logging
-from v2.shared.schemas import (
+from schemas.runtime import (
     AgentProfile,
     CreateSessionRequest,
     CreateSessionResponse,
@@ -206,6 +207,9 @@ def install_backend_api(
             event_loop = asyncio.get_running_loop()
 
             def worker() -> None:
+                last_sequence = 0
+                last_run_id = "pending"
+
                 def push(encoded: str | None) -> None:
                     asyncio.run_coroutine_threadsafe(queue.put(encoded), event_loop).result()
 
@@ -216,17 +220,21 @@ def install_backend_api(
                         user_id=payload.user_id,
                         request_context=payload.context,
                     ):
+                        last_sequence = event.sequence
+                        last_run_id = event.run_id
                         push(_encode_sse(event))
                 except Exception as exc:  # pragma: no cover
-                    error_event = RunEventV2(
-                        sequence=0,
-                        event="run.error",
-                        run_id="pending",
+                    error_emitter = RunEventEmitter(
+                        sink=lambda event: push(_encode_sse(event)),
+                        run_id=last_run_id,
                         session_id=session_id,
+                    )
+                    error_emitter.sequence = last_sequence
+                    error_emitter.emit(
+                        event="run.error",
                         detail=str(exc),
                         run_status="failed",
                     )
-                    push(_encode_sse(error_event))
                 finally:
                     push(None)
 
@@ -478,4 +486,3 @@ def create_backend_app(
 def _encode_sse(event: RunEventV2) -> str:
     payload = json.dumps(event.model_dump(mode="json"), ensure_ascii=False)
     return f"event: {event.event}\ndata: {payload}\n\n"
-

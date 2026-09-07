@@ -15,7 +15,7 @@ from schemas.spatial import FarmResponse, GeoJsonGeometry
 
 class FarmStore:
     def __init__(self, source_path: str | Path | None = None) -> None:
-        self._source_path = Path(source_path) if source_path else Path(__file__).parent.parent / "data" / "demo_farms.geojson"
+        self._source_path = Path(source_path) if source_path else Path(__file__).parent / "data" / "demo_farms.geojson"
         self._farms = self._load()
 
     def list_farms(self, *, user_id: str | None = None) -> list[FarmResponse]:

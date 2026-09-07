@@ -11,7 +11,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from v2.runtime.user_store import UserStore
-from v2.shared.schemas import AuthTokenPayload, PublicUserRecord
+from schemas.runtime import AuthTokenPayload, PublicUserRecord
 
 logger = logging.getLogger(__name__)
 

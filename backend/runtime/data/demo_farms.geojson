@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "name": "ktp_demo_farms",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"farm_id": "farm-heihe", "name": "黑河绿洲示范农场", "location_label": "甘肃 · 张掖", "area_hectares": 1286.0, "is_demo": true, "metadata": {"crop_type": "maize"}},
+      "geometry": {"type": "Polygon", "coordinates": [[[100.354, 38.955], [100.401, 38.955], [100.401, 38.980], [100.354, 38.980], [100.354, 38.955]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"farm_id": "farm-yongchang", "name": "永昌智慧农场", "location_label": "甘肃 · 金昌", "area_hectares": 742.0, "is_demo": true, "metadata": {"crop_type": "wheat"}},
+      "geometry": {"type": "Polygon", "coordinates": [[[101.954, 38.205], [101.985, 38.205], [101.985, 38.227], [101.954, 38.227], [101.954, 38.205]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"farm_id": "farm-wuwei", "name": "凉州灌区试验田", "location_label": "甘肃 · 武威", "area_hectares": 514.0, "is_demo": true, "metadata": {"crop_type": "maize"}},
+      "geometry": {"type": "Polygon", "coordinates": [[[102.614, 37.881], [102.640, 37.881], [102.640, 37.900], [102.614, 37.900], [102.614, 37.881]]]}
+    }
+  ]
+}

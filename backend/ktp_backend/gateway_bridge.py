@@ -10,7 +10,7 @@ from apps.api_gateway.schemas.chat import ChatRequest
 from apps.api_gateway.schemas.detect import DetectRequest
 from v2.runtime.engine import BoundedRuntimeEngine
 from v2.runtime.store import RuntimeStore
-from v2.shared.schemas import AttachmentV2, RequestContextV2, RunDetail, SessionMessage
+from schemas.runtime import AttachmentV2, RequestContextV2, RunDetail, SessionMessage
 
 
 class GatewayRuntimeBridge:
@@ -279,4 +279,3 @@ class GatewayRuntimeBridge:
         if not trimmed:
             return f"{prefix} Session"
         return f"{prefix} {trimmed[:48]}"
-

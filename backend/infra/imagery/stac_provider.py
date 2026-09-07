@@ -8,6 +8,9 @@ data transfers.
 from __future__ import annotations
 
 import os
+import hashlib
+import hmac
+import json
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, urlparse
@@ -27,7 +30,9 @@ class SentinelStacSettings:
     collection: str = "sentinel-2-l2a"
     asset_token_url: str | None = "https://planetarycomputer.microsoft.com/api/sas/v1/token"
     timeout_seconds: float = 30.0
-    result_limit: int = 12
+    result_limit: int = 5
+    minimum_coverage_percent: float = 95.0
+    selection_secret: str = "ktp-local-development-selection-secret"
 
     @classmethod
     def from_environment(cls) -> "SentinelStacSettings":
@@ -37,6 +42,8 @@ class SentinelStacSettings:
             asset_token_url=os.getenv("SENTINEL_STAC_ASSET_TOKEN_URL", cls.asset_token_url or "") or None,
             timeout_seconds=float(os.getenv("SENTINEL_STAC_TIMEOUT_SECONDS", str(cls.timeout_seconds))),
             result_limit=int(os.getenv("SENTINEL_STAC_RESULT_LIMIT", str(cls.result_limit))),
+            minimum_coverage_percent=float(os.getenv("SENTINEL_MINIMUM_COVERAGE_PERCENT", str(cls.minimum_coverage_percent))),
+            selection_secret=os.getenv("SENTINEL_SELECTION_SECRET", cls.selection_secret),
         )
 
 
@@ -62,7 +69,14 @@ class SentinelStacProvider:
         except (httpx.HTTPError, ValueError, TypeError) as exc:
             raise ImagerySearchError(f"Sentinel STAC search is unavailable: {type(exc).__name__}") from exc
 
-        candidates = [self._candidate_from_feature(feature, request.collection) for feature in features]
+        candidates = [
+            self._candidate_from_feature(feature, request.collection, request.aoi.geometry.model_dump(mode="json"))
+            for feature in features
+        ]
+        candidates = [
+            candidate for candidate in candidates
+            if (candidate.coverage_percent or 0) >= self._settings.minimum_coverage_percent
+        ]
         candidates.sort(key=lambda item: (item.cloud_cover is None, item.cloud_cover or 0, item.acquired_at), reverse=False)
         if candidates:
             recommended = candidates[0]
@@ -70,7 +84,29 @@ class SentinelStacProvider:
                 "is_recommended": True,
                 "recommendation_reason": "候选影像中云量最低，且满足当前 AOI 与时间范围。",
             })
-        return candidates
+        return candidates[:5]
+
+    def validate_selection(
+        self,
+        snapshot: ImageryCandidate,
+        feature: dict[str, Any],
+        aoi_geometry: dict[str, Any],
+    ) -> ImageryCandidate:
+        """Verify that a submitted selection came from search and still matches STAC."""
+        fresh = self._candidate_from_feature(feature, self._settings.collection, aoi_geometry)
+        if not snapshot.selection_token or not fresh.selection_token:
+            raise ImagerySearchError("Selected imagery snapshot is missing its server selection token")
+        snapshot_expected = self._selection_token(snapshot, aoi_geometry)
+        if (
+            not hmac.compare_digest(snapshot.selection_token, snapshot_expected)
+            or not hmac.compare_digest(snapshot.selection_token, fresh.selection_token)
+        ):
+            raise ImagerySearchError("Selected imagery snapshot does not match the AOI or current STAC item")
+        if snapshot.item_id != fresh.item_id or snapshot.collection != fresh.collection:
+            raise ImagerySearchError("Selected imagery identity does not match the current STAC item")
+        if (fresh.coverage_percent or 0) < self._settings.minimum_coverage_percent:
+            raise ImagerySearchError("Selected imagery no longer covers enough of the AOI")
+        return fresh
 
     def get_item(self, item_id: str) -> dict[str, Any]:
         """Fetch the exact item selected by the user before any COG read."""
@@ -124,13 +160,17 @@ class SentinelStacProvider:
             signed_assets[key] = {**asset, "href": f"{href}{'&' if '?' in href else '?'}{token}"}
         return {**feature, "assets": signed_assets}
 
-    @staticmethod
-    def _candidate_from_feature(feature: dict[str, Any], default_collection: str) -> ImageryCandidate:
+    def _candidate_from_feature(
+        self,
+        feature: dict[str, Any],
+        default_collection: str,
+        aoi_geometry: dict[str, Any],
+    ) -> ImageryCandidate:
         properties = feature.get("properties") or {}
         assets = feature.get("assets") or {}
         preview = SentinelStacProvider._asset_href(assets, "thumbnail", "rendered_preview", "visual")
         acquired_at = properties.get("datetime") or properties.get("start_datetime") or ""
-        return ImageryCandidate(
+        candidate = ImageryCandidate(
             item_id=str(feature.get("id") or ""),
             collection=str(feature.get("collection") or default_collection),
             acquired_at=acquired_at,
@@ -138,7 +178,65 @@ class SentinelStacProvider:
             thumbnail_url=preview,
             preview_url=preview,
             platform=properties.get("platform") or properties.get("constellation"),
+            item_version=str(
+                properties.get("updated")
+                or properties.get("created")
+                or properties.get("s2:processing_baseline")
+                or ""
+            ) or None,
+            asset_fingerprint=self._asset_fingerprint(feature),
+            coverage_percent=self._coverage_percent(feature, aoi_geometry),
         )
+        return candidate.model_copy(update={
+            "selection_token": self._selection_token(candidate, aoi_geometry),
+        })
+
+    @staticmethod
+    def _coverage_percent(feature: dict[str, Any], aoi_geometry: dict[str, Any]) -> float:
+        from shapely.geometry import box, shape
+
+        try:
+            aoi = shape(aoi_geometry)
+            feature_geometry = feature.get("geometry")
+            footprint = shape(feature_geometry) if feature_geometry else box(*(feature.get("bbox") or []))
+            if not aoi.is_valid or not footprint.is_valid or aoi.area <= 0:
+                return 0.0
+            coverage = 100.0 * footprint.intersection(aoi).area / aoi.area
+            return round(max(0.0, min(100.0, coverage)), 4)
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
+    def _asset_fingerprint(feature: dict[str, Any]) -> str:
+        assets = feature.get("assets") or {}
+        entries: list[dict[str, Any]] = []
+        for band in ("B02", "B03", "B04", "B07", "B08"):
+            asset = assets.get(band) or assets.get(band.lower()) or {}
+            href = asset.get("href") if isinstance(asset, dict) else None
+            parsed = urlparse(href) if isinstance(href, str) else None
+            entries.append({
+                "band": band,
+                "uri": f"{parsed.scheme}://{parsed.netloc}{parsed.path}" if parsed else None,
+                "checksum": asset.get("checksum:multihash") or asset.get("file:checksum") if isinstance(asset, dict) else None,
+                "etag": asset.get("etag") if isinstance(asset, dict) else None,
+            })
+        encoded = json.dumps(entries, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _selection_token(self, candidate: ImageryCandidate, aoi_geometry: dict[str, Any]) -> str:
+        payload = {
+            "item_id": candidate.item_id,
+            "collection": candidate.collection,
+            "acquired_at": candidate.acquired_at,
+            "cloud_cover": candidate.cloud_cover,
+            "coverage_percent": candidate.coverage_percent,
+            "platform": candidate.platform,
+            "item_version": candidate.item_version,
+            "asset_fingerprint": candidate.asset_fingerprint,
+            "aoi": aoi_geometry,
+        }
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hmac.new(self._settings.selection_secret.encode("utf-8"), encoded, hashlib.sha256).hexdigest()
 
     @staticmethod
     def _asset_href(assets: dict[str, Any], *names: str) -> str | None:

@@ -8,6 +8,8 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.config.paths import VISUALIZATIONS_DIR
+
 
 def _default_template_dir() -> str:
     return str(Path(__file__).resolve().parent / "templates")
@@ -27,7 +29,7 @@ class VisualizationServiceConfig(BaseSettings):
         validation_alias="VISUALIZATION_SERVICE_NAME",
     )
     visualization_output_dir: str = Field(
-        default="/tmp/ktp_visualizations",
+        default=str(VISUALIZATIONS_DIR),
         validation_alias="VISUALIZATION_OUTPUT_DIR",
     )
     visualization_template_dir: str = Field(

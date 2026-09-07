@@ -57,6 +57,7 @@ def read_prosail_reflectance_aoi(
     item: dict[str, Any],
     geometry: dict[str, Any],
     output_path: str | Path,
+    target_resolution_m: int | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> Path:
     """Read AOI pixels and write B02/B03/B04/B07/B08 as float32 0-1.
@@ -69,7 +70,7 @@ def read_prosail_reflectance_aoi(
         import numpy as np
         import rasterio
         from rasterio.mask import mask
-        from rasterio.warp import Resampling, reproject, transform_geom
+        from rasterio.warp import Resampling, aligned_target, reproject, transform_geom
     except ImportError as exc:  # pragma: no cover - deployment dependency
         raise AoiBandReadError("影像读取组件未安装完整，请联系管理员检查 rasterio 和 numpy。") from exc
 
@@ -112,7 +113,33 @@ def read_prosail_reflectance_aoi(
                     )
                     data = cropped.astype("float32")
                     if target_data is None:
-                        target_data, target_transform, target_crs = data, transform, source.crs
+                        if target_resolution_m is not None:
+                            if target_resolution_m <= 0:
+                                raise AoiBandReadError("目标空间分辨率必须大于 0 米。")
+                            if source.crs.is_geographic:
+                                raise AoiBandReadError("Sentinel 波段使用地理坐标系，无法按米设置目标分辨率。")
+                            target_transform, target_width, target_height = aligned_target(
+                                transform,
+                                data.shape[1],
+                                data.shape[0],
+                                (target_resolution_m, target_resolution_m),
+                            )
+                            resampled = np.zeros((target_height, target_width), dtype="float32")
+                            reproject(
+                                source=data,
+                                destination=resampled,
+                                src_transform=transform,
+                                src_crs=source.crs,
+                                dst_transform=target_transform,
+                                dst_crs=source.crs,
+                                resampling=Resampling.bilinear,
+                                src_nodata=0,
+                                dst_nodata=0,
+                            )
+                            data = resampled
+                        else:
+                            target_transform = transform
+                        target_data, target_crs = data, source.crs
                         profile = source.profile.copy()
                         stacked.append(data)
                     else:

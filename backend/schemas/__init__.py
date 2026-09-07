@@ -1,16 +1,19 @@
-"""Unified Pydantic schemas for the KTP backend.
+"""Schema package with explicit protocol boundaries.
 
-Sub-modules:
-    runtime    — V2 runtime models (SessionDetail, RunDetail, AgentStepV2, ...)
-    canonical  — Canonical product protocol models (ManifestResponse, SubmissionResponse, ...)
-    errors     — Error envelope models and helpers (CanonicalError, canonical_error_response)
+Import product contracts from ``schemas.canonical`` / ``schemas.spatial`` and
+internal engine contracts from ``schemas.runtime``.  This package deliberately
+does not wildcard-re-export models whose names can collide across boundaries.
 """
 
-from schemas.runtime import *
-from schemas.canonical import *
-from schemas.errors import ErrorCode, CanonicalError, ErrorResponse, canonical_error_response
+from schemas import canonical, runtime, spatial
+from schemas.errors import CanonicalError, ErrorCode, ErrorResponse, canonical_error_response
 
 __all__ = [
-    # Re-export everything from sub-modules.
-    # Each sub-module defines its own __all__.
+    "CanonicalError",
+    "ErrorCode",
+    "ErrorResponse",
+    "canonical",
+    "canonical_error_response",
+    "runtime",
+    "spatial",
 ]

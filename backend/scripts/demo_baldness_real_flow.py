@@ -12,6 +12,7 @@ from typing import Any
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DEMO_DIR = BACKEND_ROOT / "var" / "runtime" / "baldness_real_flow"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
@@ -191,18 +192,20 @@ async def _post_detect(payload: dict[str, Any]) -> dict[str, Any]:
 def run_baldness_real_demo(
     *,
     base_dir: str | None = None,
-    source_image_path: str = "/home/D/liumeng/bantushibie/原始文件/9.17甜高粱/MULTI.tif",
-    model_path: str = "/home/D/liumeng/bantushibie/test/api_storage/models/rf_model.pkl",
+    source_image_path: str | None = None,
+    model_path: str | None = None,
     request_id: str = "req-baldness-real-001",
     crop_size: int = 512,
     agent_backend: str = "subprocess_qwen",
-    model_dir: str = "/home/D/liumeng/models/Qwen3-VL-30B-A3B-Instruct",
-    runtime_python: str = "/opt/anaconda3/bin/python",
+    model_dir: str = "",
+    runtime_python: str = sys.executable,
     cuda_visible_devices: str = "auto:2",
 ) -> dict[str, Any]:
     """Run the full real baldness flow through the gateway app."""
+    if not source_image_path or not model_path:
+        raise ValueError("source_image_path and model_path must be provided")
     paths = configure_baldness_demo_environment(
-        base_dir=base_dir or "/tmp/ktp_baldness_real_flow",
+        base_dir=base_dir or str(DEFAULT_DEMO_DIR),
         agent_backend=agent_backend,
         model_dir=model_dir,
         runtime_python=runtime_python,
@@ -262,17 +265,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--base-dir",
-        default="/tmp/ktp_baldness_real_flow",
+        default=str(DEFAULT_DEMO_DIR),
         help="Runtime output directory for SQLite, cropped inputs, RF outputs, and reports.",
     )
     parser.add_argument(
         "--source-image-path",
-        default="/home/D/liumeng/bantushibie/原始文件/9.17甜高粱/MULTI.tif",
+        required=True,
         help="Real multispectral source image.",
     )
     parser.add_argument(
         "--model-path",
-        default="/home/D/liumeng/bantushibie/test/api_storage/models/rf_model.pkl",
+        required=True,
         help="Real RF model artifact path.",
     )
     parser.add_argument(
@@ -294,12 +297,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--model-dir",
-        default="/home/D/liumeng/models/Qwen3-VL-30B-A3B-Instruct",
+        default="",
         help="Shared Qwen model directory for planner/executor when enabled.",
     )
     parser.add_argument(
         "--runtime-python",
-        default="/opt/anaconda3/bin/python",
+        default=sys.executable,
         help="Python executable used by the external Qwen worker.",
     )
     parser.add_argument(

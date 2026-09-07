@@ -180,7 +180,6 @@ def create_app(
         include_root_health=False,
         runtime_host_override=runtime_host,
     )
-    install_backend_runtime_host(application, runtime_host)
     application.state.conversation_service = ConversationService(
         conversation_store=conversation_store,
     )
@@ -190,7 +189,12 @@ def create_app(
         runtime_engine=runtime_host.runtime_engine,
     )
     application.state.chat_service = application.state.gateway_agent_service
-    install_canonical_product_api(application, db_path=str(runtime_host.settings.sqlite_path))
+    install_canonical_product_api(
+        application,
+        db_path=str(runtime_host.settings.sqlite_path),
+        auth_required=settings.app_auth_enabled,
+        auth_token=settings.app_auth_token,
+    )
     application.include_router(health_router)
     application.include_router(v2_ui_router)
     application.include_router(v2_artifacts_router)

@@ -7,6 +7,8 @@ from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.config.paths import RUNTIME_DIR
+
 
 class RAGServiceConfig(BaseSettings):
     """Settings used by the RAG service runtime."""
@@ -22,7 +24,7 @@ class RAGServiceConfig(BaseSettings):
         validation_alias="RAG_SERVICE_NAME",
     )
     vectorstore_dir: str = Field(
-        default="/tmp/ktp_rag_store",
+        default=str(RUNTIME_DIR / "rag_store"),
         validation_alias="VECTORSTORE_DIR",
     )
     default_top_k: int = Field(

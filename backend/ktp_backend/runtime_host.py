@@ -50,6 +50,10 @@ def build_backend_runtime_host(
         agent_registry=agent_registry,
         pack_registry=pack_registry,
         llm_provider=llm_provider_override,
+        memory_dir=resolved_settings.memory_dir,
+        memory_top_k=resolved_settings.memory_top_k,
+        memory_max_chars=resolved_settings.memory_max_chars,
+        memory_auto_write_enabled=resolved_settings.memory_auto_write_enabled,
     )
     return BackendRuntimeHost(
         settings=resolved_settings,
@@ -64,6 +68,18 @@ def build_backend_runtime_host(
 
 
 def install_backend_runtime_host(app: FastAPI, host: BackendRuntimeHost) -> None:
+    """Install the one runtime container owned by a FastAPI application.
+
+    Gateways may mount compatibility routers, but they must share this host
+    instead of silently constructing another engine or registry set.
+    """
+    installed = getattr(app.state, "backend_runtime_host", None)
+    if installed is not None:
+        if installed is host:
+            return
+        raise RuntimeError("A different BackendRuntimeHost is already installed on this application")
+
+    app.state.backend_runtime_host = host
     app.state.runtime_store = host.runtime_store
     app.state.tool_registry = host.tool_registry
     app.state.agent_registry = host.agent_registry
@@ -75,4 +91,3 @@ def install_backend_runtime_host(app: FastAPI, host: BackendRuntimeHost) -> None
     from v2.tools.plugin_router import router as plugin_router, set_registry
     set_registry(host.tool_registry)
     app.include_router(plugin_router)
-

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import TimeoutError as FutureTimeoutError
+import os
 from pathlib import Path
 import threading
 
@@ -80,7 +81,7 @@ class EmptyModelRegistryClient:
 
 
 EXTERNAL_RF_MODEL_PATH = Path(
-    "/home/D/liumeng/bantushibie/test/api_storage/models/rf_model.pkl"
+    os.environ.get("KTP_TEST_RF_MODEL_PATH", "var/models/baldness/rf_model.pkl")
 )
 
 
@@ -172,7 +173,7 @@ def _create_test_app(tmp_path: Path, model_registry_client: object):
         default_use_mock=True,
         mask_output_dir=str(tmp_path / "masks"),
         real_predictor_backend="baldness_rf",
-        baldness_rf_source_root="/home/D/liumeng/bantushibie",
+        baldness_rf_source_root=os.environ.get("KTP_TEST_BALDNESS_SOURCE_ROOT", "."),
         baldness_rf_default_model_path=str(EXTERNAL_RF_MODEL_PATH),
         baldness_rf_work_dir=str(tmp_path / "rf_work"),
         inference_http_timeout_seconds=1.0,

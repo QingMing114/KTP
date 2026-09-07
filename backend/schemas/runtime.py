@@ -10,9 +10,31 @@ v2/shared/schemas.py.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel, Field
+
+
+RuntimeRunStatus: TypeAlias = Literal[
+    "completed", "abstained", "failed", "running", "cancelled", "awaiting_approval"
+]
+RuntimeEventKind: TypeAlias = Literal[
+    "agent_step_selected", "analysis_input_clarification", "approval_required", "artifact.available",
+    "artifact_created", "assistant.delta", "assistant.status", "assistant_message",
+    "llm_schema_alias_applied", "loop_terminated_duplicate_calls", "planner.delta",
+    "planner_decision", "planner_start", "planning_failed", "prosail.reasoning",
+    "request_context_loaded", "run.cancelled", "run.completed", "run.error", "run.failed",
+    "run.progress", "run.started", "run_cancelled", "run_completed", "run_created", "run_failed",
+    "run_finalized", "submission.approval_required", "thinking", "tool.blocked", "tool.completed",
+    "tool.progress", "tool.started", "tool_call_completed", "tool_call_started", "tool_failed",
+    "tool_finished", "visibility_loaded",
+]
+RuntimeArtifactKind: TypeAlias = Literal[
+    "apsim_report", "confidence_card", "file_content", "inference_card", "inversion_result",
+    "knowledge_card", "lai_confidence_geotiff", "lai_geotiff", "lai_html_report", "lai_preview",
+    "lai_raster", "lut_card", "registry_card", "report_card", "search_results", "simulation_data",
+    "simulation_log", "simulation_result", "text_card", "training_card", "visualization_card",
+]
 
 
 # ── Permission model ──
@@ -45,6 +67,18 @@ class AttachmentV2(BaseModel):
     kind: Literal["local_path"] = "local_path"
     path: str
     name: str | None = None
+
+
+class ResolvedDatasetV2(BaseModel):
+    """A dataset reference resolved by the canonical boundary for Runtime use."""
+
+    dataset_id: str
+    display_name: str
+    local_path: str
+    region: str | None = None
+    crop_type: str | None = None
+    task_type: str | None = None
+    content_type: str | None = None
 
 
 # Deprecated: use schemas.canonical.TraceEventV2 instead
@@ -140,6 +174,7 @@ class RequestContextV2(BaseModel):
     image_path: str | None = None
     use_mock: bool | None = None
     attachments: list[AttachmentV2] = Field(default_factory=list)
+    datasets: list[ResolvedDatasetV2] = Field(default_factory=list)
     client_capabilities: dict[str, Any] = Field(default_factory=dict)
     extra_params: dict[str, Any] = Field(default_factory=dict)
     scene_parameters: SceneParameters | None = None
@@ -251,7 +286,7 @@ class ToolInvocationView(BaseModel):
 
 class PackArtifactView(BaseModel):
     pack_name: str
-    artifact_type: str
+    artifact_type: RuntimeArtifactKind
     title: str
     content: str | None = None
     uri: str | None = None
@@ -277,7 +312,7 @@ class AssistantMessageV2(BaseModel):
 class RunSummary(BaseModel):
     run_id: str
     session_id: str
-    status: Literal["completed", "abstained", "failed", "running"]
+    status: RuntimeRunStatus
     input_message: str | None = None
 
 
@@ -302,7 +337,7 @@ class RunDetail(RunSummary):
 
 class RunEventV2(BaseModel):
     sequence: int
-    event: str
+    event: RuntimeEventKind
     run_id: str
     session_id: str
     detail: str
@@ -316,7 +351,7 @@ class RunEventV2(BaseModel):
     assistant_part: AssistantMessagePartV2 | None = None
     assistant_message: AssistantMessageV2 | None = None
     output_message: str | None = None
-    run_status: Literal["completed", "abstained", "failed", "running", "awaiting_approval"] | None = None
+    run_status: RuntimeRunStatus | None = None
     run: RunDetail | None = None
     tool_progress: dict | None = None  # {"current": int, "total": int, "call_id": str}
 
@@ -371,7 +406,7 @@ class ReplayResponseV2(BaseModel):
 
 class DomainPackSummary(BaseModel):
     name: str
-    status: str
+    status: Literal["ready", "partial", "disabled"]
     description: str
     entry_tools: list[str] = Field(default_factory=list)
 
@@ -422,9 +457,13 @@ __all__ = [
     "PublicUserRecord",
     "ReplayComparisonV2",
     "ReplayResponseV2",
+    "ResolvedDatasetV2",
     "RequestContextV2",
     "RunDetail",
     "RunEventV2",
+    "RuntimeArtifactKind",
+    "RuntimeEventKind",
+    "RuntimeRunStatus",
     "RunStateV2",
     "RunSummary",
     "SceneParameters",

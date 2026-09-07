@@ -20,10 +20,12 @@ dependencies = [
   "pydantic>=2.9,<3.0",
   "pydantic-settings>=2.6,<3.0",
   "python-dotenv>=1.0,<2.0",
+  "PyJWT>=2.8,<3.0",
   "rasterio>=1.4,<2.0",
   "scikit-image>=0.24,<1.0",
   "scikit-learn>=1.6,<1.7",
   "scipy>=1.13,<2.0",
+  "shapely>=2.0,<3.0",
   "psycopg[binary]>=3.2,<4.0",
   "sqlalchemy>=2.0,<3.0",
   "temporalio>=1.8,<2.0",
@@ -39,10 +41,19 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = [
+  "api*",
+  "app*",
   "apps*",
   "agents*",
+  "domain*",
+  "ktp_backend*",
   "services*",
   "ml*",
+  "plugins*",
+  "prosail_python*",
+  "runtime*",
+  "schemas*",
+  "server*",
   "shared*",
   "infra*",
   "v2*",
@@ -50,6 +61,14 @@ include = [
   "tests*",
 ]
 exclude = ["docs*", "prompts*"]
+
+[tool.setuptools.package-data]
+"apps.api_gateway" = ["templates/*.j2"]
+"plugins" = ["*.json"]
+"prosail_python" = ["*.npy", "*.pkl", "*.md"]
+"runtime" = ["data/*.geojson"]
+"services.report_service" = ["templates/*.j2", "templates/partials/*.j2"]
+"services.visualization_service" = ["templates/*.j2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "v2/tests"]

@@ -10,6 +10,8 @@ from PIL import Image
 from services.report_service.client import LocalReportServiceClient
 from services.report_service.config import ReportServiceConfig
 
+TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "backend" / "services" / "report_service" / "templates"
+
 
 def test_report_client_surfaces_inference_sanity_warning(tmp_path: Path) -> None:
     mask_path = tmp_path / "full_positive_mask.png"
@@ -19,9 +21,7 @@ def test_report_client_surfaces_inference_sanity_warning(tmp_path: Path) -> None
         config=ReportServiceConfig(
             REPORT_SERVICE_NAME="report-service",
             REPORT_OUTPUT_DIR=str(tmp_path / "reports"),
-            REPORT_TEMPLATE_DIR=str(
-                Path("/home/D/liumeng/ktp/services/report_service/templates")
-            ),
+            REPORT_TEMPLATE_DIR=str(TEMPLATE_DIR),
             EMBED_HTML_IN_RESPONSE=True,
             GENERATE_CHARTS=True,
         )

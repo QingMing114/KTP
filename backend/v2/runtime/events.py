@@ -15,15 +15,17 @@ Supports two calling conventions (for backward compatibility):
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Literal
 
-from v2.shared.schemas import (
+from schemas.runtime import (
     AssistantMessagePartV2,
     AssistantMessageV2,
     DelegationResult,
     ObservationV2,
     RunDetail,
     RunEventV2,
+    RuntimeEventKind,
+    RuntimeRunStatus,
     SessionMessage,
     ToolInvocationView,
 )
@@ -63,7 +65,7 @@ class RunEventEmitter:
     def emit(
         self,
         *,
-        event: str,
+        event: RuntimeEventKind,
         detail: str = "",
         message: SessionMessage | None = None,
         planner_decision=None,
@@ -73,7 +75,7 @@ class RunEventEmitter:
         tool_invocation: ToolInvocationView | None = None,
         artifact=None,
         output_message: str | None = None,
-        run_status: str | None = None,
+        run_status: RuntimeRunStatus | None = None,
         include_run: bool = False,
         tool_progress: dict | None = None,
         assistant_message: AssistantMessageV2 | None = None,
@@ -115,14 +117,20 @@ class RunEventEmitter:
     # ── raw-passthrough API ──
 
     def send(self, raw_event: RunEventV2) -> None:
-        """Send a pre-built RunEventV2 through the sink.
+        """Normalize and send a pre-built event through the run sequence.
 
         Used by KTP pack flow for one-off events (e.g. file-size warnings)
         that bypass the standard emit closure convention.
         """
         if self._sink is None:
             return
-        self._sink(raw_event)
+        self.sequence += 1
+        self._sink(RunEventV2.model_validate({
+            **raw_event.model_dump(),
+            "sequence": self.sequence,
+            "run_id": self.run_id,
+            "session_id": self.session_id,
+        }))
 
     # ── callable interface for backward compatibility ──
 
@@ -130,7 +138,7 @@ class RunEventEmitter:
         self,
         raw_event: RunEventV2 | None = None,
         *,
-        event: str = "",
+        event: RuntimeEventKind | Literal[""] = "",
         detail: str = "",
         **kwargs: object,
     ) -> None:

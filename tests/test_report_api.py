@@ -15,6 +15,8 @@ from services.report_service.config import ReportServiceConfig
 from services.report_service.main import create_app
 from services.report_service.service import ReportService
 
+TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "backend" / "services" / "report_service" / "templates"
+
 
 @pytest.fixture
 def anyio_backend() -> str:
@@ -47,9 +49,7 @@ def _create_test_app(tmp_path: Path):
     config = ReportServiceConfig(
         REPORT_SERVICE_NAME="report-service",
         REPORT_OUTPUT_DIR=str(tmp_path / "reports"),
-        REPORT_TEMPLATE_DIR=str(
-            Path("/home/D/liumeng/ktp/services/report_service/templates")
-        ),
+        REPORT_TEMPLATE_DIR=str(TEMPLATE_DIR),
         EMBED_HTML_IN_RESPONSE=True,
         GENERATE_CHARTS=True,
     )

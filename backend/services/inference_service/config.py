@@ -7,6 +7,7 @@ from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.config.paths import RUNTIME_DIR
 from shared.config.settings import get_settings
 
 base_settings = get_settings()
@@ -38,7 +39,7 @@ class InferenceServiceConfig(BaseSettings):
         validation_alias="DEFAULT_USE_MOCK",
     )
     mask_output_dir: str = Field(
-        default="/tmp/ktp_masks",
+        default=str(RUNTIME_DIR / "masks"),
         validation_alias="MASK_OUTPUT_DIR",
     )
     real_predictor_backend: str = Field(
@@ -54,7 +55,7 @@ class InferenceServiceConfig(BaseSettings):
         validation_alias="BALDNESS_RF_DEFAULT_MODEL_PATH",
     )
     baldness_rf_work_dir: str = Field(
-        default="/tmp/ktp_baldness_rf",
+        default=str(RUNTIME_DIR / "baldness_rf"),
         validation_alias="BALDNESS_RF_WORK_DIR",
     )
     inference_http_timeout_seconds: float = Field(

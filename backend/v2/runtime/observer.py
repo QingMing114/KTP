@@ -14,7 +14,7 @@ import json
 import logging
 from typing import Any
 
-from v2.shared.schemas import AgentToolCallV2
+from schemas.runtime import AgentToolCallV2
 
 logger = logging.getLogger(__name__)
 

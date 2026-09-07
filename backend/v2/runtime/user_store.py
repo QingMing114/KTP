@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 
-from v2.shared.schemas import UserRecord
+from schemas.runtime import UserRecord
 
 logger = logging.getLogger(__name__)
 

@@ -38,6 +38,15 @@ THUMB_W   = 200
 THUMB_H   = 170
 SCATTER_N = 800
 TOP_FRAC  = 0.01
+LAI_NODATA = -9999.0
+LAI_COLOR_SCALE: tuple[tuple[float, str], ...] = (
+    (0.0, "#440154"),
+    (1.0, "#3b528b"),
+    (2.0, "#21918c"),
+    (3.5, "#5ec962"),
+    (5.0, "#fde725"),
+    (7.0, "#fff7bc"),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +97,30 @@ def _stretch(arr: np.ndarray, p_low: float = 2.0, p_high: float = 98.0) -> np.nd
 
 def _arr2list(a: np.ndarray, decimals: int = 3) -> list:
     return [[round(float(v), decimals) for v in row] for row in a]
+
+
+def _hex_rgb(value: str) -> np.ndarray:
+    value = value.lstrip("#")
+    return np.array([int(value[index:index + 2], 16) for index in (0, 2, 4)], dtype=np.float32)
+
+
+def _lai_rgba(lai_map: np.ndarray, valid_mask: np.ndarray) -> np.ndarray:
+    """Render LAI with a fixed, reproducible color scale and transparent nodata."""
+    values = np.array([item[0] for item in LAI_COLOR_SCALE], dtype=np.float32)
+    colors = np.stack([_hex_rgb(item[1]) for item in LAI_COLOR_SCALE])
+    clipped = np.clip(lai_map.astype(np.float32), values[0], values[-1])
+    rgb = np.zeros((*lai_map.shape, 3), dtype=np.float32)
+
+    for index in range(len(values) - 1):
+        lower, upper = values[index], values[index + 1]
+        mask = (clipped >= lower) & (clipped <= upper if index == len(values) - 2 else clipped < upper)
+        ratio = np.clip((clipped[mask] - lower) / max(float(upper - lower), 1e-9), 0.0, 1.0)
+        rgb[mask] = colors[index] + ratio[:, None] * (colors[index + 1] - colors[index])
+
+    rgba = np.zeros((*lai_map.shape, 4), dtype=np.uint8)
+    rgba[..., :3] = np.clip(rgb, 0, 255).astype(np.uint8)
+    rgba[..., 3] = np.where(valid_mask, 210, 0).astype(np.uint8)
+    return rgba
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +193,7 @@ def run_lai_html_report(
     image_path: str,
     lut_path: str | None = None,
     output_dir: str | None = None,
+    artifact_output_dir: str | None = None,
     query: str | None = None,
     scene_constraints: "dict | None" = None,
     progress_callback: "Callable[[int, int], None] | None" = None,
@@ -171,6 +205,7 @@ def run_lai_html_report(
         image_path: Absolute path to the 5-band GeoTIFF (B2 B3 B4 B7 B8, Float32 0-1).
         lut_path:   Path to 13-column text LUT. Defaults to dev-data/new/LUT_test.txt.
         output_dir: Directory to write the HTML report. Defaults to ktp/reports/.
+        artifact_output_dir: Optional directory for GeoTIFF/PNG products.
         query:      Original user query (unused, kept for handler interface compatibility).
     """
     try:
@@ -215,6 +250,8 @@ def run_lai_html_report(
 
     out_dir = get_lai_report_dir(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    product_dir = Path(artifact_output_dir).expanduser().resolve() if artifact_output_dir else out_dir
+    product_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         import rasterio
@@ -259,6 +296,9 @@ def run_lai_html_report(
         logger.info("lai_html_report | loading image | %s", img_path)
         with rasterio.open(str(img_path)) as src:
             img = src.read().astype(np.float32)
+            source_profile = src.profile.copy()
+            source_bounds = src.bounds
+            source_crs = src.crs
 
         n_bands, h_full, w_full = img.shape
         if n_bands < 5:
@@ -336,7 +376,7 @@ def run_lai_html_report(
             np.clip(mse_b, 0.0, None, out=mse_b)
 
             # Top-k via argpartition  (O(N_lut), unordered)
-            sidx = np.argpartition(mse_b, topk, axis=1)[:, :topk]  # (B, topk)
+            sidx = np.argpartition(mse_b, min(topk - 1, n_lut - 1), axis=1)[:, :topk]  # (B, topk)
 
             top_l = lut_lai_f[sidx]                           # (B, topk)
             lai_flat[start:end] = top_l.mean(axis=1)
@@ -363,6 +403,51 @@ def run_lai_html_report(
 
         logger.info("lai_html_report | inversion done | %.1fs", time.time() - t1)
 
+        # ---- Step 4: Persist geospatial LAI products ----
+        if source_crs is None:
+            raise RuntimeError("输入反射率 GeoTIFF 缺少 CRS，无法生成地图产物")
+        timestamp = int(t0)
+        stem = img_path.stem
+        lai_filename = f"lai_{stem}_{timestamp}.tif"
+        preview_filename = f"lai_preview_{stem}_{timestamp}.png"
+        lai_raster_path = product_dir / lai_filename
+        lai_preview_path = product_dir / preview_filename
+        valid_geo_mask = valid_mask_flat.reshape(h_full, w_full)
+        lai_output = np.where(valid_geo_mask, lai_map, LAI_NODATA).astype(np.float32)
+        lai_profile = source_profile.copy()
+        lai_profile.update(
+            driver="GTiff",
+            count=1,
+            dtype="float32",
+            nodata=LAI_NODATA,
+            compress="deflate",
+            predictor=3,
+        )
+        with rasterio.open(lai_raster_path, "w", **lai_profile) as destination:
+            destination.write(lai_output, 1)
+            destination.set_band_description(1, "LAI")
+            destination.update_tags(
+                units="m2/m2",
+                color_scale=json.dumps(LAI_COLOR_SCALE, ensure_ascii=False),
+            )
+
+        from PIL import Image
+        preview = Image.fromarray(_lai_rgba(lai_map, valid_geo_mask))
+        preview.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+        preview.save(lai_preview_path, format="PNG", optimize=True)
+
+        from rasterio.warp import transform_bounds
+        bounds_wgs84 = transform_bounds(
+            source_crs,
+            "EPSG:4326",
+            source_bounds.left,
+            source_bounds.bottom,
+            source_bounds.right,
+            source_bounds.top,
+            densify_pts=21,
+        )
+        bounds_wgs84_list = [round(float(value), 8) for value in bounds_wgs84]
+
         # ---- Step 3-legacy: row-by-row version (kept for reference, not called) ----
         # def _invert_row_by_row():
         #     lai_map    = np.zeros((h_full, w_full), dtype=np.float32)
@@ -388,7 +473,7 @@ def run_lai_html_report(
         #             logger.info("row %d/%d | ETA %.0fs", i + 1, h_full, eta)
         #     return lai_map, laistd_map, mse_map, param_maps
 
-        # ---- Step 4: Thumbnails ----
+        # ---- Step 5: Thumbnails ----
         th_w, th_h = THUMB_W, THUMB_H
         tb2    = _block_mean_2d(band2,              th_h, th_w)
         tb3    = _block_mean_2d(band3,              th_h, th_w)
@@ -412,7 +497,7 @@ def run_lai_html_report(
             np.stack([_stretch(tb8), _stretch(tb4), _stretch(tb3)], axis=2) * 255
         ).astype(np.uint8)
 
-        # ---- Step 5: Statistics ----
+        # ---- Step 6: Statistics ----
         valid_lai = lai_map[lai_map > 0].flatten()
         total_px  = h_full * w_full
         valid_px  = int((lai_map > 0).sum())
@@ -453,7 +538,7 @@ def run_lai_html_report(
         lai_min    = round(float(np.nanmin(valid_lai)),    3) if len(valid_lai) > 0 else 0.0
         lai_max    = round(float(np.nanmax(valid_lai)),    3) if len(valid_lai) > 0 else 0.0
 
-        # ---- Step 6: Assemble report_data ----
+        # ---- Step 7: Assemble report_data ----
         rgb_list = [
             [[int(thumb_rgb[r, c, 0]), int(thumb_rgb[r, c, 1]), int(thumb_rgb[r, c, 2])]
              for c in range(th_w)]
@@ -505,9 +590,7 @@ def run_lai_html_report(
             },
         }
 
-        # ---- Step 7: Write self-contained HTML ----
-        timestamp = int(t0)
-        stem = img_path.stem
+        # ---- Step 8: Write self-contained HTML ----
         report_filename = f"lai_report_{stem}_{timestamp}.html"
         report_path = out_dir / report_filename
 
@@ -543,6 +626,12 @@ def run_lai_html_report(
                     "scene_pct": scene_pct,
                     "report_path": str(report_path),
                     "report_uri": artifact_uri,
+                    "lai_raster_path": str(lai_raster_path),
+                    "lai_preview_path": str(lai_preview_path),
+                    "bounds_wgs84": bounds_wgs84_list,
+                    "crs": source_crs.to_string(),
+                    "nodata": LAI_NODATA,
+                    "color_scale": [[value, color] for value, color in LAI_COLOR_SCALE],
                     "elapsed_seconds": round(total_elapsed, 1),
                 },
             ),
@@ -561,7 +650,21 @@ def run_lai_html_report(
                         f"耗时: {total_elapsed:.1f}s"
                     ),
                     uri=artifact_uri,
-                )
+                ),
+                PackArtifactView(
+                    pack_name="prosail",
+                    artifact_type="lai_raster",
+                    title=f"LAI GeoTIFF — {img_path.name}",
+                    content=f"单波段 Float32 LAI；CRS={source_crs}; nodata={LAI_NODATA}",
+                    uri=str(lai_raster_path),
+                ),
+                PackArtifactView(
+                    pack_name="prosail",
+                    artifact_type="lai_preview",
+                    title=f"LAI 地图预览 — {img_path.name}",
+                    content="固定 0–7 m²/m² 色标；透明区域为 nodata。",
+                    uri=str(lai_preview_path),
+                ),
             ],
         )
 

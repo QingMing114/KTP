@@ -148,7 +148,8 @@ class DatasetStore:
                     return None
                 existing = CanonicalDataset.model_validate_json(row["payload_json"])
 
-            updated = existing.model_copy(update={k: v for k, v in fields.items() if v is not None})
+            updates = {k: v for k, v in fields.items() if v is not None}
+            updated = CanonicalDataset.model_validate({**existing.model_dump(), **updates})
             self._datasets[dataset_id] = updated
             # Re-read idempotency_key from DB (not in the model fields)
             row = self._db.execute(
@@ -191,3 +192,7 @@ class DatasetStore:
             (key,),
         ).fetchone()
         return row["dataset_id"] if row else None
+
+    def close(self) -> None:
+        with self._lock:
+            self._db.close()

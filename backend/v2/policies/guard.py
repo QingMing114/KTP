@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from v2.shared.schemas import (
+from schemas.runtime import (
     AgentProfile,
     ExecutorActionV2,
     PermissionPolicy,
@@ -59,9 +59,17 @@ class PolicyGuard:
                 raise PolicyGuardError("tool_not_visible")
 
         if action.action_type == "delegate":
+            if delegation_count >= policy.max_delegations:
+                raise PolicyGuardError("delegation_budget_exceeded")
             visible_agent_names = {agent.name for agent in visible_agents}
             if action.target_agent is None or action.target_agent not in visible_agent_names:
                 raise PolicyGuardError("agent_not_visible")
+
+    @staticmethod
+    def validate_replan(*, policy: PermissionPolicy, replan_count: int) -> None:
+        """Authorize one prospective replan before its counter is incremented."""
+        if replan_count >= policy.max_replans:
+            raise PolicyGuardError("replan_budget_exceeded")
 
     # ── permission-first check (returns enum, no throw) ──
 

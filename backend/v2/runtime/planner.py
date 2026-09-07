@@ -10,7 +10,7 @@ from shared.request_normalization import (
     detect_task_type_from_text,
     extract_image_path_from_text,
 )
-from v2.shared.schemas import AgentStepV2, AgentToolCallV2, RequestContextV2, SessionMessage, ToolSpecV2
+from schemas.runtime import AgentStepV2, AgentToolCallV2, RequestContextV2, SessionMessage, ToolSpecV2
 
 
 class ChatFirstPlanner:
@@ -29,6 +29,7 @@ class ChatFirstPlanner:
         recent_messages: list[SessionMessage],
         tool_history: list[dict[str, object]],
         last_task_digest: dict[str, object] | None,
+        memory_context: str = "",
     ) -> AgentStepV2:
         if self._llm_provider is None:
             raise AgentLLMError("chat_first_planner_requires_llm_provider")
@@ -42,6 +43,7 @@ class ChatFirstPlanner:
                 recent_messages=recent_messages,
                 tool_history=tool_history,
                 last_task_digest=last_task_digest,
+                memory_context=memory_context,
             ),
             response_model=AgentStepV2,
         )
@@ -114,6 +116,7 @@ class ChatFirstPlanner:
         recent_messages: list[SessionMessage],
         tool_history: list[dict[str, object]],
         last_task_digest: dict[str, object] | None,
+        memory_context: str = "",
         session_id: str = "",
     ) -> str:
         from v2.runtime.context import build_context_window, build_summary_prefix
@@ -136,6 +139,7 @@ class ChatFirstPlanner:
             "request_context": ChatFirstPlanner._compact_request_context(request_context),
             "recent_messages": history_window,
             "conversation_summary": summary_prefix or None,
+            "retrieved_memory": memory_context or None,
             "last_task_digest": ChatFirstPlanner._compact_task_digest(last_task_digest),
             "tool_history": ChatFirstPlanner._compact_tool_history(tool_history[-4:]),
             "visible_tools": tool_catalog,
@@ -188,35 +192,8 @@ class ChatFirstPlanner:
                     response_message=last_summary or f"工具 {duplicate_calls[0].tool_name} 已执行完成。",
                     tool_calls=[],
                 )
-        if step.action == "fail":
-            has_successful_tool = tool_history and any(
-                item.get("status") == "success" for item in tool_history
-            )
-            if not has_successful_tool:
-                fallback_step = ChatFirstPlanner._fallback_step_for_tool_intent(
-                    message=message,
-                    request_context=request_context,
-                    visible_tool_names=visible_tool_names,
-                )
-                if fallback_step is not None:
-                    return fallback_step
         if step.action != "call_tools":
             step.tool_calls = []
-            has_successful_tool = tool_history and any(
-                item.get("status") == "success" for item in tool_history
-            )
-            is_task_mode = (
-                request_context
-                and getattr(request_context, "conversation_mode", None) == "task"
-            )
-            if not has_successful_tool and is_task_mode:
-                fallback_step = ChatFirstPlanner._fallback_step_for_tool_intent(
-                    message=message,
-                    request_context=request_context,
-                    visible_tool_names=visible_tool_names,
-                )
-                if fallback_step is not None:
-                    return fallback_step
             return step
 
         if not step.tool_calls:
@@ -249,11 +226,9 @@ class ChatFirstPlanner:
                     ),
                 )
             )
-        step.tool_calls = ChatFirstPlanner._correct_tool_intent(
-            calls=normalized_calls,
-            message=message,
-            visible_tool_names=visible_tool_names,
-        )
+        # A valid visible structured tool decision is authoritative.  Keyword
+        # rules are reserved for repairing an empty/unknown decision above.
+        step.tool_calls = normalized_calls
         return step
 
     @staticmethod
@@ -325,7 +300,11 @@ class ChatFirstPlanner:
             payload = ChatFirstPlanner._merge_missing_tool_input_value(
                 payload=payload,
                 key="image_path",
-                fallback=request_context.image_path or extract_image_path_from_text(message),
+                fallback=(
+                    request_context.image_path
+                    or (request_context.datasets[0].local_path if request_context.datasets else None)
+                    or extract_image_path_from_text(message)
+                ),
             )
             payload = ChatFirstPlanner._merge_missing_tool_input_value(
                 payload=payload,
@@ -335,6 +314,15 @@ class ChatFirstPlanner:
             payload.setdefault("extra_params", dict(request_context.extra_params))
             if tool_name in {"knowledge.search_local", "ktp.explain_knowledge", "ktp.retrieve_knowledge", "ktp.analysis_pipeline"}:
                 payload.setdefault("top_k", int(request_context.extra_params.get("top_k", 3) or 3))
+        if tool_name in {"prosail.lai_html_report", "prosail.invert_lai_tif"}:
+            payload = ChatFirstPlanner._merge_missing_tool_input_value(
+                payload=payload,
+                key="image_path",
+                fallback=(
+                    request_context.image_path
+                    or (request_context.datasets[0].local_path if request_context.datasets else None)
+                ),
+            )
         if tool_name == "ktp.analysis_pipeline":
             payload.setdefault("include_knowledge", bool(payload.get("include_knowledge", False)))
             payload.setdefault("include_visualization", bool(payload.get("include_visualization", False)))
@@ -376,11 +364,8 @@ class ChatFirstPlanner:
         visible_tool_names: set[str],
     ) -> str:
         normalized = tool_name.strip()
-        if normalized in visible_tool_names:
-            return normalized
-
         alias_map = {
-            "ktp.retrieve_knowledge": "ktp.retrieve_knowledge",
+            "ktp.retrieve_knowledge": "ktp.explain_knowledge",
             "ktp.run_analysis": "ktp.analysis_pipeline",
             "knowledge.retrieve": "knowledge.search_local",
             "knowledge.search": "knowledge.search_local",
@@ -390,6 +375,9 @@ class ChatFirstPlanner:
         alias = alias_map.get(normalized)
         if alias in visible_tool_names:
             return alias
+
+        if normalized in visible_tool_names:
+            return normalized
 
         fallback_step = ChatFirstPlanner._fallback_step_for_tool_intent(
             message=message,
@@ -497,6 +485,17 @@ class ChatFirstPlanner:
         }
         if request_context.attachments:
             payload["attachments"] = [attachment.path for attachment in request_context.attachments[:2]]
+        if request_context.datasets:
+            payload["datasets"] = [
+                {
+                    "dataset_id": dataset.dataset_id,
+                    "display_name": dataset.display_name,
+                    "region": dataset.region,
+                    "crop_type": dataset.crop_type,
+                    "task_type": dataset.task_type,
+                }
+                for dataset in request_context.datasets[:4]
+            ]
         if request_context.extra_params:
             payload["extra_params"] = {
                 str(key): value

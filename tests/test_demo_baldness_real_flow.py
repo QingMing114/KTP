@@ -31,7 +31,7 @@ def test_configure_baldness_demo_environment_sets_expected_env(tmp_path: Path) -
         base_dir=str(tmp_path),
         agent_backend="heuristic",
         model_dir="/models/qwen",
-        runtime_python="/opt/anaconda3/bin/python",
+        runtime_python="python",
         cuda_visible_devices="0,6",
     )
 

@@ -56,8 +56,14 @@ The alignment target is architectural shape, not code copying.
 
 ## Current Compatibility Shells
 
+- Production ASGI target: `apps.api_gateway.main:app`.  It constructs one
+  `BackendRuntimeHost`, mounts canonical `/api/product/v1`, and then mounts
+  compatibility routes onto that same host.
+- `app/main.py` is a deprecated import shell for old local commands; it is not
+  a second deployable application design.
 - `v2/apps/api/main.py`
-  Thin wrapper over `ktp_backend.api`
+  Deprecated thin wrapper over `ktp_backend.api`, retained for `/v2/*` test and
+  debug compatibility only.
 - `apps/api_gateway/services/gateway_agent_service.py`
   Thin wrapper over `ktp_backend.gateway_bridge`
 - `apps/api_gateway/main.py`

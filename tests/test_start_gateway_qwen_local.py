@@ -29,7 +29,7 @@ def test_configure_demo_environment_sets_runtime_env(tmp_path: Path) -> None:
             base_dir=str(tmp_path),
             port=19090,
             model_path="/models/qwen",
-            runtime_python="/opt/anaconda3/bin/python",
+            runtime_python="python",
             cuda_visible_devices="0,6",
         )
 
@@ -40,7 +40,7 @@ def test_configure_demo_environment_sets_runtime_env(tmp_path: Path) -> None:
         assert os.environ["VECTORSTORE_DIR"] == paths["vectorstore_dir"]
         assert os.environ["AGENT_LLM_BACKEND"] == "subprocess_qwen"
         assert os.environ["AGENT_LLM_MODEL_PATH"] == "/models/qwen"
-        assert os.environ["AGENT_LLM_RUNTIME_PYTHON"] == "/opt/anaconda3/bin/python"
+        assert os.environ["AGENT_LLM_RUNTIME_PYTHON"] == "python"
         assert os.environ["AGENT_LLM_CUDA_VISIBLE_DEVICES"] == "0,6"
     finally:
         os.environ.clear()

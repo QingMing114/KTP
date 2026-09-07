@@ -31,18 +31,9 @@ if len(data_rows) > 0:
     print(f"数据已保存到 spectral_data.npy")
     print(f"数据形状: {data_array.shape}")
     
-    # 同时生成Python代码文件
-    with open('spectral_data_generated.py', 'w') as f:
-        f.write("import numpy as np\n\n")
-        f.write("def get_spectral_data():\n")
-        f.write(f"    \"\"\"\n")
-        f.write(f"    从MATLAB dataSpec_PDB.m提取的完整光谱数据\n")
-        f.write(f"    共 {len(data_rows)} 个波长 (400-2500nm)\n")
-        f.write(f"    列顺序与MATLAB一致：\n")
-        f.write(f"    nr, Kab, Kcar, Kant, KBrown, Kw, Km, Es, Ed, Rsoil1, Rsoil2\n")
-        f.write(f"    \"\"\"\n")
-        f.write(f"    return np.load('{spectral_data.npy}')\n")
-    
-    print(f"Python代码已保存到 spectral_data_generated.py")
+    # ``spectral_data_full.py`` is the maintained import target. Do not emit a
+    # duplicate wrapper module: it had no runtime consumer and inherited a
+    # legacy source encoding.
+    print("No Python wrapper generated; use spectral_data_full.py at runtime")
 else:
     print("未能提取到数据")

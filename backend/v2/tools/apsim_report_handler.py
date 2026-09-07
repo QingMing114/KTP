@@ -35,10 +35,22 @@ _STAGE_NAMES = {
     5: "开花", 6: "灌浆", 7: "乳熟", 8: "蜡熟", 9: "完熟",
 }
 
-_DEMO_DB = (
-    Path(__file__).resolve().parents[3]
-    / "ApsimX" / "Tests" / "Validation" / "Wheat" / "GxExM" / "GxExM.db"
-)
+def get_apsim_demo_db_path() -> Path:
+    """Locate the bundled Wheat validation output in either supported checkout layout."""
+    relative = Path("ApsimX/Tests/Validation/Wheat/GxExM/GxExM.db")
+    configured = os.environ.get("APSIM_DEMO_DB")
+    candidates = [
+        Path(configured).expanduser() if configured else None,
+        Path(__file__).resolve().parents[3] / relative,
+        Path(__file__).resolve().parents[4] / relative,
+    ]
+    for candidate in candidates:
+        if candidate is not None and candidate.is_file():
+            return candidate.resolve()
+    return (Path(__file__).resolve().parents[3] / relative).resolve()
+
+
+_DEMO_DB = get_apsim_demo_db_path()
 
 
 def _parse_db(db_path: Path, sim_id: int | None = None) -> dict[str, Any]:
@@ -516,6 +528,7 @@ def run_apsim_yield_report(
     cultivar: str | None = None,
     sowing_date: str | None = None,
     db_path: str | None = None,
+    allow_demo_fallback: bool = True,
     query: str | None = None,
     **_unused: object,
 ) -> tuple[ObservationV2, list[PackArtifactView]]:
@@ -530,10 +543,11 @@ def run_apsim_yield_report(
         sowing_date: ISO date string for sowing (e.g. "2024-10-15")
         db_path:     Path to an existing ApsimX .db output file. If provided,
                      skip running a new simulation and read data directly.
+        allow_demo_fallback: Use bundled validation output when Models is unavailable.
         query:       Original user query (kept for interface compatibility)
     """
     # --- Mode A: read from existing .db file (no simulation needed) ---
-    if db_path or (_DEMO_DB.exists() and not _apsim_bin_available()):
+    if db_path or (allow_demo_fallback and _DEMO_DB.exists() and not _apsim_bin_available()):
         resolved_db = Path(db_path).expanduser().resolve() if db_path else _DEMO_DB
         if not resolved_db.exists():
             return (

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -35,7 +36,7 @@ from services.visualization_service.config import get_visualization_service_conf
 from shared.schemas.orchestrator import WorkflowRequest
 
 EXTERNAL_RF_MODEL_PATH = Path(
-    "/home/D/liumeng/bantushibie/test/api_storage/models/rf_model.pkl"
+    os.environ.get("KTP_TEST_RF_MODEL_PATH", "var/models/baldness/rf_model.pkl")
 )
 
 

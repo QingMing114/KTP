@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from v2.shared.schemas import SessionMessage
+    from schemas.runtime import SessionMessage
     from infra.llm.provider import AgentLLMProvider
 
 logger = logging.getLogger(__name__)

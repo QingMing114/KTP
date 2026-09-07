@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from v2.shared.schemas import PermissionPolicy
+from schemas.runtime import PermissionPolicy
 
 
 @dataclass(slots=True)

@@ -9,6 +9,8 @@ from pathlib import Path
 from ml.baldness_rf.diagnostics import diagnose_baldness_rf_run
 from shared.logging import configure_logging
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -16,17 +18,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--image-path",
-        default="/home/D/liumeng/bantushibie/原始文件/9.17甜高粱/MULTI.tif",
+        required=True,
         help="Input multispectral GeoTIFF path.",
     )
     parser.add_argument(
         "--model-path",
-        default="/home/D/liumeng/bantushibie/test/api_storage/models/rf_model.pkl",
+        required=True,
         help="Random-forest model path.",
     )
     parser.add_argument(
         "--output-dir",
-        default="/tmp/ktp_baldness_diagnostics",
+        default=str(BACKEND_ROOT / "var" / "runtime" / "baldness_diagnostics"),
         help="Directory for diagnostics JSON and previews.",
     )
     return parser.parse_args()

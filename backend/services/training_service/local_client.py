@@ -17,6 +17,7 @@ from services.training_service.config import (
 )
 from services.training_service.schemas import TrainingRequest
 from shared.async_utils import run_coro_sync
+from shared.config.paths import RUNTIME_DIR
 from shared.schemas.service_results import TrainingTriggerResult
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ class LocalTrainingServiceClient:
         *,
         config: TrainingServiceConfig | None = None,
         temporal_client: TemporalClient | None = None,
-        dataset_uri_root: str = "/tmp/ktp_training_datasets",
+        dataset_uri_root: str = str(RUNTIME_DIR / "training_datasets"),
         output_model_prefix: str = "remote-sensing",
     ) -> None:
         self._config = config or get_training_service_config()

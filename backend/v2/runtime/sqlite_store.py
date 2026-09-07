@@ -7,7 +7,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from v2.shared.schemas import RunDetail, SessionDetail, SessionMessage, TraceEventV2
+from schemas.runtime import RunDetail, SessionDetail, SessionMessage, TraceEventV2
 
 logger = logging.getLogger(__name__)
 

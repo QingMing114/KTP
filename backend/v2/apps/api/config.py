@@ -6,6 +6,8 @@ from typing import ClassVar
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.config.paths import DATA_DIR
+
 
 class V2ApiSettings(BaseSettings):
     """Settings for the V2 API surface."""
@@ -22,8 +24,18 @@ class V2ApiSettings(BaseSettings):
     port: int = Field(default=18180)
     log_level: str = Field(default="INFO")
     store_backend: str = Field(default="memory")
-    sqlite_path: str = Field(default="/tmp/ktp_v2_runtime.sqlite3")
+    sqlite_path: str = Field(default=str(DATA_DIR / "ktp_v2_runtime.sqlite3"))
     cors_allow_origins: str = Field(default="*")
+    memory_dir: str | None = Field(
+        default=None,
+        description="Directory containing MEMORY.md and the Markdown documents available for read-only retrieval.",
+    )
+    memory_top_k: int = Field(default=5, ge=1, le=20)
+    memory_max_chars: int = Field(default=2_000, ge=200, le=12_000)
+    memory_auto_write_enabled: bool = Field(
+        default=False,
+        description="Whether completed conversations may create memory facts. Keep disabled for document retrieval.",
+    )
 
     @property
     def cors_origins_list(self) -> list[str]:

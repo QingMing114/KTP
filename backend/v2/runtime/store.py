@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Protocol
 from typing import Dict
 
-from v2.shared.schemas import RunDetail, SessionDetail, SessionMessage, TraceEventV2
+from schemas.runtime import RunDetail, SessionDetail, SessionMessage, TraceEventV2
 
 
 class RuntimeStore(Protocol):

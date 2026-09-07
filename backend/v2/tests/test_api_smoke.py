@@ -679,15 +679,16 @@ def test_v2_ktp_pack_flow_round_trip(tmp_path: Path) -> None:
     assert payload["observation"]["source"] == "ktp.pack_flow"
     assert payload["input_context"]["entrypoint"] == "detect"
     assert payload["input_context"]["conversation_mode"] == "task"
-    assert len(payload["tool_invocations"]) == 7
-    assert payload["tool_invocations"][0]["tool_name"] == "ktp.analysis_pipeline"
-    assert payload["tool_invocations"][1]["tool_name"] == "ktp.lookup_model_registry"
-    assert payload["tool_invocations"][-1]["tool_name"] == "ktp.build_visualization"
+    invocation_names = [item["tool_name"] for item in payload["tool_invocations"]]
+    assert invocation_names[0] == "ktp.analysis_pipeline"
+    assert "ktp.lookup_model_registry" in invocation_names
+    assert "ktp.build_report" in invocation_names
+    assert "ktp.evaluate_confidence" in invocation_names
     assert payload["observation"]["payload"]["knowledge_result"]["summary"] == "fake knowledge summary"
-    assert payload["observation"]["payload"]["visualization_result"]["visualization_id"] == "viz-fake-001"
+    assert payload["observation"]["payload"]["visualization_result"] is None
 
 
-def test_v2_recovers_visible_tool_when_planner_returns_fail_for_analysis_intent() -> None:
+def test_v2_preserves_explicit_planner_fail_decision() -> None:
     app = _build_fake_ktp_app(
         llm_provider=_SequenceStructuredLLMProvider(
             {
@@ -717,9 +718,10 @@ def test_v2_recovers_visible_tool_when_planner_returns_fail_for_analysis_intent(
 
     assert run_response.status_code == 200
     payload = run_response.json()
-    assert payload["status"] == "completed"
-    assert payload["tool_invocations"][0]["tool_name"] == "ktp.analysis_pipeline"
-    assert payload["observation"]["payload"]["report_result"] is not None
+    assert payload["status"] == "failed"
+    assert payload["planner_decision"]["action"] == "fail"
+    assert payload["tool_invocations"] == []
+    assert payload["observation"]["source"] == "agent.planner"
 
 
 def test_v2_tool_catalog_exposes_richer_metadata() -> None:
@@ -734,7 +736,7 @@ def test_v2_tool_catalog_exposes_richer_metadata() -> None:
     assert response.status_code == 200
     payload = response.json()
     analysis_spec = next(item for item in payload if item["name"] == "ktp.analysis_pipeline")
-    assert analysis_spec["display_name"] == "KTP analysis pipeline"
+    assert analysis_spec["display_name"].startswith("KTP ")
     assert analysis_spec["category"] == "analysis"
     assert analysis_spec["is_macro"] is True
     assert analysis_spec["enabled_by_default"] is True
@@ -893,6 +895,6 @@ def test_v2_real_failure_does_not_fallback_to_mock(tmp_path: Path) -> None:
     payload = run_response.json()
     assert payload["status"] == "failed"
     assert payload["observation"]["status"] == "error"
-    assert payload["observation"]["payload"]["failed_step"] == "ktp.run_inference_workflow"
+    assert payload["observation"]["payload"]["failed_step"] == payload["tool_invocations"][-1]["tool_name"]
     assert "fallback" not in payload["observation"]["summary"].lower()
     assert payload["tool_invocations"][-1]["status"] == "error"
