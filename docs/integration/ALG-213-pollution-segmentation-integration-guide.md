@@ -1,8 +1,11 @@
 # ALG-213 污染区域分割接入手册
 
-> 能力名：`remote_sensing.pollution_segmentation`  
-> 候选算法：MariNeXt / MADOS  
-> 契约：`algorithm-tool/v1`  
+> 能力名：`remote_sensing.pollution_segmentation`
+>
+> 候选算法：MariNeXt / MADOS
+>
+> 契约：`algorithm-tool/v1`
+>
 > 当前准入状态：**阻塞，不得开始生产适配器编码或注册为 available**
 
 ## 1. 文档用途与开工门禁

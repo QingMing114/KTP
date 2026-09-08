@@ -1,8 +1,11 @@
 # ALG-211 作物分类接入手册
 
-> 能力名：`remote_sensing.crop_classification`  
-> 候选算法：KDD2020 Multi Modal Crop Classification  
-> 契约：`algorithm-tool/v1`  
+> 能力名：`remote_sensing.crop_classification`
+>
+> 候选算法：KDD2020 Multi Modal Crop Classification
+>
+> 契约：`algorithm-tool/v1`
+>
 > 当前准入状态：**阻塞，不得开始生产适配器编码或注册为 available**
 
 ## 1. 文档用途与开工门禁
