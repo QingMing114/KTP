@@ -299,6 +299,12 @@ class PackArtifactView(BaseModel):
     title: str
     content: str | None = None
     uri: str | None = None
+    artifact_id: str | None = None
+    content_type: str | None = None
+    checksum_sha256: str | None = None
+    size_bytes: int | None = None
+    provenance: dict[str, Any] = Field(default_factory=dict)
+    internal_path: str | None = Field(default=None, exclude=True, repr=False)
 
 
 class AssistantMessagePartV2(BaseModel):

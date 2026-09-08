@@ -912,8 +912,6 @@ def run_prosail_invert_lai(
     **_unused: object,
 ) -> tuple[ObservationV2, list[PackArtifactView]]:
     try:
-        engine = _get_prosail_engine()
-
         if image_path:
             return run_prosail_invert_lai_tif(
                 image_path=image_path,
@@ -924,6 +922,8 @@ def run_prosail_invert_lai(
                 output_dir=(options or {}).get("output_dir"),
                 query=query,
             )
+
+        engine = _get_prosail_engine()
 
         if reflectance is None:
             return (

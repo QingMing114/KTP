@@ -47,10 +47,12 @@ class SubExecutor:
         llm_provider: "AgentLLMProvider | None",
         policy: PermissionPolicy,
         cancellation_event: Event | None = None,
+        user_id: str | None = None,
     ) -> None:
         self._tool_registry = tool_registry
         self._policy = policy
         self._cancellation_event = cancellation_event
+        self._user_id = user_id
         self._planner = ChatFirstPlanner(
             llm_provider=llm_provider,
             system_prompt_suffix=_EXECUTOR_SYSTEM_PROMPT_SUFFIX,
@@ -123,6 +125,7 @@ class SubExecutor:
                     policy=self._policy,
                     event_emitter=parent_emitter,
                     cancellation_event=self._cancellation_event,
+                    user_id=self._user_id,
                 )
                 tool_history.append(result["history_item"])
                 if result.get("blocked"):

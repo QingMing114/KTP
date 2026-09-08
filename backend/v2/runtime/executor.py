@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event
 from typing import Callable
@@ -154,6 +155,7 @@ class ToolExecutor:
         policy,
         event_emitter,
         cancellation_event: Event | None = None,
+        user_id: str | None = None,
     ) -> dict[str, object]:
         """Execute a single tool call and return a result dict.
 
@@ -367,10 +369,37 @@ class ToolExecutor:
                 final_message = observation.summary
             else:
                 raise_if_cancelled(cancellation_event)
-                observation, artifacts = self._tool_registry.invoke(
-                    tool_name=tool_call.tool_name,
-                    tool_input=tool_call.tool_input,
-                )
+                if spec.contract_version == "algorithm-tool/v1":
+                    from v2.tools.remote_sensing.contract import ToolExecutionContext
+                    from v2.tools.remote_sensing.execution import RuntimeAlgorithmExecutionControl
+
+                    timeout_seconds = int(spec.runtime_requirements.get("timeout_seconds", 300))
+                    execution_context = ToolExecutionContext(
+                        execution_id=invocation.call_id,
+                        trace_id=f"{run.run_id}:{invocation.call_id}",
+                        user_id=user_id or "anonymous",
+                        conversation_id=run.session_id,
+                        run_id=run.run_id,
+                        permissions=list(spec.permissions),
+                        deadline_at=(datetime.now(UTC) + timedelta(seconds=timeout_seconds)).isoformat(),
+                    )
+                    execution_control = RuntimeAlgorithmExecutionControl(
+                        context=execution_context,
+                        event_emitter=event_emitter,
+                        cancellation_event=cancellation_event,
+                        call_id=invocation.call_id,
+                    )
+                    observation, artifacts = self._tool_registry.invoke_algorithm(
+                        tool_name=tool_call.tool_name,
+                        tool_input=tool_call.tool_input,
+                        execution_context=execution_context,
+                        execution_control=execution_control,
+                    )
+                else:
+                    observation, artifacts = self._tool_registry.invoke(
+                        tool_name=tool_call.tool_name,
+                        tool_input=tool_call.tool_input,
+                    )
                 final_message = observation.summary
         except RuntimeCancellationError:
             raise

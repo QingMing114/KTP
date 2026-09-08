@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from pathlib import Path
 import re
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from schemas.runtime import ToolSpecV2
 
@@ -122,6 +123,8 @@ class SpatialMetadata(_ContractModel):
 
 
 class AlgorithmArtifact(_ContractModel):
+    _internal_path: Path | None = PrivateAttr(default=None)
+
     artifact_id: str = Field(min_length=1)
     role: str = Field(min_length=1, max_length=100)
     runtime_kind: Literal[
@@ -140,6 +143,11 @@ class AlgorithmArtifact(_ContractModel):
     checksum_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     size_bytes: int = Field(ge=0)
     spatial: SpatialMetadata | None = None
+
+    def attach_internal_path(self, path: Path) -> None:
+        """Attach a runtime-only persisted path that is never serialized."""
+
+        self._internal_path = path
 
 
 class AlgorithmProvenance(_ContractModel):

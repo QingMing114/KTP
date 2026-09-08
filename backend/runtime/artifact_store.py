@@ -1,9 +1,8 @@
 """SQLite-backed artifact store for the canonical product protocol.
 
 Provides stable, UUID-based artifact IDs that are independent of enumeration
-order.  Tools generate ``PackArtifactView`` objects during run execution;
-the router registers them into the ArtifactStore at run completion, mapping
-each to a stable ``art_{8hex}`` identifier.
+order. Tools may supply a contract-owned ID; legacy tools are assigned an
+``art_{8hex}`` identifier during registration.
 
 Persistence:
   - Artifact metadata is stored in SQLite (product_artifacts table).
@@ -32,7 +31,7 @@ logger = logging.getLogger(__name__)
 class ArtifactRecord(BaseModel):
     """A registered artifact with a stable identifier."""
 
-    artifact_id: str          # "art_{uuid4 hex[:8]}"
+    artifact_id: str          # "art_{uuid}" or legacy "art_{uuid4 hex[:8]}"
     run_id: str               # parent run
     pack_name: str
     artifact_type: str        # "lai_html_report" etc.
@@ -78,16 +77,21 @@ class ArtifactStore:
         *artifact* must have at minimum: ``pack_name``, ``artifact_type``,
         ``title``, and optionally ``uri`` / ``content``.
         """
-        content_path = getattr(artifact, "uri", None)
+        public_uri = getattr(artifact, "uri", None)
+        content_path = getattr(artifact, "internal_path", None) or public_uri
         content_inline = getattr(artifact, "content", None)
-        checksum, size_bytes = self._content_fingerprint(content_path, content_inline)
+        computed_checksum, computed_size = self._content_fingerprint(content_path, content_inline)
+        checksum = getattr(artifact, "checksum_sha256", None) or computed_checksum
+        size_bytes = getattr(artifact, "size_bytes", None)
+        if size_bytes is None:
+            size_bytes = computed_size
         content_type = (
             getattr(artifact, "content_type", None)
             or self._infer_content_type(content_path, artifact.artifact_type, content_inline)
         )
-        provenance = self._provenance(artifact, content_path)
+        provenance = self._provenance(artifact, public_uri)
         record = ArtifactRecord(
-            artifact_id="art_" + _uuid.uuid4().hex[:8],
+            artifact_id=getattr(artifact, "artifact_id", None) or "art_" + _uuid.uuid4().hex[:8],
             run_id=run_id,
             pack_name=artifact.pack_name,
             artifact_type=artifact.artifact_type,
@@ -105,6 +109,11 @@ class ArtifactStore:
             existing = self._find_same_content_locked(record)
             if existing is not None:
                 return existing.artifact_id
+            conflicting = self._db.execute(
+                "SELECT run_id FROM product_artifacts WHERE artifact_id=?", (record.artifact_id,)
+            ).fetchone()
+            if conflicting is not None:
+                raise ValueError("artifact_id is already registered")
             record.version = self._next_version_locked(record)
             artifact_id = record.artifact_id
             self._artifacts[artifact_id] = record

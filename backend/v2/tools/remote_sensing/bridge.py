@@ -18,6 +18,12 @@ def algorithm_result_to_runtime(
             artifact_type=artifact.runtime_kind,
             title=artifact.filename,
             uri=artifact.access_url,
+            artifact_id=artifact.artifact_id,
+            content_type=artifact.media_type,
+            checksum_sha256=artifact.checksum_sha256,
+            size_bytes=artifact.size_bytes,
+            provenance=(result.provenance.model_dump(mode="json") if result.provenance else {}),
+            internal_path=(str(artifact._internal_path) if artifact._internal_path else None),
         )
         for artifact in result.artifacts
     ]

@@ -134,7 +134,6 @@ class BoundedRuntimeEngine:
         request_context: RequestContextV2 | None = None,
         cancellation_event: Event | None = None,
     ) -> Iterator[RunEventV2]:
-        del user_id  # reserved for future actor-aware policy decisions
         session = self._store.get_session(session_id)
         if session is None:
             raise KeyError(session_id)
@@ -149,6 +148,7 @@ class BoundedRuntimeEngine:
                 final_result["run"] = self._run_internal(
                     session_id=session_id,
                     user_message=user_message,
+                    user_id=user_id,
                     request_context=request_context,
                     persist_messages=True,
                     persist_run=True,
@@ -202,6 +202,7 @@ class BoundedRuntimeEngine:
             persist_messages=False,
             persist_run=False,
             replay_of_run_id=run_id,
+            user_id="replay",
         )
         original_state = self._build_run_state(original_run)
         replayed_state = self._build_run_state(replayed_run)
@@ -228,6 +229,7 @@ class BoundedRuntimeEngine:
         *,
         session_id: str,
         user_message: str,
+        user_id: str | None,
         request_context: RequestContextV2 | None,
         persist_messages: bool,
         persist_run: bool,
@@ -241,6 +243,7 @@ class BoundedRuntimeEngine:
         run = self._execute(
             session_id=session_id,
             user_message=user_message,
+            user_id=user_id,
             request_context=request_context,
             persist_messages=persist_messages,
             persist_run=persist_run,
@@ -267,6 +270,7 @@ class BoundedRuntimeEngine:
         replay_of_run_id: str | None,
         event_sink: Callable[[RunEventV2], None] | None = None,
         cancellation_event: Event | None = None,
+        user_id: str | None = None,
     ) -> RunDetail:
         session = self._store.get_session(session_id)
         if session is None:
@@ -356,6 +360,7 @@ class BoundedRuntimeEngine:
                 emitter=emitter,
                 observer=observer,
                 cancellation_event=cancellation_event,
+                user_id=user_id,
             )
         except RuntimeCancellationError:
             cancellation_message = "Run cancelled by request."
@@ -403,6 +408,7 @@ class BoundedRuntimeEngine:
         emitter: RunEventEmitter,
         observer: RunObserver,
         cancellation_event: Event | None = None,
+        user_id: str | None = None,
     ) -> None:
         raise_if_cancelled(cancellation_event)
         session = self._store.get_session(session_id)
@@ -757,6 +763,7 @@ class BoundedRuntimeEngine:
                     llm_provider=self._llm_provider,
                     policy=policy,
                     cancellation_event=cancellation_event,
+                    user_id=user_id,
                 )
 
                 # 执行委派任务
@@ -902,6 +909,7 @@ class BoundedRuntimeEngine:
                     policy=policy,
                     event_emitter=emitter,
                     cancellation_event=cancellation_event,
+                    user_id=user_id,
                 )
                 tool_history.append(tool_result["history_item"])
                 observation = tool_result.get("observation")

@@ -251,7 +251,16 @@ def build_canonical_router() -> APIRouter:
 
     # Artifact kinds whose content is renderable HTML.
     _HTML_ARTIFACT_KINDS: set[str] = {"lai_html_report", "apsim_report"}
-    _BINARY_ARTIFACT_KINDS: set[str] = {"lai_raster", "lai_preview", "reflectance_tif"}
+    _BINARY_ARTIFACT_KINDS: set[str] = {
+        "lai_raster",
+        "lai_preview",
+        "reflectance_tif",
+        "classification_result",
+        "segmentation_mask",
+        "segmentation_preview",
+        "statistics_table",
+        "provenance_record",
+    }
 
     def _binary_artifact_path(record: ArtifactRecord, request: Request) -> Path | None:
         """Resolve a registered local artifact without allowing arbitrary file access."""
@@ -1647,8 +1656,11 @@ def build_canonical_router() -> APIRouter:
             if record is not None:
                 binary_path = _binary_artifact_path(record, request)
                 if binary_path is not None:
-                    media_type = "image/png" if record.artifact_type == "lai_preview" else "image/tiff"
-                    return FileResponse(binary_path, media_type=media_type, filename=binary_path.name)
+                    return FileResponse(
+                        binary_path,
+                        media_type=record.content_type or "application/octet-stream",
+                        filename=binary_path.name,
+                    )
                 if record.artifact_type in _BINARY_ARTIFACT_KINDS:
                     return canonical_error_response(
                         404, code=ErrorCode.ARTIFACT_NOT_FOUND,

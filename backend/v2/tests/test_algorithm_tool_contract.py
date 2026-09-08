@@ -67,6 +67,28 @@ class _SequencePlanner:
         return self.steps.pop(0)
 
 
+class _Control:
+    def raise_if_cancelled(self) -> None:
+        return None
+
+    def emit_progress(self, _event: AlgorithmProgressEvent) -> None:
+        return None
+
+
+def _invoke_probe(registry: ToolRegistryV2, spec, tool_input: dict):
+    return registry.invoke_algorithm(
+        tool_name=spec.name,
+        tool_input=tool_input,
+        execution_context=ToolExecutionContext(
+            execution_id="probe-test",
+            trace_id="trace-test",
+            user_id="test",
+            permissions=spec.permissions,
+        ),
+        execution_control=_Control(),
+    )
+
+
 def test_contract_schemas_are_valid_draft_2020_12_documents() -> None:
     input_schema = AlgorithmToolInput.model_json_schema()
     output_schema = AlgorithmToolResult.model_json_schema()
@@ -180,7 +202,7 @@ def test_probe_success_uses_bridge_and_cleans_workspace() -> None:
     spec = _spec()
     registry.register(spec.name, spec, build_contract_probe_handler(state))
 
-    observation, artifacts = registry.invoke(tool_name=spec.name, tool_input=_input())
+    observation, artifacts = _invoke_probe(registry, spec, _input())
     result = AlgorithmToolResult.model_validate(observation.payload["algorithm_result"])
     Draft202012Validator(spec.output_schema).validate(result.model_dump(mode="json"))
 
@@ -200,7 +222,7 @@ def test_probe_failure_preserves_error_code_and_cleans_workspace() -> None:
     spec = _spec()
     registry.register(spec.name, spec, build_contract_probe_handler(state))
 
-    observation, artifacts = registry.invoke(tool_name=spec.name, tool_input=_input(fail=True))
+    observation, artifacts = _invoke_probe(registry, spec, _input(fail=True))
     result = AlgorithmToolResult.model_validate(observation.payload["algorithm_result"])
     Draft202012Validator(spec.output_schema).validate(result.model_dump(mode="json"))
 

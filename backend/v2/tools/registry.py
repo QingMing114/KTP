@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from v2.adapters.python_services.ktp_services import (
     KtpServiceBundle,
@@ -103,7 +105,72 @@ class ToolRegistryV2:
             from v2.tools.remote_sensing.contract import validate_contract_input
 
             validate_contract_input(definition.spec.input_schema, tool_input)
+            raise RuntimeError("algorithm tools require runtime-injected execution context")
         return definition.handler(**tool_input)
+
+    def invoke_algorithm(
+        self,
+        *,
+        tool_name: str,
+        tool_input: dict[str, object],
+        execution_context,
+        execution_control,
+    ) -> tuple[ObservationV2, list[PackArtifactView]]:
+        """Invoke the strict algorithm boundary and bridge its result one way."""
+
+        from v2.runtime.cancellation import RuntimeCancellationError
+        from v2.tools.remote_sensing.bridge import algorithm_result_to_runtime
+        from v2.tools.remote_sensing.contract import (
+            ALGORITHM_TOOL_CONTRACT_VERSION,
+            AlgorithmRuntimeRecord,
+            AlgorithmToolInput,
+            AlgorithmToolResult,
+            AlgorithmValidation,
+            validate_contract_input,
+        )
+        from v2.tools.remote_sensing.errors import normalized_algorithm_error
+
+        if not self.has_tool(tool_name):
+            raise ToolNotFoundError(f"Tool '{tool_name}' not found in registry.")
+        definition = self.get_definition(tool_name)
+        if definition.spec.contract_version != ALGORITHM_TOOL_CONTRACT_VERSION:
+            raise ValueError("invoke_algorithm only accepts algorithm-tool/v1 definitions")
+        if definition.spec.availability != "available":
+            reason = definition.spec.unavailable_reason or "tool is not available"
+            raise ToolUnavailableError(f"Tool '{tool_name}' is unavailable: {reason}")
+        validate_contract_input(definition.spec.input_schema, tool_input)
+        validated_input = AlgorithmToolInput.model_validate(tool_input)
+        started = datetime.now(UTC)
+        started_clock = time.perf_counter()
+        try:
+            result = definition.handler(validated_input, execution_context, execution_control)
+            result = AlgorithmToolResult.model_validate(result)
+            if (
+                result.runtime.execution_id != execution_context.execution_id
+                or result.runtime.trace_id != execution_context.trace_id
+            ):
+                raise ValueError("algorithm result runtime identity does not match execution context")
+        except RuntimeCancellationError:
+            raise
+        except Exception as exc:
+            finished = datetime.now(UTC)
+            result = AlgorithmToolResult(
+                status="failed",
+                summary="Algorithm execution failed.",
+                validation=AlgorithmValidation(passed=False),
+                runtime=AlgorithmRuntimeRecord(
+                    execution_id=execution_context.execution_id,
+                    trace_id=execution_context.trace_id,
+                    started_at=started.isoformat(),
+                    finished_at=finished.isoformat(),
+                    duration_ms=max(0, round((time.perf_counter() - started_clock) * 1000)),
+                ),
+                error=normalized_algorithm_error(exc),
+            )
+        from jsonschema import Draft202012Validator
+
+        Draft202012Validator(definition.spec.output_schema).validate(result.model_dump(mode="json"))
+        return algorithm_result_to_runtime(result)
 
     _EXECUTOR_TOOL_PREFIXES = ("prosail.", "apsim.", "workspace.")
 
