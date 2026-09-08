@@ -80,24 +80,13 @@ const SkillsPage: React.FC = () => {
   const [testResult, setTestResult] = useState<PluginToolTestResult | null>(null)
   const [testing, setTesting] = useState(false)
 
-  const tools = state.tools || []
+  const tools = useMemo(() => state.tools || [], [state.tools])
 
   const categories = useMemo(() => {
     const cats = new Set<string>()
     tools.forEach((t: Tool) => { if (t.category) cats.add(t.category) })
     return Array.from(cats).sort()
   }, [tools])
-
-  if (state.loading.boot) {
-    return (
-      <div className="flex-1 overflow-auto bg-stone-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-stone-400">加载中...</p>
-        </div>
-      </div>
-    )
-  }
 
   const filteredTools = useMemo(() => {
     let result = tools
@@ -127,6 +116,17 @@ const SkillsPage: React.FC = () => {
     })
     return groups
   }, [filteredTools])
+
+  if (state.loading.boot) {
+    return (
+      <div className="flex-1 overflow-auto bg-stone-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-stone-400">加载中...</p>
+        </div>
+      </div>
+    )
+  }
 
   function handleToolUse(tool: Tool) {
     const toolName = tool.display_name || tool.name || tool.tool_name
@@ -199,7 +199,7 @@ const SkillsPage: React.FC = () => {
       setFormError('工具名、描述和 API URL 为必填项')
       return
     }
-    if (!/^[a-zA-Z][a-zA-Z0-9_.\-]{1,63}$/.test(formName.trim())) {
+    if (!/^[a-zA-Z][a-zA-Z0-9_.-]{1,63}$/.test(formName.trim())) {
       setFormError('工具名格式不正确，需以字母开头，仅含字母数字下划线点号，2-64字符')
       return
     }

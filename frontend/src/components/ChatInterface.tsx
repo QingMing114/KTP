@@ -131,7 +131,7 @@ const ChatInterface: React.FC = () => {
       const isMod = e.ctrlKey || e.metaKey
       if (isMod && e.key === 'n') {
         e.preventDefault()
-        handleNewChat()
+        refreshAll({})
       }
       if (isMod && e.key === 'k') {
         e.preventDefault()
@@ -155,10 +155,6 @@ const ChatInterface: React.FC = () => {
       if (uploadErrorTimerRef.current) clearTimeout(uploadErrorTimerRef.current)
     }
   }, [])
-
-  function handleNewChat() {
-    refreshAll({})
-  }
 
   function scrollToBottom() {
     if (scrollRef.current) {

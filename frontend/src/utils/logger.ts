@@ -4,9 +4,6 @@
  * This provides an extra safety net for non-Vite builds.
  */
 
-// Vite provides import.meta.env at runtime; declare for TypeScript
-declare const import_meta_env: { DEV?: boolean } | undefined
-
 const isDev = typeof import.meta !== 'undefined' && (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true
 
 export const logger = {

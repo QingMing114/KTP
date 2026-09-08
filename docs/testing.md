@@ -28,6 +28,7 @@ conda run --no-capture-output -n ktp-dev python -m pytest backend/tests/test_spa
 ```powershell
 Set-Location frontend
 npm ci
+npm run lint
 npm test -- --reporter=dot
 npm run build
 ```
@@ -42,5 +43,6 @@ npm run build
 
 - 协议或状态机变更必须同时提交失败回归。
 - canonical、Runtime、空间集成、前端测试和生产构建是合并阻断项。
+- 前端 ESLint 必须零错误、零 warning；CI 与本地使用相同的 `npm run lint` 命令。
 - 不把 skipped、未启动 worker 或历史提交的数字记为当前 passed。
 - 基线记录必须包含日期、提交/工作区、环境和完整命令。

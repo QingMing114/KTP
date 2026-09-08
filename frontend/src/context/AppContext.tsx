@@ -492,7 +492,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     } finally {
       setState(prev => ({ ...prev, loading: { ...prev.loading, sendMessage: false } }))
     }
-  }, [createConversation, buildSessionTitle, updatePendingSubmission,
+  }, [buildSessionTitle, updatePendingSubmission,
       commitPendingSubmissionToMessages, silentRefreshAfterSend])
 
   const selectSession = useCallback(async (sessionId: string) => {

@@ -9,20 +9,8 @@ const AnalysisPage: React.FC = () => {
   const { state, handlePromptClick } = useAppContext()
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
-
-  if (state.loading.boot) {
-    return (
-      <div className="flex-1 overflow-auto bg-stone-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-stone-400">加载中...</p>
-        </div>
-      </div>
-    )
-  }
-
-  const tools = state.tools || []
-  const agents = state.agents || []
+  const tools = useMemo(() => state.tools || [], [state.tools])
+  const agents = useMemo(() => state.agents || [], [state.agents])
   const packs = state.packs || []
 
   const filteredTools = useMemo(() => {
@@ -40,6 +28,17 @@ const AnalysisPage: React.FC = () => {
       (agent.description || '').toLowerCase().includes(searchQuery.toLowerCase())
     )
   }, [agents, searchQuery])
+
+  if (state.loading.boot) {
+    return (
+      <div className="flex-1 overflow-auto bg-stone-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-stone-400">加载中...</p>
+        </div>
+      </div>
+    )
+  }
 
   const handleToolSelect = (tool: Tool) => {
     const toolName = tool.display_name || tool.name || tool.tool_name || ''

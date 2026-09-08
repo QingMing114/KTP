@@ -613,7 +613,7 @@ npm run test
 - APSIM、真实模型、STAC、影像数据和 GPU/LLM 服务均为外部运行依赖；Docker 基线不会替你打包、授权或运维这些系统。
 - 前端当前将 JWT/API 配置保存在浏览器存储；面向公网的正式身份体系应升级为受控会话、httpOnly Cookie、令牌轮换和审计策略。
 
-下一阶段优先级为：固化地图 TIF -> Dataset -> LAI -> APSIM -> Artifact 的端到端验收；完善 Canonical API 与运行时可靠性；将物理约束抽象为可审计 hook；再逐步完善专业多 Agent、知识编辑和训练评估闭环。
+当前开发顺序以 `G:/Code/ktp_product/memory/algorithm_tools_and_rag_development_plan_2026-09-08.md` 为准：先完成算法工具统一契约和三个真实遥感算法的工具化闭环，再启动真实 RAG。阶段 0 的共享基线与 APSIM/障碍物检测决策见 [BASE-001 共享开发基线](docs/base_001_baseline.md)。
 
 ## 参考文档
 
