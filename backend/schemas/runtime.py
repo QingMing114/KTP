@@ -34,6 +34,8 @@ RuntimeArtifactKind: TypeAlias = Literal[
     "knowledge_card", "lai_confidence_geotiff", "lai_geotiff", "lai_html_report", "lai_preview",
     "lai_raster", "lut_card", "registry_card", "report_card", "search_results", "simulation_data",
     "simulation_log", "simulation_result", "text_card", "training_card", "visualization_card",
+    "classification_result", "segmentation_mask", "segmentation_preview", "statistics_table",
+    "provenance_record",
 ]
 
 
@@ -203,6 +205,13 @@ class ToolSpecV2(BaseModel):
     pack_name: str | None = None
     usage_hint: str | None = None
     input_schema: dict[str, Any] = Field(default_factory=dict)
+    output_schema: dict[str, Any] = Field(default_factory=dict)
+    contract_version: str = "legacy"
+    availability: Literal["available", "unavailable", "disabled"] = "available"
+    unavailable_reason: str | None = None
+    permissions: list[str] = Field(default_factory=list)
+    runtime_requirements: dict[str, Any] = Field(default_factory=dict)
+    implementation: dict[str, Any] = Field(default_factory=dict)
     safety_level: Literal["safe", "caution", "dangerous"] = "safe"
     surface_visibility: Literal["all", "web", "api", "debug", "internal"] = "all"
     user_confirmation_required: bool = False

@@ -43,6 +43,10 @@ class ToolNotFoundError(Exception):
     pass
 
 
+class ToolUnavailableError(RuntimeError):
+    pass
+
+
 @dataclass
 class ToolDefinition:
     spec: ToolSpecV2
@@ -65,6 +69,13 @@ class ToolRegistryV2:
         return tool_name in self.definitions
 
     def register(self, name: str, spec: ToolSpecV2, handler: ToolHandler) -> None:
+        if name != spec.name:
+            raise ValueError("registry name must match spec.name")
+        if spec.contract_version == "algorithm-tool/v1":
+            from v2.tools.remote_sensing.contract import validate_schema_document
+
+            validate_schema_document(spec.input_schema)
+            validate_schema_document(spec.output_schema)
         self.definitions[name] = ToolDefinition(spec=spec, handler=handler)
 
     def unregister(self, name: str) -> bool:
@@ -84,7 +95,15 @@ class ToolRegistryV2:
                 f"Tool '{tool_name}' not found in registry. "
                 f"Available: {list(self.definitions.keys())}"
             )
-        return self.get_definition(tool_name).handler(**tool_input)
+        definition = self.get_definition(tool_name)
+        if definition.spec.availability != "available":
+            reason = definition.spec.unavailable_reason or "tool is not available"
+            raise ToolUnavailableError(f"Tool '{tool_name}' is unavailable: {reason}")
+        if definition.spec.contract_version == "algorithm-tool/v1":
+            from v2.tools.remote_sensing.contract import validate_contract_input
+
+            validate_contract_input(definition.spec.input_schema, tool_input)
+        return definition.handler(**tool_input)
 
     _EXECUTOR_TOOL_PREFIXES = ("prosail.", "apsim.", "workspace.")
 

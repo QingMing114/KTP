@@ -27,7 +27,8 @@ CanonicalArtifactKind: TypeAlias = Literal[
     "knowledge_card", "lai_confidence_geotiff", "lai_geotiff", "lai_html_report", "lai_preview",
     "lai_raster", "lut_card", "reflectance_tif", "registry_card", "report_card", "search_results",
     "simulation_data", "simulation_log", "simulation_result", "text_card", "training_card",
-    "visualization", "visualization_card",
+    "visualization", "visualization_card", "classification_result", "segmentation_mask",
+    "segmentation_preview", "statistics_table", "provenance_record",
 ]
 SubmissionEventKind: TypeAlias = Literal[
     "submission.accepted", "submission.approval_required", "submission.cancelled",
