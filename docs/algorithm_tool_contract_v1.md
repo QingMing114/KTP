@@ -78,7 +78,7 @@ Canonical Submission
 
 输入 Schema 设置 `additionalProperties: false`。禁止出现本地路径、模型路径、Shell 命令、凭据或内部地址。
 
-`ToolExecutionContext` 由 Runtime 注入，不属于模型输入，包含 execution、trace、用户/租户、会话、run、权限和 deadline。`CORE-201` 负责把现有取消事件和进度发送器实现为 `AlgorithmExecutionControl`。
+`ToolExecutionContext` 由 Runtime 注入，不属于模型输入，包含 execution、trace、用户/租户、会话、run、`granted_permissions` 和 deadline。`ToolSpec.permissions` 表示工具的必需权限，不能复制成授权结果；Registry 必须用必需权限减去 Runtime 授权权限并拒绝缺项。Runtime 还以 Pydantic private attribute 附着当前 `RequestContextV2`，供 DatasetResolver 使用；该对象及其中的本地路径不会序列化。`CORE-201` 负责把现有取消事件和进度发送器实现为 `AlgorithmExecutionControl`。
 
 ## 5. 输出契约
 
@@ -166,6 +166,7 @@ Canonical Submission
 - `/v2` 保留现有 `ObservationV2` 和 `PackArtifactView`；兼容桥只负责投影，不改变严格结果。
 - Canonical ArtifactStore 仍负责生成稳定 artifact ID 和访问地址；算法适配器不能自行暴露文件系统路径。
 - `CORE-201` 实现数据引用解析、执行上下文注入、进度/取消桥、产物持久化和统一清理。
+- Canonical Submission 边界显式授予当前基础角色 `dataset:read` 和 `artifact:write`；其他入口默认不授予算法权限。后续租户/RBAC 实现只能收窄或按可信身份扩展授权，不能接受模型或请求体自报权限。
 - `INT-301` 才负责三个真实工具的集中注册、allowlist、Planner、PolicyGuard 和 Canonical SSE 联调。
 
 ## 10. 验收命令

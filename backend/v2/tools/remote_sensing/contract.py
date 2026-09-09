@@ -11,7 +11,7 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
-from schemas.runtime import ToolSpecV2
+from schemas.runtime import RequestContextV2, ToolSpecV2
 
 
 ALGORITHM_TOOL_CONTRACT_VERSION = "algorithm-tool/v1"
@@ -84,14 +84,28 @@ class AlgorithmImplementation(_ContractModel):
 class ToolExecutionContext(_ContractModel):
     """Trusted context injected by the runtime, never authored by the LLM."""
 
+    _request_context: RequestContextV2 | None = PrivateAttr(default=None)
+
     execution_id: str = Field(min_length=1)
     trace_id: str = Field(min_length=1)
     user_id: str = Field(min_length=1)
     tenant_id: str | None = None
     conversation_id: str | None = None
     run_id: str | None = None
-    permissions: list[str] = Field(default_factory=list)
+    granted_permissions: list[str] = Field(default_factory=list)
     deadline_at: str | None = None
+
+    def attach_request_context(self, request_context: RequestContextV2) -> None:
+        """Attach the trusted Runtime request context without serializing it."""
+
+        self._request_context = request_context
+
+    def require_request_context(self) -> RequestContextV2:
+        """Return the Runtime-owned request context or fail closed."""
+
+        if self._request_context is None:
+            raise RuntimeError("trusted runtime request context is unavailable")
+        return self._request_context
 
 
 class AlgorithmProgressEvent(_ContractModel):

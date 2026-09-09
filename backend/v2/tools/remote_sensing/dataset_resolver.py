@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from schemas.runtime import RequestContextV2
 from v2.tools.remote_sensing.contract import AlgorithmToolInput, ToolExecutionContext
 from v2.tools.remote_sensing.errors import AlgorithmToolExecutionError
 from v2.tools.remote_sensing.contract import AlgorithmErrorCode
@@ -26,7 +25,6 @@ class AlgorithmDatasetResolver:
     def resolve(
         self,
         tool_input: AlgorithmToolInput,
-        request_context: RequestContextV2,
         execution_context: ToolExecutionContext,
         *,
         allowed_suffixes: set[str] | None = None,
@@ -34,7 +32,8 @@ class AlgorithmDatasetResolver:
         max_bytes: int | None = None,
         required_roles: set[str] | None = None,
     ) -> list[ResolvedAlgorithmDataset]:
-        if "dataset:read" not in execution_context.permissions:
+        request_context = execution_context.require_request_context()
+        if "dataset:read" not in execution_context.granted_permissions:
             raise AlgorithmToolExecutionError(
                 AlgorithmErrorCode.DATASET_FORBIDDEN,
                 "Dataset read permission is required.",

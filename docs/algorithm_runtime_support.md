@@ -12,6 +12,10 @@
 `RuntimeAlgorithmExecutionControl`；模型只能生成 `AlgorithmToolInput`。旧工具仍走原有
 `ToolRegistryV2.invoke()`，算法工具只能走 `invoke_algorithm()`，不存在第二套调度器或执行引擎。
 
+Runtime 将当前 `RequestContextV2` 作为 `ToolExecutionContext` 的私有属性附着，算法 handler 通过
+`execution_context.require_request_context()` 或 `AlgorithmDatasetResolver.resolve(tool_input,
+execution_context, ...)` 使用可信数据上下文。该上下文不会出现在输入/输出 Schema、JSON 响应或日志中。
+
 算法 handler 统一签名：
 
 ```python
@@ -25,7 +29,7 @@ def handler(
 
 ## 2. 公共组件
 
-- `dataset_resolver.py`：只从 `RequestContextV2.datasets` 按 `dataset_id` 解析文件；校验
+- `dataset_resolver.py`：只从 Runtime 私有附着的 `RequestContextV2.datasets` 按 `dataset_id` 解析文件；校验
   `dataset:read`、角色、存在性、格式、媒体类型和大小，不接受模型提供的路径。
 - `workspace.py`：为每次调用建立受控根目录内的独立工作区，拒绝路径逃逸，并在成功或异常时清理。
 - `execution.py`：把现有取消事件和 SSE emitter 转为单调进度、协作式取消及 deadline 检查。
@@ -47,9 +51,14 @@ deadline 从工具 Manifest 的 `runtime_requirements.timeout_seconds` 计算。
 
 ## 4. 已知鉴权边界
 
-当前 `ResolvedDatasetV2` 没有 owner/tenant 字段。CORE-201 已强制“PolicyGuard 放行后的工具权限 +
-本次请求注册数据集白名单”，但不能伪造细粒度所有权判断。`INT-301` 接入真实工具时必须把数据集
-owner/tenant 授权结果带入可信上下文；在此之前，适配器不得绕过 canonical 数据集注册入口。
+`ToolSpec.permissions` 是 required permissions；`ToolExecutionContext.granted_permissions` 是 Runtime
+可信边界授予当前调用的权限。Registry 在 handler 前计算差集，缺项统一返回 `DATASET_FORBIDDEN`。
+Canonical Submission 当前为已通过其鉴权边界的基础角色显式授予 `dataset:read` 和 `artifact:write`；
+其他 Engine 调用默认零授权并失败关闭。权限不能从模型输入、`RequestContextV2` 请求体或 ToolSpec 复制。
+
+当前 `ResolvedDatasetV2` 仍没有 owner/tenant 字段。因此上述修复消除了 required/granted 混用，却不能
+伪造细粒度所有权判断。`INT-301` 接入真实工具时必须把数据集 owner/tenant 授权结果带入可信授权过程；
+在此之前，适配器不得绕过 canonical 数据集注册入口。
 
 ## 5. 验证
 
@@ -62,4 +71,5 @@ python -m pytest -q v2/tests/test_algorithm_tool_contract.py v2/tests/test_algor
 
 覆盖契约 Schema、上下文身份、输入脱敏、数据集解析、权限不足、格式/大小、工作区路径逃逸、成功/
 异常清理、进度单调性、取消、超时、产物持久化、校验和、内部路径不序列化、provenance、稳定产物 ID、
-模型异常释放及通过完整 bounded runtime 的生命周期事件。
+模型异常释放、required/granted 权限差集、Canonical 可信授权，以及通过完整 bounded runtime 的
+DatasetResolver 与生命周期事件。

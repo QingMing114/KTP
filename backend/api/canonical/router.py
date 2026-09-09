@@ -81,6 +81,7 @@ from schemas.runtime import (
 logger = logging.getLogger(__name__)
 
 _PRODUCT_ARTIFACT_ROOT = (Path(__file__).resolve().parents[2] / "var" / "artifacts").resolve()
+_CANONICAL_ALGORITHM_PERMISSIONS = frozenset({"dataset:read", "artifact:write"})
 
 
 class CanonicalProtocolMiddleware(BaseHTTPMiddleware):
@@ -1340,6 +1341,7 @@ def build_canonical_router() -> APIRouter:
                     user_id=user_id,
                     request_context=request_context,
                     cancellation_event=cancellation_event,
+                    granted_permissions=_CANONICAL_ALGORITHM_PERMISSIONS,
                 ):
                     if sub_store.is_cancel_requested(submission_id):
                         break
@@ -1847,6 +1849,7 @@ def build_canonical_router() -> APIRouter:
                 user_message=original.input_message,
                 user_id="debug-replay",
                 request_context=original.input_context,
+                granted_permissions=_CANONICAL_ALGORITHM_PERMISSIONS,
             )
 
             return JSONResponse(status_code=200, content={

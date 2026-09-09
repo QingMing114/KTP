@@ -126,7 +126,8 @@ def build_crop_classification_handler(*, artifact_manager, model_runtime, model_
 ```
 
 模型输入中禁止出现本地路径、权重路径、命令、凭据或下载地址。开发人员应调用
-`AlgorithmDatasetResolver.resolve()`，设置：
+`AlgorithmDatasetResolver.resolve(tool_input, execution_context, ...)`；Resolver 只读取 Runtime 私有附着的
+`RequestContextV2`，设置：
 
 - `required_roles={"primary_image", "ndvi_timeseries"}`；
 - 图像后缀 `{.jpg, .jpeg}`，媒体类型 `image/jpeg`；

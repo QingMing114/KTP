@@ -122,6 +122,7 @@ class ToolRegistryV2:
         from v2.tools.remote_sensing.bridge import algorithm_result_to_runtime
         from v2.tools.remote_sensing.contract import (
             ALGORITHM_TOOL_CONTRACT_VERSION,
+            AlgorithmErrorCode,
             AlgorithmRuntimeRecord,
             AlgorithmToolInput,
             AlgorithmToolResult,
@@ -143,6 +144,17 @@ class ToolRegistryV2:
         started = datetime.now(UTC)
         started_clock = time.perf_counter()
         try:
+            missing_permissions = sorted(
+                set(definition.spec.permissions) - set(execution_context.granted_permissions)
+            )
+            if missing_permissions:
+                from v2.tools.remote_sensing.errors import AlgorithmToolExecutionError
+
+                raise AlgorithmToolExecutionError(
+                    AlgorithmErrorCode.DATASET_FORBIDDEN,
+                    "Algorithm execution is not authorized for the required resources.",
+                    detail={"missing_permissions": missing_permissions},
+                )
             result = definition.handler(validated_input, execution_context, execution_control)
             result = AlgorithmToolResult.model_validate(result)
             if (

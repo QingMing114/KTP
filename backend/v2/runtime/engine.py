@@ -110,6 +110,7 @@ class BoundedRuntimeEngine:
         user_id: str | None,
         request_context: RequestContextV2 | None = None,
         cancellation_event: Event | None = None,
+        granted_permissions: set[str] | frozenset[str] | None = None,
     ) -> RunDetail:
         run: RunDetail | None = None
         for event in self.stream(
@@ -118,6 +119,7 @@ class BoundedRuntimeEngine:
             user_id=user_id,
             request_context=request_context,
             cancellation_event=cancellation_event,
+            granted_permissions=granted_permissions,
         ):
             if event.run is not None:
                 run = event.run
@@ -133,6 +135,7 @@ class BoundedRuntimeEngine:
         user_id: str | None,
         request_context: RequestContextV2 | None = None,
         cancellation_event: Event | None = None,
+        granted_permissions: set[str] | frozenset[str] | None = None,
     ) -> Iterator[RunEventV2]:
         session = self._store.get_session(session_id)
         if session is None:
@@ -155,6 +158,7 @@ class BoundedRuntimeEngine:
                     replay_of_run_id=None,
                     event_sink=event_queue.put,
                     cancellation_event=cancellation_event,
+                    granted_permissions=granted_permissions,
                 )
             except Exception as exc:  # pragma: no cover - forwarded after the queue drains
                 final_result["error"] = exc
@@ -236,6 +240,7 @@ class BoundedRuntimeEngine:
         replay_of_run_id: str | None,
         event_sink: Callable[[RunEventV2], None] | None,
         cancellation_event: Event | None = None,
+        granted_permissions: set[str] | frozenset[str] | None = None,
     ) -> RunDetail:
         session = self._store.get_session(session_id)
         if session is None:
@@ -250,6 +255,7 @@ class BoundedRuntimeEngine:
             replay_of_run_id=replay_of_run_id,
             event_sink=event_sink,
             cancellation_event=cancellation_event,
+            granted_permissions=granted_permissions,
         )
         if persist_run:
             session = self._store.get_session(session_id)
@@ -271,6 +277,7 @@ class BoundedRuntimeEngine:
         event_sink: Callable[[RunEventV2], None] | None = None,
         cancellation_event: Event | None = None,
         user_id: str | None = None,
+        granted_permissions: set[str] | frozenset[str] | None = None,
     ) -> RunDetail:
         session = self._store.get_session(session_id)
         if session is None:
@@ -361,6 +368,7 @@ class BoundedRuntimeEngine:
                 observer=observer,
                 cancellation_event=cancellation_event,
                 user_id=user_id,
+                granted_permissions=granted_permissions,
             )
         except RuntimeCancellationError:
             cancellation_message = "Run cancelled by request."
@@ -409,6 +417,7 @@ class BoundedRuntimeEngine:
         observer: RunObserver,
         cancellation_event: Event | None = None,
         user_id: str | None = None,
+        granted_permissions: set[str] | frozenset[str] | None = None,
     ) -> None:
         raise_if_cancelled(cancellation_event)
         session = self._store.get_session(session_id)
@@ -764,6 +773,7 @@ class BoundedRuntimeEngine:
                     policy=policy,
                     cancellation_event=cancellation_event,
                     user_id=user_id,
+                    granted_permissions=granted_permissions,
                 )
 
                 # 执行委派任务
@@ -910,6 +920,7 @@ class BoundedRuntimeEngine:
                     event_emitter=emitter,
                     cancellation_event=cancellation_event,
                     user_id=user_id,
+                    granted_permissions=granted_permissions,
                 )
                 tool_history.append(tool_result["history_item"])
                 observation = tool_result.get("observation")

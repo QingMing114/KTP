@@ -96,7 +96,8 @@ pollution policy catalog；handler 内只执行 `resolve -> validate -> workspac
 ```
 
 `scene_id`、`crop_id`、band 清单、实际路径和 model profile 必须由 dataset registry 解析。即使出现在 LLM
-metadata 中，也不能覆盖服务端值。`AlgorithmDatasetResolver` 先验证 dataset ID、权限、bundle 文件和大小，
+metadata 中，也不能覆盖服务端值。`AlgorithmDatasetResolver.resolve(tool_input, execution_context, ...)` 从
+Runtime 私有可信上下文验证 dataset ID、授权、bundle 文件和大小，
 适配器再解析只读 bundle manifest；manifest 内路径必须经过根目录包含性检查，禁止 `..`、绝对路径和链接逃逸。
 
 ## 5. 固定 11 波段与预处理

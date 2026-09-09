@@ -156,6 +156,7 @@ class ToolExecutor:
         event_emitter,
         cancellation_event: Event | None = None,
         user_id: str | None = None,
+        granted_permissions: set[str] | frozenset[str] | None = None,
     ) -> dict[str, object]:
         """Execute a single tool call and return a result dict.
 
@@ -380,9 +381,10 @@ class ToolExecutor:
                         user_id=user_id or "anonymous",
                         conversation_id=run.session_id,
                         run_id=run.run_id,
-                        permissions=list(spec.permissions),
+                        granted_permissions=sorted(granted_permissions or ()),
                         deadline_at=(datetime.now(UTC) + timedelta(seconds=timeout_seconds)).isoformat(),
                     )
+                    execution_context.attach_request_context(request_context)
                     execution_control = RuntimeAlgorithmExecutionControl(
                         context=execution_context,
                         event_emitter=event_emitter,

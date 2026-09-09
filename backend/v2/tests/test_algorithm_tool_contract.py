@@ -3,7 +3,13 @@ from __future__ import annotations
 from jsonschema import Draft202012Validator
 import pytest
 
-from schemas.runtime import AgentStepV2, AgentToolCallV2, PermissionPolicy
+from schemas.runtime import (
+    AgentStepV2,
+    AgentToolCallV2,
+    PermissionPolicy,
+    RequestContextV2,
+    ResolvedDatasetV2,
+)
 from v2.agents.registry import build_default_agent_registry
 from v2.packs.registry import build_default_pack_registry
 from v2.policies.registry import PolicyRegistryV2
@@ -20,6 +26,7 @@ from v2.tools.remote_sensing.contract import (
     build_algorithm_tool_spec,
 )
 from v2.tools.remote_sensing.probe import ContractProbeState, build_contract_probe_handler
+from v2.tools.remote_sensing.dataset_resolver import AlgorithmDatasetResolver
 
 
 def _spec(**overrides):
@@ -75,7 +82,13 @@ class _Control:
         return None
 
 
-def _invoke_probe(registry: ToolRegistryV2, spec, tool_input: dict):
+def _invoke_probe(
+    registry: ToolRegistryV2,
+    spec,
+    tool_input: dict,
+    *,
+    granted_permissions: list[str] | None = None,
+):
     return registry.invoke_algorithm(
         tool_name=spec.name,
         tool_input=tool_input,
@@ -83,7 +96,7 @@ def _invoke_probe(registry: ToolRegistryV2, spec, tool_input: dict):
             execution_id="probe-test",
             trace_id="trace-test",
             user_id="test",
-            permissions=spec.permissions,
+            granted_permissions=spec.permissions if granted_permissions is None else granted_permissions,
         ),
         execution_control=_Control(),
     )
@@ -105,7 +118,7 @@ def test_execution_context_and_progress_are_strict_and_bounded() -> None:
         execution_id="exec-1",
         trace_id="trace-1",
         user_id="user-1",
-        permissions=["dataset:read"],
+        granted_permissions=["dataset:read"],
     )
     event = AlgorithmProgressEvent(
         execution_id=context.execution_id,
@@ -196,6 +209,33 @@ def test_unavailable_contract_tool_is_not_invoked() -> None:
     assert called is False
 
 
+def test_required_permissions_are_checked_against_runtime_grants() -> None:
+    called = False
+
+    def handler(*_args):
+        nonlocal called
+        called = True
+
+    registry = ToolRegistryV2(definitions={})
+    spec = _spec()
+    registry.register(spec.name, spec, handler)
+
+    observation, artifacts = _invoke_probe(
+        registry,
+        spec,
+        _input(),
+        granted_permissions=["dataset:read"],
+    )
+    result = AlgorithmToolResult.model_validate(observation.payload["algorithm_result"])
+
+    assert called is False
+    assert result.status == "failed"
+    assert result.error is not None
+    assert result.error.code == "DATASET_FORBIDDEN"
+    assert result.error.detail == {"missing_permissions": ["artifact:write"]}
+    assert artifacts == []
+
+
 def test_probe_success_uses_bridge_and_cleans_workspace() -> None:
     state = ContractProbeState()
     registry = ToolRegistryV2(definitions={})
@@ -236,11 +276,25 @@ def test_probe_failure_preserves_error_code_and_cleans_workspace() -> None:
     assert not state.last_workspace.exists()
 
 
-def test_probe_runs_through_bounded_runtime_and_emits_lifecycle_events() -> None:
+def test_probe_runs_through_bounded_runtime_and_emits_lifecycle_events(tmp_path) -> None:
     state = ContractProbeState()
     registry = ToolRegistryV2(definitions={})
     spec = _spec(surface_visibility="all")
-    registry.register(spec.name, spec, build_contract_probe_handler(state))
+    probe_handler = build_contract_probe_handler(state)
+    scene = tmp_path / "scene.bin"
+    scene.write_bytes(b"trusted")
+    resolved_paths = []
+
+    def resolving_handler(tool_input, execution_context, execution_control):
+        resolved = AlgorithmDatasetResolver().resolve(
+            tool_input,
+            execution_context,
+            required_roles={"primary"},
+        )
+        resolved_paths.extend(item.path for item in resolved)
+        return probe_handler(tool_input, execution_context, execution_control)
+
+    registry.register(spec.name, spec, resolving_handler)
     store = InMemoryRuntimeStore()
     store.create_session(session_id="contract-session", title="contract", created_by="test")
     engine = BoundedRuntimeEngine(
@@ -268,6 +322,13 @@ def test_probe_runs_through_bounded_runtime_and_emits_lifecycle_events() -> None
         session_id="contract-session",
         user_message="run the contract probe",
         user_id="test",
+        request_context=RequestContextV2(datasets=[ResolvedDatasetV2(
+            dataset_id="dataset-contract-1",
+            display_name="trusted scene",
+            local_path=str(scene),
+            content_type="application/octet-stream",
+        )]),
+        granted_permissions={"dataset:read", "artifact:write"},
     ))
     event_names = [event.event for event in events]
     final_run = events[-1].run
@@ -280,3 +341,43 @@ def test_probe_runs_through_bounded_runtime_and_emits_lifecycle_events() -> None
     assert final_run.observation is not None
     assert final_run.observation.payload["algorithm_result"]["contract_version"] == ALGORITHM_TOOL_CONTRACT_VERSION
     assert state.cleanup_completed is True
+    assert resolved_paths == [scene.resolve()]
+
+
+def test_bounded_runtime_fails_closed_without_granted_permissions() -> None:
+    called = False
+
+    def handler(*_args):
+        nonlocal called
+        called = True
+
+    registry = ToolRegistryV2(definitions={})
+    spec = _spec(surface_visibility="all")
+    registry.register(spec.name, spec, handler)
+    store = InMemoryRuntimeStore()
+    store.create_session(session_id="denied-session", title="denied", created_by="test")
+    engine = BoundedRuntimeEngine(
+        store=store,
+        tool_registry=registry,
+        policy_registry=PolicyRegistryV2(policies=[PermissionPolicy(
+            name="contract-test",
+            description="Contract test policy.",
+            max_replans=0,
+            max_delegations=0,
+        )]),
+        agent_registry=build_default_agent_registry(),
+        pack_registry=build_default_pack_registry(),
+    )
+    engine._planner = _SequencePlanner(AgentStepV2(
+        action="call_tools",
+        reasoning="attempt without grants",
+        tool_calls=[AgentToolCallV2(tool_name=spec.name, tool_input=_input())],
+    ))
+
+    run = engine.run(session_id="denied-session", user_message="run", user_id="test")
+    result = AlgorithmToolResult.model_validate(run.observation.payload["algorithm_result"])
+
+    assert called is False
+    assert run.status == "failed"
+    assert result.error is not None
+    assert result.error.code == "DATASET_FORBIDDEN"

@@ -96,7 +96,8 @@ checkpoint 路径、城市和归一化 profile。
 ```
 
 传感器、城市、band roles、量化/归一化、模型 ID 必须来自服务端批准的 dataset/model profile，不能相信
-LLM 填入的 metadata。调用 `AlgorithmDatasetResolver.resolve()` 时要求 `primary_image`、TIFF 后缀和
+LLM 填入的 metadata。调用 `AlgorithmDatasetResolver.resolve(tool_input, execution_context, ...)` 时要求
+`primary_image`、TIFF 后缀和
 `image/tiff`，并限制大小；适配器随后使用 rasterio/GDAL 校验：
 
 - `count == 4`，band index 与批准 profile 的 `[blue, green, red, nir]` 完全一致；

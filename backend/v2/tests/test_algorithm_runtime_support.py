@@ -39,9 +39,19 @@ def _context(*, permissions: list[str] | None = None) -> ToolExecutionContext:
         execution_id="exec-1",
         trace_id="trace-1",
         user_id="user-1",
-        permissions=permissions if permissions is not None else ["dataset:read", "artifact:write"],
+        granted_permissions=permissions if permissions is not None else ["dataset:read", "artifact:write"],
         deadline_at=(datetime.now(UTC) + timedelta(minutes=1)).isoformat(),
     )
+
+
+def _context_with_request(
+    request_context: RequestContextV2,
+    *,
+    permissions: list[str] | None = None,
+) -> ToolExecutionContext:
+    context = _context(permissions=permissions)
+    context.attach_request_context(request_context)
+    return context
 
 
 def test_dataset_resolver_uses_only_registered_context_files(tmp_path) -> None:
@@ -56,8 +66,7 @@ def test_dataset_resolver_uses_only_registered_context_files(tmp_path) -> None:
 
     resolved = AlgorithmDatasetResolver().resolve(
         _input(),
-        request_context,
-        _context(),
+        _context_with_request(request_context),
         allowed_suffixes={".tif", ".tiff"},
         allowed_media_types={"image/tiff"},
         max_bytes=100,
@@ -83,10 +92,31 @@ def test_dataset_resolver_normalizes_missing_and_forbidden(tmp_path, tool_input,
     )])
 
     with pytest.raises(AlgorithmToolExecutionError) as captured:
-        AlgorithmDatasetResolver().resolve(tool_input, request_context, _context(permissions=permissions))
+        AlgorithmDatasetResolver().resolve(
+            tool_input,
+            _context_with_request(request_context, permissions=permissions),
+        )
 
     assert captured.value.error.code == code
     assert str(scene) not in captured.value.error.message
+
+
+def test_trusted_request_context_is_required_and_never_serialized(tmp_path) -> None:
+    scene = tmp_path / "private-scene.tif"
+    scene.write_bytes(b"raster")
+    request_context = RequestContextV2(datasets=[ResolvedDatasetV2(
+        dataset_id="dataset-1",
+        display_name="scene",
+        local_path=str(scene),
+    )])
+    execution_context = _context()
+
+    with pytest.raises(RuntimeError, match="trusted runtime request context"):
+        AlgorithmDatasetResolver().resolve(_input(), execution_context)
+
+    execution_context.attach_request_context(request_context)
+    assert execution_context.require_request_context() is request_context
+    assert str(scene) not in execution_context.model_dump_json()
 
 
 def test_workspace_is_cleaned_on_success_failure_and_blocks_escape(tmp_path) -> None:
