@@ -253,3 +253,32 @@ smoke 只有在真实模型运行、期望结果比对、资源清理和契约�
 
 全部勾选后，提交信息使用 `feat(ALG-211): add crop classification adapter`，再交给独立评审者复跑，
 不得由适配器作者自行把能力改为 `available`。
+
+## 11. Git 交付方式
+
+开发人员必须从最新 `origin/main` 创建独立分支：
+
+```text
+feat/ALG-211-crop-classification
+```
+
+通过提交和 Pull Request 交付，禁止直接推送或合并到 `main`。最终功能提交建议为：
+
+```text
+feat(ALG-211): add crop classification adapter
+```
+
+PR 标题使用 `[ALG-211] 接入作物分类适配器`。PR 必须同时包含：
+
+- 适配器代码、自动化测试、fixture manifest、环境/镜像配置和必要文档更新；
+- 分支名、最终 commit SHA、实际执行的测试命令及结果；
+- 真实 smoke 证据地址，以及源码、镜像、模型、输入和输出 SHA-256；
+- 许可证结论、资源基线、已知限制和未解决项；
+- 明确声明没有修改 Registry、Router、Planner、执行引擎、allowlist 和前端。
+
+模型权重、原始数据、容器镜像和大体积输出禁止直接提交 Git；它们进入批准的模型库、数据存储或镜像
+仓库，Git 中只提交版本、授权信息、受控引用和校验和。提交前必须确认 `git diff --check` 通过、工作树
+没有无关修改，并列出 `origin/main..HEAD` 的全部提交。
+
+开发人员最终向负责人交付：PR 链接、分支名、HEAD commit SHA、测试摘要、smoke 证据地址和阻断清单。
+独立评审通过后由集成负责人合并；适配器作者不得自行合并或执行 `INT-301` 注册。

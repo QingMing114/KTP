@@ -277,3 +277,32 @@ conda run -n <locked-env> python -m v2.tools.remote_sensing.adapters.land_cover_
 
 全部通过后提交 `feat(ALG-212): add land cover segmentation adapter`，由独立验收人复跑；适配器作者无权
 自行批准映射或把 ToolSpec 改为 `available`。
+
+## 13. Git 交付方式
+
+开发人员必须从最新 `origin/main` 创建独立分支：
+
+```text
+feat/ALG-212-land-cover-segmentation
+```
+
+通过提交和 Pull Request 交付，禁止直接推送或合并到 `main`。最终功能提交建议为：
+
+```text
+feat(ALG-212): add land cover segmentation adapter
+```
+
+PR 标题使用 `[ALG-212] 接入地物分割适配器`。PR 必须同时包含：
+
+- 适配器代码、自动化测试、fixture manifest、批准的 profile/crosswalk/mapping 和环境配置；
+- 分支名、最终 commit SHA、实际测试命令及结果；
+- 真实 smoke、GeoTIFF round-trip、类别/面积守恒和取消/超时清理证据；
+- 源码、镜像、checkpoint、输入及输出 SHA-256，许可证结论和资源基线；
+- 明确声明没有修改 Registry、Router、Planner、执行引擎、allowlist 和前端。
+
+checkpoint、原始影像、容器镜像和大体积 GeoTIFF 禁止直接提交 Git；它们进入批准的模型库、数据存储或
+镜像仓库，Git 中只提交版本、授权信息、受控引用和校验和。提交前必须确认 `git diff --check` 通过、
+工作树无无关修改，并列出 `origin/main..HEAD` 的全部提交。
+
+开发人员最终向负责人交付：PR 链接、分支名、HEAD commit SHA、测试摘要、smoke/空间验证证据地址和
+阻断清单。独立评审及映射责任人签字后由集成负责人合并；适配器作者不得自行合并或执行 `INT-301` 注册。

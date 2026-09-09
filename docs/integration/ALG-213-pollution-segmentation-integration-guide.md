@@ -280,3 +280,32 @@ RAM/VRAM、空间 round-trip、统计守恒以及失败/取消/超时清理证�
 
 全部通过后提交 `feat(ALG-213): add pollution segmentation adapter`，由独立验收人复跑。只有集中集成与
 QA 通过后，能力才可从 `unavailable` 改为 `available`。
+
+## 13. Git 交付方式
+
+开发人员必须从最新 `origin/main` 创建独立分支：
+
+```text
+feat/ALG-213-pollution-segmentation
+```
+
+通过提交和 Pull Request 交付，禁止直接推送或合并到 `main`。最终功能提交建议为：
+
+```text
+feat(ALG-213): add pollution segmentation adapter
+```
+
+PR 标题使用 `[ALG-213] 接入污染分割适配器`。PR 必须同时包含：
+
+- 适配器代码、自动化测试、fixture manifest、MADOS/profile/pollution policy 和环境配置；
+- 分支名、最终 commit SHA、实际测试命令及结果；
+- 真实 smoke、11 波段校验、GeoTIFF round-trip、统计守恒及取消/超时清理证据；
+- 源码、镜像、权重、MADOS crop 和输出 SHA-256，CC BY attribution、权重许可及资源基线；
+- 明确声明没有修改 Registry、Router、Planner、执行引擎、allowlist 和前端。
+
+权重、MADOS 原始数据、容器镜像和大体积栅格禁止直接提交 Git；它们进入批准的模型库、数据存储或镜像
+仓库，Git 中只提交版本、授权信息、受控引用和校验和。提交前必须确认 `git diff --check` 通过、工作树
+没有无关修改，并列出 `origin/main..HEAD` 的全部提交。
+
+开发人员最终向负责人交付：PR 链接、分支名、HEAD commit SHA、测试摘要、smoke/空间/统计证据地址和
+阻断清单。独立评审及污染口径责任人签字后由集成负责人合并；适配器作者不得自行合并或执行 `INT-301` 注册。
