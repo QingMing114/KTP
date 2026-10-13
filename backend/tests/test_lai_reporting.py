@@ -40,6 +40,20 @@ def test_lai_report_preserves_explicit_template_override(tmp_path, monkeypatch) 
     assert "<!-- custom-template -->" in rendered
 
 
+def test_lai_lut_configuration_and_explicit_parameter_priority(tmp_path, monkeypatch) -> None:
+    from v2.tools.lai_report_handler import run_lai_html_report
+
+    image = tmp_path / "image.tif"
+    image.touch()
+    configured = tmp_path / "configured-lut.txt"
+    explicit = tmp_path / "explicit-lut.txt"
+    monkeypatch.setenv("LAI_LUT_PATH", str(configured))
+    observation, _ = run_lai_html_report(image_path=str(image))
+    assert observation.payload == {"error": "lut_not_found", "path": str(configured.resolve())}
+    observation, _ = run_lai_html_report(image_path=str(image), lut_path=str(explicit))
+    assert observation.payload == {"error": "lut_not_found", "path": str(explicit.resolve())}
+
+
 def test_lai_report_directory_uses_one_configured_location(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("V2_REPORTS_DIR", str(tmp_path / "legacy"))
     monkeypatch.setenv("LAI_REPORT_OUTPUT_DIR", str(tmp_path / "reports"))

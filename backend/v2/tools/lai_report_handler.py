@@ -203,7 +203,7 @@ def run_lai_html_report(
 
     Args:
         image_path: Absolute path to the 5-band GeoTIFF (B2 B3 B4 B7 B8, Float32 0-1).
-        lut_path:   Path to 13-column text LUT. Defaults to dev-data/new/LUT_test.txt.
+        lut_path:   Path to 13-column text LUT. Defaults to LAI_LUT_PATH or dev-data/new/LUT_test.txt.
         output_dir: Directory to write the HTML report. Defaults to ktp/reports/.
         artifact_output_dir: Optional directory for GeoTIFF/PNG products.
         query:      Original user query (unused, kept for handler interface compatibility).
@@ -236,7 +236,7 @@ def run_lai_html_report(
             [],
         )
 
-    resolved_lut = Path(lut_path).expanduser().resolve() if lut_path else _DEFAULT_LUT_TXT
+    resolved_lut = Path(lut_path or os.environ.get("LAI_LUT_PATH") or _DEFAULT_LUT_TXT).expanduser().resolve()
     if not resolved_lut.exists():
         return (
             ObservationV2(
