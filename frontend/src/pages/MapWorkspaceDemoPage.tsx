@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSS
 import { createLaiAnalysis, fetchLiveFarms, getAnalysisWorkflow, getCropAnalysis, getLaiAnalysis, readLaiAnalysisProducts, retryAnalysisWorkflowStep, searchLiveImagery, streamLaiAnalysis, updateAnalysisWorkflowYieldInputs, type AnalysisWorkflow, type CropAnalysis, type LaiMapOverlay, type LaiPixelProgress, type LiveFarm, type LiveImageryCandidate, type WorkflowTaskId, type YieldAgronomicInputs } from '../services/spatialClient'
 import LiveFarmMap, { type AoiGeometry } from '../components/LiveFarmMap'
 import { formatAoiArea } from '../utils/aoiGeometry'
+import { createUuid } from '../utils/uuid'
 import WorkspaceAssistantPanel from '../features/workspace-assistant/WorkspaceAssistantPanel'
 import WorkspaceAnalysisPanel from '../features/workspace-assistant/WorkspaceAnalysisPanel'
 import type { AnalysisViewRequest, WorkspacePanelProps } from '../features/workspace-assistant/workspacePanelTypes'
@@ -108,7 +109,7 @@ export default function MapWorkspaceDemoPage({ live = true }: { live?: boolean }
     const key = `ktp_workspace_id:${getLastLoginUser()}:${live ? 'live' : 'demo'}`
     const existing = window.localStorage.getItem(key)
     if (existing) return existing
-    const created = crypto.randomUUID()
+    const created = createUuid()
     window.localStorage.setItem(key, created)
     return created
   })

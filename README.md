@@ -6,6 +6,8 @@ KTP（Knowledge-driven Task Platform）将自然语言交互、遥感物理模�
 
 本 README 是项目的产品总览、从零配置指南和单机上线基线。代码实现是行为事实来源；详细协议与运维规则请继续参阅 [`docs/`](docs/)。
 
+kt-server 用户目录部署、独立 Conda 环境和服务管理记录见 [`docs/kt_server_deployment.md`](docs/kt_server_deployment.md)。
+
 ## 克隆仓库
 
 APSIM Next Gen 以 Git submodule 方式固定在 `ApsimX/`。首次克隆请使用：

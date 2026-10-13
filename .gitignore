@@ -21,6 +21,7 @@ venv/
 *.swo
 *~
 var/
+/backend/var
 reports/
 *.sqlite3
 *.db

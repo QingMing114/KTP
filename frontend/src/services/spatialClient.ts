@@ -1,5 +1,6 @@
 import { canonicalJson, canonicalSseStream } from './canonical/request'
 import { buildUrl, getApiKey, getJwtToken } from './api'
+import { createUuid } from '../utils/uuid'
 
 export interface LiveFarm { farm_id: string; name: string; location_label: string; area_hectares: number; geometry: unknown }
 export interface LiveImageryCandidate {
@@ -182,7 +183,7 @@ export async function getCropAnalysis(analysisId: string): Promise<CropAnalysis>
 }
 
 export async function createAnalysisWorkflow(body: AnalysisWorkflowRequest): Promise<AnalysisWorkflow> {
-  const actionId = body.action_id ?? crypto.randomUUID()
+  const actionId = body.action_id ?? createUuid()
   return canonicalJson<AnalysisWorkflow>('/analysis-workflows', {
     method: 'POST', headers: { 'Idempotency-Key': actionId }, body: JSON.stringify({ ...body, action_id: actionId }),
   })

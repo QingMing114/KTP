@@ -1,0 +1,6 @@
+# CPU inference for the bundled KDD2020 crop classifier (Python 3.11).
+numpy==1.26.4
+tensorflow-cpu==2.15.1
+setuptools==80.9.0
+requests
+psutil
