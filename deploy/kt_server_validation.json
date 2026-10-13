@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-13",
+  "ssh_target": "zhanghuaxiang_D@192.168.9.208",
+  "frontend_url": "http://192.168.9.208:3002",
+  "conda_environment": "ktp",
+  "python": "3.11.17",
+  "node": "22.23.2",
+  "application_source": "/home/D/zhanghuaxiang_D/Code/KTP",
+  "private_data": "/home/D/zhanghuaxiang_D/apps/ktp",
+  "ssh_key_authentication": true,
+  "pip_check": "passed",
+  "frontend_build": "passed",
+  "backend_tests": {
+    "initial_batch_passed": 63,
+    "initial_batch_skipped": 1,
+    "apsim_followup_passed": 2,
+    "note": "The initially skipped APSIM dataset report check passed after configuring the external validation database and shared report output directory."
+  },
+  "frontend_regression_tests_passed": 6,
+  "live_api": {
+    "health_200": true,
+    "admin_login": true,
+    "anonymous_api_401": true,
+    "real_model_conversation": true,
+    "model": "qwen3.7-plus",
+    "wheat_demo_yield_t_ha": 6.2,
+    "maize_demo_yield_t_ha": 9.1,
+    "demo_reports_200": true,
+    "idempotent_submission": true,
+    "lai_computation_on_synthetic_probe": true,
+    "six_class_crop_model_inference_on_synthetic_probe": true,
+    "apsim_existing_validation_output_report_200": true
+  },
+  "browser": {
+    "authenticated_lan_http": true,
+    "aoi_drawing": true,
+    "live_context_submission_sse_workflow_and_report": true,
+    "synthetic_imagery_discovery_only": true,
+    "double_click_creates_one_task": true,
+    "maize_demo": true,
+    "card_report_amounts_match": true,
+    "apsim_report_template_and_curve_tabs": true,
+    "report_mobile_layout": true,
+    "workflow_restored_after_reload": true,
+    "narrow_analysis_drawer": true,
+    "page_errors": 0
+  },
+  "services": {
+    "ktp_backend": "enabled, active",
+    "ktp_frontend": "enabled, active",
+    "user_linger": true,
+    "backend_bind": "127.0.0.1:8005",
+    "dedicated_environment_path": true,
+    "private_tmpdir": true,
+    "runtime_resource_paths_loaded": true
+  },
+  "scientific_accuracy_validated": false,
+  "apsim_new_simulation_runtime_installed": false,
+  "credentials_in_git": false
+}

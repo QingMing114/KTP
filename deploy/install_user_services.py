@@ -28,6 +28,9 @@ def main() -> None:
     assert os.environ.get('KTP_LICENSE_SECRET') not in (None, '', 'ktp_rs_2026_license_secret_key_do_not_share'), 'Configure a private license signing secret first'
     user_db = data / 'var/data/users.sqlite3'
     user_db.parent.mkdir(parents=True, exist_ok=True)
+    temporary_dir = data / 'tmp'
+    temporary_dir.mkdir(parents=True, exist_ok=True)
+    temporary_dir.chmod(0o700)
     legacy_users = app / 'backend/data/users.sqlite3'
     if not user_db.exists() and legacy_users.is_file():
         with sqlite3.connect(legacy_users) as source, sqlite3.connect(user_db) as target:
@@ -37,6 +40,7 @@ def main() -> None:
         'APSIM_REPORT_OUTPUT_DIR': str(data / 'reports'),
         'APSIM_DEMO_DB': str(data / 'models/GxExM.db'),
         'KTP_USER_DB_PATH': str(user_db),
+        'TMPDIR': str(temporary_dir),
     }.items():
         set_key(env, key, value)
         os.environ[key] = value
@@ -91,6 +95,7 @@ Type=simple
 WorkingDirectory={app}
 Environment=BACKEND_URL=http://127.0.0.1:{args.backend_port}
 Environment=FRONTEND_PORT={args.frontend_port}
+Environment={quote('TMPDIR=' + str(temporary_dir))}
 Environment={quote('PATH=' + str(executable.parent) + ':/usr/local/bin:/usr/bin:/bin')}
 ExecStart={quote(executable)} {quote(app / 'deploy/serve_frontend.py')}
 Restart=on-failure

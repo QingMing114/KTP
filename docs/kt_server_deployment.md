@@ -15,12 +15,15 @@
 
 服务使用独立环境的绝对解释器路径和 PATH。已启用两个用户服务及 `Linger=yes`，退出 SSH 后继续运行，开机由用户服务管理器启动。未改动服务器上的其他项目、环境或服务。
 
+服务器的共享 `/tmp` 当前缺少目录执行权限，本项目使用私有 `apps/ktp/tmp` 作为 `TMPDIR`，避免依赖该目录。服务安装脚本会配置它；命令行构建与检查时也需导出下述变量。
+
 ## 登录与日常操作
 
 ```bash
 ssh zhanghuaxiang_D@192.168.9.208
 source /opt/anaconda3/etc/profile.d/conda.sh
 conda activate ktp
+export TMPDIR=/home/D/zhanghuaxiang_D/apps/ktp/tmp
 cd /home/D/zhanghuaxiang_D/Code/KTP
 
 systemctl --user status ktp-backend ktp-frontend
@@ -63,6 +66,8 @@ env CONDA_PKGS_DIRS=/home/D/zhanghuaxiang_D/conda-pkgs \
 source /opt/anaconda3/etc/profile.d/conda.sh
 conda activate ktp
 cd /home/D/zhanghuaxiang_D/Code/KTP
+mkdir -p /home/D/zhanghuaxiang_D/apps/ktp/tmp
+export TMPDIR=/home/D/zhanghuaxiang_D/apps/ktp/tmp
 python -m pip install -e 'backend[dev]' -r deploy/requirements-cpu.txt
 python -m pip check
 git submodule update --init --depth 1
@@ -87,6 +92,7 @@ loginctl show-user zhanghuaxiang_D -p Linger
 
 ```bash
 cd /home/D/zhanghuaxiang_D/Code/KTP
+export TMPDIR=/home/D/zhanghuaxiang_D/apps/ktp/tmp
 git pull --ff-only
 git submodule update --init --depth 1
 python -m pip install -e 'backend[dev]' -r deploy/requirements-cpu.txt
