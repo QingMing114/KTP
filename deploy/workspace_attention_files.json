@@ -1,0 +1,9 @@
+[
+  "frontend/src/index.css",
+  "frontend/src/pages/MapWorkspaceDemoPage.tsx",
+  "frontend/src/features/workspace-assistant/WorkspaceAnalysisPanel.tsx",
+  "frontend/src/features/workspace-assistant/WorkspaceAssistantPanel.tsx",
+  "frontend/src/features/workspace-assistant/useWorkspaceAttention.ts",
+  "frontend/src/test/workspaceAttention.test.ts",
+  "docs/workspace_assistant_integration.md"
+]

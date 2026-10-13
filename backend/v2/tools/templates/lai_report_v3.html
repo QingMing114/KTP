@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LAI 遥感反演分析报告</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; background:#f5f4f0; color:#1a1a18; }
+.page { max-width: 1000px; margin: 0 auto; padding: 2rem 2rem 4rem; }
+
+.report-header { border-bottom:1px solid #d8d6cc; padding-bottom:1.2rem; margin-bottom:1.8rem; }
+.badge { display:inline-block; font-family:'Courier New',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; background:#eceae3; border:1px solid #ccc9be; border-radius:4px; padding:2px 8px; color:#666; margin-bottom:.6rem; }
+h1 { font-size:24px; font-weight:600; margin-bottom:.3rem; color:#111; }
+.sub { font-size:13px; color:#777; }
+
+.section-label { font-family:'Courier New',monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#bbb; margin-bottom:.65rem; }
+
+/* LOADING OVERLAY */
+#loading-overlay {
+  position:fixed; inset:0; background:rgba(245,244,240,0.96);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  z-index:9999; gap:16px;
+}
+#loading-overlay .lo-title { font-size:18px; font-weight:500; color:#222; }
+#loading-overlay .lo-sub   { font-size:13px; color:#888; }
+.spinner { width:36px; height:36px; border:3px solid #ddd; border-top-color:#3266ad; border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* STAT CARDS */
+.stats-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:1.6rem; }
+.stat-card { background:#eceae3; border-radius:8px; padding:.85rem 1rem; }
+.stat-card .label { font-size:11px; color:#888; margin-bottom:4px; }
+.stat-card .value { font-size:22px; font-weight:500; font-family:'Courier New',monospace; }
+.stat-card .unit  { font-size:10px; color:#aaa; margin-left:2px; }
+
+/* SCENE CARDS */
+.scene-cards { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:1.5rem; }
+.scene-card { border-radius:8px; padding:.75rem .85rem; border:1px solid; }
+.scene-card .sc-label { font-size:10px; font-family:'Courier New',monospace; margin-bottom:4px; }
+.scene-card .sc-pct   { font-size:22px; font-weight:500; font-family:'Courier New',monospace; }
+.scene-card .sc-name  { font-size:11px; margin-top:2px; }
+.scene-card .sc-bar   { height:4px; border-radius:2px; margin-top:8px; }
+.sc-water  { background:#e8f4fd; border-color:#b8d9f0; color:#1a4a6e; } .sc-water  .sc-bar { background:#3298dc; }
+.sc-sparse { background:#fdf8e8; border-color:#f0e4b0; color:#5a4500; } .sc-sparse .sc-bar { background:#e8c030; }
+.sc-mid    { background:#eaf4e8; border-color:#b8ddb5; color:#1a4a1a; } .sc-mid    .sc-bar { background:#40a840; }
+.sc-dense  { background:#e2f0e2; border-color:#a0cc9e; color:#0a3a0a; } .sc-dense  .sc-bar { background:#1a8a1a; }
+
+/* PANEL */
+.panel { background:#fff; border:1px solid #dddbd2; border-radius:12px; overflow:hidden; }
+.panel-head { padding:.65rem 1rem; border-bottom:1px solid #eceae3; display:flex; align-items:center; justify-content:space-between; background:#faf9f7; }
+.panel-head .title { font-size:13px; font-weight:500; color:#222; }
+.panel-head .hint  { font-size:11px; color:#bbb; font-family:'Courier New',monospace; }
+.panel-body { padding:.85rem; }
+
+.two-col   { display:grid; grid-template-columns:1fr 1fr;     gap:12px; margin-bottom:1.5rem; }
+.three-col { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:1.5rem; }
+
+/* CANVAS */
+canvas.img-canvas { display:block; width:100%; cursor:crosshair; border-radius:6px; image-rendering:pixelated; border:1px solid #e0ddd4; }
+.canvas-meta { font-size:11px; color:#aaa; font-family:'Courier New',monospace; margin-top:5px; }
+.colorbar-gradient { height:9px; border-radius:4px; margin-top:8px; background:linear-gradient(to right,#eef5d1,#a6d96a,#1a9850,#005a32,#003214); }
+.colorbar-labels { display:flex; justify-content:space-between; font-size:10px; font-family:'Courier New',monospace; color:#aaa; margin-top:3px; }
+
+/* CROSSHAIR MARKER */
+.canvas-wrap { position:relative; display:inline-block; width:100%; }
+.px-marker { position:absolute; pointer-events:none; display:none; }
+.px-marker::before,.px-marker::after { content:''; position:absolute; background:#fff; }
+.px-marker::before { width:1px; height:10px; left:0; top:-5px; }
+.px-marker::after  { width:10px; height:1px; left:-5px; top:0; }
+
+/* PIXEL INFO */
+.pixel-info-panel { background:#fff; border:1.5px solid #3266ad; border-radius:12px; margin-bottom:1.5rem; overflow:hidden; display:none; }
+.pixel-info-head  { padding:.65rem 1rem; border-bottom:1px solid #dde6f5; display:flex; align-items:center; gap:10px; background:#f0f5fc; }
+.pixel-dot  { width:11px; height:11px; border-radius:50%; flex-shrink:0; }
+.pixel-info-head .title { font-size:13px; font-weight:500; flex:1; color:#1a2d50; }
+.pixel-coords { font-size:11px; font-family:'Courier New',monospace; color:#6080a8; }
+
+.px-top { display:grid; grid-template-columns:repeat(4,1fr); border-bottom:1px solid #e8eef7; }
+.pgi    { padding:.75rem 1rem; border-right:1px solid #e8eef7; }
+.pgi:last-child { border-right:none; }
+.pgi .pgi-label { font-size:11px; color:#888; margin-bottom:3px; }
+.pgi .pgi-value { font-size:18px; font-weight:500; font-family:'Courier New',monospace; }
+.pgi .pgi-sub   { font-size:11px; color:#aaa; margin-top:2px; }
+.mq-bar { display:flex; gap:3px; margin-top:6px; }
+.mq-seg { height:6px; flex:1; border-radius:2px; background:#eceae3; }
+.mq-seg.on { background:#3266ad; }
+
+.px-body { display:grid; grid-template-columns:1fr 1fr; border-bottom:1px solid #e8eef7; }
+.px-section { padding:.85rem 1rem; }
+.px-section:first-child { border-right:1px solid #e8eef7; }
+.px-section-title { font-size:11px; font-weight:600; color:#333; margin-bottom:8px; font-family:'Courier New',monospace; text-transform:uppercase; letter-spacing:.08em; }
+
+.band-bars,.scene-params { display:flex; flex-direction:column; gap:5px; }
+.band-row,.param-row { display:flex; align-items:center; gap:8px; }
+.band-name  { font-family:'Courier New',monospace; font-size:10px; color:#aaa; width:22px; }
+.param-name { font-size:11px; color:#888; width:100px; flex-shrink:0; }
+.bar-bg  { flex:1; height:7px; background:#f0efe8; border-radius:3px; overflow:hidden; }
+.bar-fill{ height:100%; border-radius:3px; transition:width .3s; }
+.bar-val { font-family:'Courier New',monospace; font-size:10px; color:#555; width:44px; text-align:right; }
+
+.reasoning-box { padding:.85rem 1rem; background:#faf9f7; border-top:1px solid #eceae3; font-size:12.5px; color:#555; line-height:1.75; }
+.rt { font-size:11px; font-weight:600; color:#333; margin-bottom:5px; font-family:'Courier New',monospace; text-transform:uppercase; letter-spacing:.08em; }
+
+/* PROCESS */
+.process-steps { display:flex; flex-direction:column; }
+.process-step  { display:flex; gap:14px; padding:.85rem 1rem; border-bottom:1px solid #f0efe8; }
+.process-step:last-child { border-bottom:none; }
+.step-num { width:24px; height:24px; border-radius:50%; background:#eceae3; border:1px solid #d0cec5; display:flex; align-items:center; justify-content:center; font-family:'Courier New',monospace; font-size:11px; font-weight:600; flex-shrink:0; margin-top:1px; color:#555; }
+.step-title { font-size:13px; font-weight:500; margin-bottom:3px; color:#111; }
+.step-desc  { font-size:12px; color:#777; line-height:1.65; }
+.step-tag   { display:inline-block; font-family:'Courier New',monospace; font-size:10px; padding:2px 7px; border-radius:3px; margin-top:5px; background:#eceae3; border:1px solid #d0cec5; color:#666; }
+
+/* PARAM TABLE */
+.param-table { width:100%; border-collapse:collapse; font-size:12px; }
+.param-table th { text-align:left; padding:6px 8px; font-size:10px; font-weight:600; color:#aaa; font-family:'Courier New',monospace; letter-spacing:.08em; text-transform:uppercase; border-bottom:1px solid #eceae3; }
+.param-table td { padding:7px 8px; border-bottom:1px solid #f5f4f0; color:#444; vertical-align:middle; }
+.param-table tr:last-child td { border-bottom:none; }
+.param-table td:first-child { color:#222; font-weight:500; }
+.range-bar  { display:inline-block; width:70px; height:5px; background:#eceae3; border-radius:3px; vertical-align:middle; margin-left:6px; overflow:hidden; }
+.range-fill { height:100%; border-radius:3px; }
+
+.chart-wrap { position:relative; width:100%; height:200px; }
+.report-footer { margin-top:2rem; padding-top:1rem; border-top:1px solid #d8d6cc; font-size:11px; color:#bbb; font-family:'Courier New',monospace; display:flex; justify-content:space-between; }
+</style>
+</head>
+<body>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="lo-title">正在加载反演数据…</div>
+  <div class="lo-sub" id="lo-msg">读取 lai_report_data.json</div>
+</div>
+
+<div class="page" id="main-page" style="display:none;">
+
+  <div class="report-header">
+    <div class="badge">PROSAIL-LUT · 反演结果报告</div>
+    <h1>叶面积指数 (LAI) 遥感反演分析报告</h1>
+    <div class="sub" id="header-sub">2024年7月 · 甘肃省张掖市玉米田 · Sentinel-2 五波段 · 10m 分辨率 · UTM-47N</div>
+  </div>
+
+  <div class="section-label">反演结果总体统计</div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="label">有效像元总数</div><div class="value" id="s-px">—</div></div>
+    <div class="stat-card"><div class="label">LAI 反演均值</div><div class="value" id="s-mean">—<span class="unit">m²/m²</span></div></div>
+    <div class="stat-card"><div class="label">LAI 中位数</div><div class="value" id="s-median">—<span class="unit">m²/m²</span></div></div>
+    <div class="stat-card"><div class="label">LAI 值域</div><div class="value" id="s-range">—</div></div>
+    <div class="stat-card"><div class="label">植被覆盖比例</div><div class="value" id="s-veg">—<span class="unit">%</span></div></div>
+  </div>
+
+  <div class="section-label">场景类型分布</div>
+  <div class="scene-cards">
+    <div class="scene-card sc-water">
+      <div class="sc-label">LAI &lt; 0.5</div>
+      <div class="sc-pct" id="sc-water">—%</div>
+      <div class="sc-name">裸土 / 水体</div>
+      <div class="sc-bar" id="scb-water" style="width:0;"></div>
+    </div>
+    <div class="scene-card sc-sparse">
+      <div class="sc-label">LAI 0.5–1.5</div>
+      <div class="sc-pct" id="sc-sparse">—%</div>
+      <div class="sc-name">稀疏植被</div>
+      <div class="sc-bar" id="scb-sparse" style="width:0;"></div>
+    </div>
+    <div class="scene-card sc-mid">
+      <div class="sc-label">LAI 1.5–3.5</div>
+      <div class="sc-pct" id="sc-mid">—%</div>
+      <div class="sc-name">中等覆盖作物</div>
+      <div class="sc-bar" id="scb-mid" style="width:0;"></div>
+    </div>
+    <div class="scene-card sc-dense">
+      <div class="sc-label">LAI &gt; 3.5</div>
+      <div class="sc-pct" id="sc-dense">—%</div>
+      <div class="sc-name">茂密 / 高密冠层</div>
+      <div class="sc-bar" id="scb-dense" style="width:0;"></div>
+    </div>
+  </div>
+
+  <div class="section-label">影像可视化 与 LAI 反演空间分布 — 点击任意像元查看详细解释</div>
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title">假彩色合成影像 (B8/B4/B3)</span>
+        <span class="hint">点击像元 ↓</span>
+      </div>
+      <div class="panel-body">
+        <div class="canvas-wrap">
+          <canvas class="img-canvas" id="rgb-canvas"></canvas>
+        </div>
+        <div class="canvas-meta">NIR-Red-Green 合成 · 植被呈红色 · 裸土呈浅色</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">
+        <span class="title">LAI 反演结果空间分布</span>
+        <span class="hint">点击像元 ↓</span>
+      </div>
+      <div class="panel-body">
+        <div class="canvas-wrap">
+          <canvas class="img-canvas" id="lai-canvas"></canvas>
+        </div>
+        <div class="colorbar-gradient"></div>
+        <div class="colorbar-labels"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6+</span></div>
+        <div class="canvas-meta">LAI (m²/m²) · 颜色越深叶面积指数越高</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIXEL INFO PANEL -->
+  <div class="pixel-info-panel" id="pixel-info">
+    <div class="pixel-info-head">
+      <div class="pixel-dot" id="pixel-dot"></div>
+      <div class="title" id="pixel-title">像元详情</div>
+      <div class="pixel-coords" id="pixel-coords"></div>
+    </div>
+    <div class="px-top">
+      <div class="pgi">
+        <div class="pgi-label">LAI 反演值</div>
+        <div class="pgi-value" id="px-lai">—</div>
+        <div class="pgi-sub">m²/m² ± <span id="px-std">—</span></div>
+      </div>
+      <div class="pgi">
+        <div class="pgi-label">NDVI</div>
+        <div class="pgi-value" id="px-ndvi">—</div>
+        <div class="pgi-sub" id="px-ndvi-desc">—</div>
+      </div>
+      <div class="pgi">
+        <div class="pgi-label">场景类型</div>
+        <div class="pgi-value" id="px-type" style="font-size:14px;">—</div>
+        <div class="pgi-sub" id="px-type-desc">—</div>
+      </div>
+      <div class="pgi">
+        <div class="pgi-label">LUT 匹配质量</div>
+        <div class="pgi-value" id="px-match-label">—</div>
+        <div class="mq-bar" id="mq-bar"></div>
+      </div>
+    </div>
+    <div class="px-body">
+      <div class="px-section">
+        <div class="px-section-title">▸ 各波段反射率（含 LUT 均值参考）</div>
+        <div class="band-bars" id="band-viz"></div>
+      </div>
+      <div class="px-section">
+        <div class="px-section-title">▸ LUT Top-1% 推算场景参数</div>
+        <div class="scene-params" id="scene-params"></div>
+      </div>
+    </div>
+    <div class="reasoning-box">
+      <div class="rt">▸ 反演推算依据</div>
+      <div id="reasoning-text"></div>
+    </div>
+  </div>
+
+  <!-- CHARTS -->
+  <div class="section-label">反演结果分布分析</div>
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head"><span class="title">LAI 反演值分布直方图</span></div>
+      <div class="panel-body">
+        <div class="chart-wrap"><canvas id="histChart"></canvas></div>
+        <div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:#888;">
+          <span style="display:flex;align-items:center;gap:4px;"><span style="width:12px;height:10px;border-radius:2px;background:#1a9850;display:inline-block;"></span>像元频数</span>
+          <span style="display:flex;align-items:center;gap:4px;"><span style="width:16px;height:2px;background:#3266ad;display:inline-block;"></span>反演均值</span>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="title">NDVI–LAI 散点关系（抽样像元）</span></div>
+      <div class="panel-body">
+        <div class="chart-wrap"><canvas id="scatterChart"></canvas></div>
+        <div style="font-size:11px;color:#aaa;margin-top:8px;">近红外与红光波段比值是 LAI 反演的主要驱动信号</div>
+      </div>
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head"><span class="title">LUT 光谱模拟范围 vs 影像实测均值</span></div>
+      <div class="panel-body">
+        <div class="chart-wrap"><canvas id="specChart"></canvas></div>
+        <div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:#888;flex-wrap:wrap;">
+          <span style="display:flex;align-items:center;gap:4px;"><span style="width:12px;height:2px;background:#3266ad;display:inline-block;"></span>LUT 均值</span>
+          <span style="display:flex;align-items:center;gap:4px;"><span style="width:12px;height:2px;background:#c0392b;border-top:2px dashed #c0392b;display:inline-block;"></span>影像均值</span>
+          <span style="display:flex;align-items:center;gap:4px;"><span style="width:12px;height:8px;background:rgba(50,102,173,0.18);display:inline-block;"></span>LUT P10–P90</span>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="title">LUT 参数采样分布（LAI 区间）</span></div>
+      <div class="panel-body">
+        <div class="chart-wrap"><canvas id="lutChart"></canvas></div>
+        <div style="font-size:11px;color:#aaa;margin-top:8px;">LUT 在 LAI 0.1–8 间均匀随机采样，各区间密度一致</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROCESS -->
+  <div class="section-label">反演流程说明</div>
+  <div class="panel" style="margin-bottom:1.5rem;">
+    <div class="process-steps">
+      <div class="process-step">
+        <div class="step-num">1</div>
+        <div>
+          <div class="step-title">PROSAIL 正向建模，构建光谱查找表 (LUT)</div>
+          <div class="step-desc">联合 PROSPECT-5B（叶片光学模型）与 4SAIL（冠层辐射传输模型），在参数空间随机采样 10,000 组参数（LAI、叶绿素 Cab、叶肉结构 N、叶干物质 Cm、土壤亮度 psoil、叶倾角 LIDFa 等），正向模拟冠层反射率后与 Sentinel-2 光谱响应函数卷积，得到 10,000×9 的查找表。</div>
+          <span class="step-tag">LUT_test.txt · 10,000 行 × 9 波段</span>
+        </div>
+      </div>
+      <div class="process-step">
+        <div class="step-num">2</div>
+        <div>
+          <div class="step-title">影像读入与波段对齐</div>
+          <div class="step-desc">读入 testimgTIF.tif（Float32，值域 0–1，无需缩放），提取 B2/B3/B4/B7/B8 共 5 波段。影像分辨率 10m，坐标系 UTM-47N，原点 (611430, 4305560)，尺寸 1323×1130 像元。</div>
+          <span class="step-tag">5 波段 · Float32 · 0–1 反射率 · 1323×1130</span>
+        </div>
+      </div>
+      <div class="process-step">
+        <div class="step-num">3</div>
+        <div>
+          <div class="step-title">逐像元 LUT 光谱匹配，反演 LAI</div>
+          <div class="step-desc">对每个有效像元，计算其 5 波段反射率向量与 LUT 全部 10,000 条记录间的均方根误差（RMSE）。取误差最小的前 1%（约 100 条）的 LAI 均值作为最终反演值，标准差作为不确定度。同时记录最优匹配的 RMSE 用于匹配质量评估。</div>
+          <span class="step-tag">Top-1% 均值策略 · 等权 5 波段 · 同步输出 LAIstd</span>
+        </div>
+      </div>
+      <div class="process-step">
+        <div class="step-num">4</div>
+        <div>
+          <div class="step-title">降采样与 JSON 导出，驱动本报告</div>
+          <div class="step-desc">将全分辨率结果（1323×1130）块均值降采样至 200×170 缩略图，同步导出各波段缩略值、NDVI、场景参数估算值及匹配 RMSE，序列化为 lai_report_data.json 供本报告实时加载展示。</div>
+          <span class="step-tag">200×170 缩略 · JSON · HTML 点击查询</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PARAM TABLE -->
+  <div class="section-label">PROSAIL 模型参数设置一览</div>
+  <div class="panel" style="margin-bottom:1.5rem;">
+    <div class="panel-body" style="padding:.5rem;">
+      <table class="param-table">
+        <thead><tr><th>参数</th><th>含义</th><th>采样范围</th><th>方式</th><th>对 LAI 反演的影响</th></tr></thead>
+        <tbody>
+          <tr><td>LAI</td><td>叶面积指数</td><td>0.1–8.0 m²/m²<div class="range-bar"><div class="range-fill" style="width:100%;background:#1a9850;"></div></div></td><td>均匀随机</td><td>目标变量，直接决定 NIR 多重散射强度</td></tr>
+          <tr><td>Cab</td><td>叶绿素含量</td><td>10–80 μg/cm²<div class="range-bar"><div class="range-fill" style="width:70%;background:#3266ad;"></div></div></td><td>均匀随机</td><td>影响红光和红边吸收，与 LAI 存在协同不确定性</td></tr>
+          <tr><td>LIDFa</td><td>叶倾角参数</td><td>10°–75°<div class="range-bar"><div class="range-fill" style="width:65%;background:#8338ec;"></div></div></td><td>均匀随机</td><td>决定冠层各向异性，影响 NIR 热点散射强度</td></tr>
+          <tr><td>hspot</td><td>热点参数</td><td>0.01–0.6<div class="range-bar"><div class="range-fill" style="width:40%;background:#e67e22;"></div></div></td><td>均匀随机</td><td>影响后向散射峰宽，张掖玉米田热点效应显著</td></tr>
+          <tr><td>psoil</td><td>土壤亮度系数</td><td>0.0–1.0<div class="range-bar"><div class="range-fill" style="width:50%;background:#c0392b;"></div></div></td><td>均匀随机</td><td>低覆盖像元可见光对 psoil 极敏感</td></tr>
+          <tr><td>N</td><td>叶肉层厚度</td><td>1.2–2.2<div class="range-bar"><div class="range-fill" style="width:45%;background:#aaa;"></div></div></td><td>均匀随机</td><td>影响 NIR 散射幅度，与 LAI 存在部分耦合</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="report-footer">
+    <span>PROSAIL-LUT LAI 反演报告 · 张掖玉米田 2024-07</span>
+    <span id="footer-gen">由 lai_report_data.json 驱动</span>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// =============================================================================
+// Color utilities
+// =============================================================================
+function laiColor(v) {
+  v = Math.max(0, Math.min(6, v));
+  const stops = [[0,[238,245,209]],[1.5,[166,217,106]],[3,[26,152,80]],[4.5,[0,90,50]],[6,[0,50,20]]];
+  for (let i=1;i<stops.length;i++) {
+    if (v<=stops[i][0]) {
+      const t=(v-stops[i-1][0])/(stops[i][0]-stops[i-1][0]);
+      return stops[i-1][1].map((c,j)=>Math.round(c+(stops[i][1][j]-c)*t));
+    }
+  }
+  return stops[stops.length-1][1];
+}
+
+// =============================================================================
+// Draw canvas from data arrays
+// =============================================================================
+function drawLAI(canvas, laiArr) {
+  const H=laiArr.length, W=laiArr[0].length;
+  canvas.width=W; canvas.height=H;
+  const ctx=canvas.getContext('2d'), img=ctx.createImageData(W,H);
+  for (let y=0;y<H;y++) for (let x=0;x<W;x++) {
+    const [r,g,b]=laiColor(laiArr[y][x]), i=(y*W+x)*4;
+    img.data[i]=r; img.data[i+1]=g; img.data[i+2]=b; img.data[i+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+}
+
+function drawRGB(canvas, rgbArr) {
+  const H=rgbArr.length, W=rgbArr[0].length;
+  canvas.width=W; canvas.height=H;
+  const ctx=canvas.getContext('2d'), img=ctx.createImageData(W,H);
+  for (let y=0;y<H;y++) for (let x=0;x<W;x++) {
+    const [r,g,b]=rgbArr[y][x], i=(y*W+x)*4;
+    img.data[i]=r; img.data[i+1]=g; img.data[i+2]=b; img.data[i+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+}
+
+// =============================================================================
+// Pixel info helpers
+// =============================================================================
+function getCategory(lai, ndvi) {
+  if (ndvi<0.08) return ['水体 / 裸土','非植被像元，LAI 参考意义有限'];
+  if (lai<0.8)   return ['稀疏植被','冠层覆盖度极低，土壤背景贡献大'];
+  if (lai<2.0)   return ['生长初期','冠层未封行，可见光受土壤干扰'];
+  if (lai<3.5)   return ['中等覆盖','正常生长期，NIR 信号主导'];
+  if (lai<5.0)   return ['茂密作物','冠层近封行，多重散射显著'];
+  return ['高密冠层','完全封行，LAI 对 NIR 趋于饱和'];
+}
+function getNdviDesc(ndvi) {
+  if (ndvi<0.1) return '无植被';
+  if (ndvi<0.3) return '低植被';
+  if (ndvi<0.5) return '中等';
+  if (ndvi<0.7) return '偏高';
+  return '高植被覆盖';
+}
+function getMatchLevel(rmse) {
+  // rmse 是 MSE（非 RMSE），典型值 ~0.001-0.01
+  if (rmse===0||isNaN(rmse)) return [1,'极低'];
+  if (rmse>0.008)  return [1,'低'];
+  if (rmse>0.004)  return [2,'一般'];
+  if (rmse>0.002)  return [3,'良好'];
+  if (rmse>0.001)  return [4,'优秀'];
+  return [5,'极佳'];
+}
+function getReasoning(lai, ndvi, b4, b7, b8, cab, lidfa, psoil, rmse, std) {
+  const parts = [];
+  // NIR explanation
+  if (b8 > 0.45) parts.push(`近红外 B8（${b8.toFixed(3)}）强烈，冠层多重散射旺盛，支持高 LAI 估计 ${lai.toFixed(2)} m²/m²。`);
+  else if (b8 > 0.25) parts.push(`近红外 B8（${b8.toFixed(3)}）中等，冠层有一定叶层厚度，估算 LAI ${lai.toFixed(2)} m²/m²。`);
+  else parts.push(`近红外 B8（${b8.toFixed(3)}）偏低，植被覆盖稀疏，LAI 估计较低（${lai.toFixed(2)} m²/m²）。`);
+  // Red explanation
+  if (b4 < 0.06) parts.push(`红光 B4（${b4.toFixed(3)}）极低，叶绿素强烈吸收红光，冠层致密，进一步支持高 LAI。`);
+  else if (b4 < 0.14) parts.push(`红光 B4（${b4.toFixed(3)}）适中，叶绿素吸收正常，与中等 LAI 吻合。`);
+  else parts.push(`红光 B4（${b4.toFixed(3)}）偏高，冠层叶片覆盖较稀，红光吸收弱，LAI 偏低。`);
+  // Red-edge
+  parts.push(`红边 B7（${b7.toFixed(3)}）对叶绿素含量敏感，LUT Top-1% 条目推算叶绿素 Cab ≈ ${cab.toFixed(0)} μg/cm²，叶倾角 LIDFa ≈ ${lidfa.toFixed(0)}°，土壤亮度 psoil ≈ ${psoil.toFixed(2)}。`);
+  // Match quality
+  const rmse_sq = Math.sqrt(rmse);
+  parts.push(`LUT 最优匹配 RMSE = ${rmse_sq.toFixed(4)}，Top-1% LAI 标准差 = ${std.toFixed(2)} m²/m²，反映反演不确定度${std < 0.5 ? '较低，结果可信' : std < 1.0 ? '适中' : '偏高，建议参考多个场景解释'}。`);
+  return parts.join(' ');
+}
+
+// =============================================================================
+// Main — load JSON then render
+// =============================================================================
+let G = null; // global data
+
+async function loadData() {
+  document.getElementById('lo-msg').textContent = '读取 lai_report_data.json …';
+  // Try fetch from same directory
+  let data;
+  try {
+    const resp = await fetch('lai_report_data.json');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    document.getElementById('lo-msg').textContent = '解析数据中…';
+    data = await resp.json();
+  } catch(e) {
+    document.getElementById('lo-msg').textContent = '未找到 lai_report_data.json，使用内置演示数据';
+    await new Promise(r=>setTimeout(r,1200));
+    data = buildDemoData();
+  }
+  return data;
+}
+
+function buildDemoData() {
+  // Fallback synthetic demo when JSON not available
+  const TW=100, TH=85;
+  function rng(x,y,s){return Math.abs(Math.sin(x*127.1+y*311.7+s*74.3)*43758.5453%1);}
+  const pd={lai:[],std:[],ndvi:[],b2:[],b3:[],b4:[],b7:[],b8:[],cab:[],lidfa:[],psoil:[],n_leaf:[],match_rmse:[]};
+  const tRGB=[];
+  for(let y=0;y<TH;y++){
+    const rl=[],rs=[],rn=[],rb2=[],rb3=[],rb4=[],rb7=[],rb8=[],rc=[],rl2=[],rp=[],rn2=[],rm=[],rgbRow=[];
+    for(let x=0;x<TW;x++){
+      const isV=rng(x,y,1)>0.20, isW=!isV&&rng(x,y,2)>0.85;
+      let v2,v3,v4,v7,v8,lai;
+      if(isW){v2=.06+rng(x,y,3)*.03;v3=.05+rng(x,y,4)*.03;v4=.03+rng(x,y,5)*.02;v7=.02+rng(x,y,6)*.02;v8=.02+rng(x,y,7)*.02;lai=.1+rng(x,y,8)*.3;}
+      else if(isV){const vig=rng(x,y,9);v2=.04+rng(x,y,10)*.03;v3=.07+rng(x,y,11)*.04;v4=.04+rng(x,y,12)*.04;v7=.25+vig*.35+rng(x,y,13)*.04;v8=.28+vig*.38+rng(x,y,14)*.04;lai=1.5+vig*4.5+rng(x,y,15)*.7;}
+      else{v2=.12+rng(x,y,16)*.06;v3=.14+rng(x,y,17)*.06;v4=.15+rng(x,y,18)*.07;v7=.18+rng(x,y,19)*.08;v8=.19+rng(x,y,20)*.08;lai=.3+rng(x,y,21)*.8;}
+      const ndvi=(v8-v4)/(v8+v4+.001);
+      const re_r=v7/(v4+.001);
+      rl.push(+lai.toFixed(2));rs.push(+(rng(x,y,30)*.8+.1).toFixed(2));rn.push(+ndvi.toFixed(3));
+      rb2.push(+v2.toFixed(4));rb3.push(+v3.toFixed(4));rb4.push(+v4.toFixed(4));rb7.push(+v7.toFixed(4));rb8.push(+v8.toFixed(4));
+      rc.push(+(10+(re_r-1)/15*70).toFixed(1));rl2.push(+(75-ndvi*55).toFixed(1));rp.push(+(1-ndvi*.9).toFixed(3));rn2.push(+(1.2+v8*2).toFixed(2));
+      rm.push(+(rng(x,y,50)*.005+.001).toFixed(5));
+      const R=Math.min(255,Math.round(v8*2.2*255)),G=Math.min(255,Math.round(v4*2.8*255)),B=Math.min(255,Math.round(v3*2.5*255));
+      rgbRow.push([R,G,B]);
+    }
+    pd.lai.push(rl);pd.std.push(rs);pd.ndvi.push(rn);pd.b2.push(rb2);pd.b3.push(rb3);pd.b4.push(rb4);pd.b7.push(rb7);pd.b8.push(rb8);
+    pd.cab.push(rc);pd.lidfa.push(rl2);pd.psoil.push(rp);pd.n_leaf.push(rn2);pd.match_rmse.push(rm);
+    tRGB.push(rgbRow);
+  }
+  // stats
+  const allLai=[].concat(...pd.lai).filter(v=>v>0);
+  const hist_c=new Array(14).fill(0);
+  allLai.forEach(v=>{const b=Math.min(13,Math.floor(v/7*14));hist_c[b]++;});
+  const scatter=[];for(let i=0;i<600;i++){const y=Math.floor(Math.random()*TH),x=Math.floor(Math.random()*TW);scatter.push({x:pd.ndvi[y][x],y:pd.lai[y][x]});}
+  return {
+    meta:{width:1323,height:1130,thumb_w:TW,thumb_h:TH,lai_min:.1,lai_max:6.8,lai_mean:2.41,lai_median:2.78,lai_std:1.2,veg_ratio:73,
+      scene_pct:{water:8,sparse:19,mid:48,dense:25},
+      img_band_mean:{B2:.065,B3:.095,B4:.082,B7:.310,B8:.340}},
+    thumb_lai:pd.lai, thumb_rgb:tRGB, thumb_std:pd.std,
+    hist:{bins:Array.from({length:14},(_,i)=>+(i*0.5).toFixed(1)),counts:hist_c},
+    scatter:scatter,
+    lut_stats:{lai_hist_bins:Array.from({length:14},(_,i)=>+(i*7/14).toFixed(2)),lai_hist_counts:new Array(14).fill(714),
+      band_mean:{B2:.032,B3:.058,B4:.040,B7:.280,B8:.320},band_p10:{B2:.010,B3:.020,B4:.010,B7:.080,B8:.090},band_p90:{B2:.090,B3:.140,B4:.120,B7:.520,B8:.560}},
+    pixel_data:pd
+  };
+}
+
+async function init() {
+  G = await loadData();
+  const meta = G.meta;
+  document.getElementById('lo-msg').textContent = '渲染图像中…';
+  await new Promise(r=>setTimeout(r,50));
+
+  // Fill stats
+  const totalPx = meta.width * meta.height;
+  document.getElementById('s-px').textContent     = (totalPx/1e6).toFixed(2)+'M';
+  document.getElementById('s-mean').innerHTML     = meta.lai_mean+'<span class="unit">m²/m²</span>';
+  document.getElementById('s-median').innerHTML   = meta.lai_median+'<span class="unit">m²/m²</span>';
+  document.getElementById('s-range').textContent  = meta.lai_min+'–'+meta.lai_max;
+  document.getElementById('s-veg').innerHTML      = meta.veg_ratio+'<span class="unit">%</span>';
+
+  // Scene cards
+  const sp = meta.scene_pct;
+  document.getElementById('sc-water').textContent  = sp.water+'%';
+  document.getElementById('sc-sparse').textContent = sp.sparse+'%';
+  document.getElementById('sc-mid').textContent    = sp.mid+'%';
+  document.getElementById('sc-dense').textContent  = sp.dense+'%';
+  document.getElementById('scb-water').style.width  = sp.water+'%';
+  document.getElementById('scb-sparse').style.width = sp.sparse+'%';
+  document.getElementById('scb-mid').style.width    = sp.mid+'%';
+  document.getElementById('scb-dense').style.width  = sp.dense+'%';
+
+  // Canvases
+  drawRGB(document.getElementById('rgb-canvas'), G.thumb_rgb);
+  drawLAI(document.getElementById('lai-canvas'), G.thumb_lai);
+
+  // Canvas click handlers
+  const TW=meta.thumb_w, TH=meta.thumb_h;
+  function getPixel(canvas, e) {
+    const r=canvas.getBoundingClientRect();
+    return {
+      tx: Math.floor(Math.max(0,Math.min(TW-1,(e.clientX-r.left)/r.width*TW))),
+      ty: Math.floor(Math.max(0,Math.min(TH-1,(e.clientY-r.top)/r.height*TH)))
+    };
+  }
+  function showPixel(tx, ty) {
+    const pd  = G.pixel_data;
+    const lai  = pd.lai[ty][tx],  std  = pd.std[ty][tx];
+    const ndvi = pd.ndvi[ty][tx];
+    const b2=pd.b2[ty][tx], b3=pd.b3[ty][tx], b4=pd.b4[ty][tx], b7=pd.b7[ty][tx], b8=pd.b8[ty][tx];
+    const cab=pd.cab[ty][tx], lidfa=pd.lidfa[ty][tx], psoil=pd.psoil[ty][tx], nleaf=pd.n_leaf[ty][tx];
+    const rmse=pd.match_rmse[ty][tx];
+    // UTM approx coords
+    const ox=611430, oy=4305560, ps=10;
+    const scale_x = G.meta.width/TW, scale_y = G.meta.height/TH;
+    const orig_x = Math.round(tx*scale_x), orig_y = Math.round(ty*scale_y);
+    const utm_x = ox + orig_x*ps, utm_y = oy - orig_y*ps;
+    const [cat, catDesc] = getCategory(lai, ndvi);
+    const [mqn, mqLabel] = getMatchLevel(rmse);
+    const [cr,cg,cb] = laiColor(lai);
+
+    document.getElementById('pixel-info').style.display='block';
+    document.getElementById('pixel-dot').style.background=`rgb(${cr},${cg},${cb})`;
+    document.getElementById('pixel-title').textContent=`像元详情 — ${cat}`;
+    document.getElementById('pixel-coords').textContent=`缩略 (${tx},${ty}) → 原始 (${orig_x},${orig_y}) · UTM (${utm_x}, ${utm_y})`;
+    document.getElementById('px-lai').textContent=lai.toFixed(2);
+    document.getElementById('px-std').textContent=std.toFixed(2);
+    document.getElementById('px-ndvi').textContent=ndvi.toFixed(3);
+    document.getElementById('px-ndvi-desc').textContent=getNdviDesc(ndvi);
+    document.getElementById('px-type').textContent=cat;
+    document.getElementById('px-type-desc').textContent=catDesc;
+    document.getElementById('px-match-label').textContent=mqLabel;
+    let mq='';for(let i=1;i<=5;i++) mq+=`<div class="mq-seg${i<=mqn?' on':''}"></div>`;
+    document.getElementById('mq-bar').innerHTML=mq;
+
+    // Band bars with LUT mean reference
+    const lm=G.lut_stats.band_mean;
+    const bands=[
+      {name:'B2',val:b2,lut:lm.B2,max:.25,color:'#4895ef'},
+      {name:'B3',val:b3,lut:lm.B3,max:.28,color:'#4cc9f0'},
+      {name:'B4',val:b4,lut:lm.B4,max:.30,color:'#e63946'},
+      {name:'B7',val:b7,lut:lm.B7,max:.65,color:'#8338ec'},
+      {name:'B8',val:b8,lut:lm.B8,max:.70,color:'#3a86ff'},
+    ];
+    document.getElementById('band-viz').innerHTML = bands.map(bd=>{
+      const pct=Math.min(100,bd.val/bd.max*100).toFixed(1);
+      const lutPct=Math.min(100,bd.lut/bd.max*100).toFixed(1);
+      return `<div class="band-row">
+        <span class="band-name">${bd.name}</span>
+        <div class="bar-bg" style="position:relative;">
+          <div class="bar-fill" style="width:${pct}%;background:${bd.color};"></div>
+          <div style="position:absolute;top:0;left:${lutPct}%;width:2px;height:100%;background:#aaa;opacity:.7;"></div>
+        </div>
+        <span class="bar-val">${bd.val.toFixed(3)}</span>
+      </div>`;
+    }).join('');
+
+    // Scene params
+    const sparams=[
+      {name:'Cab 叶绿素',    val:cab,   unit:'μg/cm²', max:80,  pct:cab/80*100,   color:'#1a9850'},
+      {name:'LIDFa 叶倾角',  val:lidfa, unit:'°',       max:75,  pct:lidfa/75*100, color:'#8338ec'},
+      {name:'psoil 土壤亮', val:psoil, unit:'',         max:1,   pct:psoil*100,    color:'#e67e22'},
+      {name:'N 叶肉层数',    val:nleaf, unit:'',         max:2.5, pct:nleaf/2.5*100,color:'#3266ad'},
+    ];
+    document.getElementById('scene-params').innerHTML = sparams.map(p=>`
+      <div class="param-row">
+        <span class="param-name">${p.name}</span>
+        <div class="bar-bg"><div class="bar-fill" style="width:${p.pct.toFixed(1)}%;background:${p.color};"></div></div>
+        <span class="bar-val">${typeof p.val==='number'&&p.val<10?p.val.toFixed(2):Math.round(p.val)}${p.unit}</span>
+      </div>`).join('');
+
+    document.getElementById('reasoning-text').textContent =
+      getReasoning(lai, ndvi, b4, b7, b8, cab, lidfa, psoil, rmse, std);
+    document.getElementById('pixel-info').scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+
+  ['rgb-canvas','lai-canvas'].forEach(id=>{
+    const c=document.getElementById(id);
+    c.addEventListener('click',e=>{const{tx,ty}=getPixel(c,e);showPixel(tx,ty);});
+    c.addEventListener('mousemove',e=>{
+      const{tx,ty}=getPixel(c,e);
+      const lai=G.pixel_data.lai[ty][tx], ndvi=G.pixel_data.ndvi[ty][tx];
+      c.title=`缩略 (${tx},${ty})  LAI=${lai.toFixed(2)}  NDVI=${ndvi.toFixed(3)}`;
+    });
+  });
+
+  // Charts
+  buildCharts();
+
+  // Hide loading, show page
+  document.getElementById('loading-overlay').style.display='none';
+  document.getElementById('main-page').style.display='block';
+}
+
+function buildCharts() {
+  // 1. Histogram
+  const hist = G.hist;
+  new Chart(document.getElementById('histChart'),{
+    type:'bar',
+    data:{labels:hist.bins.map(String),datasets:[{
+      label:'像元数',data:hist.counts,
+      backgroundColor:hist.bins.map(v=>{const[r,g,b]=laiColor(v+0.25);return `rgba(${r},${g},${b},0.88)`;}),
+      borderRadius:2,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        annotation:{annotations:{line1:{type:'line',
+          xMin:hist.bins.findIndex(v=>v>=G.meta.lai_mean)-0.5+
+               (G.meta.lai_mean-hist.bins[hist.bins.findIndex(v=>v>=G.meta.lai_mean)-1||0])/(hist.bins[1]-hist.bins[0]),
+          xMax:hist.bins.findIndex(v=>v>=G.meta.lai_mean)-0.5+
+               (G.meta.lai_mean-hist.bins[hist.bins.findIndex(v=>v>=G.meta.lai_mean)-1||0])/(hist.bins[1]-hist.bins[0]),
+          borderColor:'#3266ad',borderWidth:1.5,borderDash:[4,3]}}}},
+      scales:{y:{ticks:{font:{size:10},color:'#aaa'},grid:{color:'rgba(0,0,0,0.05)'}},
+              x:{ticks:{font:{size:10},color:'#888',autoSkip:true,maxTicksLimit:10},grid:{display:false}}}}
+  });
+
+  // 2. Scatter
+  new Chart(document.getElementById('scatterChart'),{
+    type:'scatter',
+    data:{datasets:[{label:'像元',data:G.scatter,
+      backgroundColor:'rgba(26,152,80,0.30)',pointRadius:2,pointHoverRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{title:{display:true,text:'NDVI',font:{size:11},color:'#aaa'},min:-0.1,max:1.0,ticks:{font:{size:10},color:'#aaa'},grid:{color:'rgba(0,0,0,0.05)'}},
+        y:{title:{display:true,text:'LAI (m²/m²)',font:{size:11},color:'#aaa'},min:0,max:7,ticks:{font:{size:10},color:'#aaa'},grid:{color:'rgba(0,0,0,0.05)'}}}}
+  });
+
+  // 3. Spectral comparison
+  const ls=G.lut_stats, bnames=['B2','B3','B4','B7','B8'];
+  const lut_mean_arr=bnames.map(b=>ls.band_mean[b]);
+  const lut_p90_arr =bnames.map(b=>ls.band_p90[b]);
+  const lut_p10_arr =bnames.map(b=>ls.band_p10[b]);
+  const img_mean_arr=bnames.map(b=>G.meta.img_band_mean[b]);
+  new Chart(document.getElementById('specChart'),{
+    type:'line',
+    data:{labels:bnames,datasets:[
+      {label:'LUT均值',data:lut_mean_arr,borderColor:'#3266ad',borderWidth:2,tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#3266ad'},
+      {label:'影像均值',data:img_mean_arr,borderColor:'#c0392b',borderWidth:2,borderDash:[5,4],tension:.3,fill:false,pointRadius:4,pointStyle:'triangle',pointBackgroundColor:'#c0392b'},
+      {label:'P90',data:lut_p90_arr,borderColor:'rgba(50,102,173,0.15)',borderWidth:.5,tension:.3,fill:'+1',pointRadius:0},
+      {label:'P10',data:lut_p10_arr,borderColor:'rgba(50,102,173,0.15)',borderWidth:.5,tension:.3,fill:false,pointRadius:0}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{min:0,max:.7,ticks:{font:{size:10},color:'#aaa',callback:v=>v.toFixed(2)},grid:{color:'rgba(0,0,0,0.05)'}},
+              x:{ticks:{font:{size:11},color:'#888'},grid:{display:false}}}}
+  });
+
+  // 4. LUT LAI distribution
+  const lb=G.lut_stats.lai_hist_bins, lc=G.lut_stats.lai_hist_counts;
+  new Chart(document.getElementById('lutChart'),{
+    type:'bar',
+    data:{labels:lb.map(String),datasets:[{label:'条数',data:lc,backgroundColor:'rgba(50,102,173,0.70)',borderRadius:3,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{ticks:{font:{size:10},color:'#aaa'},grid:{color:'rgba(0,0,0,0.05)'}},
+              x:{ticks:{font:{size:10},color:'#888',autoSkip:true,maxTicksLimit:8},grid:{display:false}}}}
+  });
+}
+
+init();
+</script>
+</body>
+</html>

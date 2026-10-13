@@ -1,0 +1,44 @@
+{
+  "date": "2026-10-12",
+  "target": "172.27.127.3",
+  "release": "/data/yuehao/apps/ktp/releases/workspace-analysis-attention-20261012",
+  "frontend_tests_passed": 35,
+  "build": "passed",
+  "lint": "passed",
+  "browser_local_and_server_with_api_fixtures": {
+    "whole_panel_highlight": true,
+    "finite_six_second_pulse": true,
+    "percentage_polling_does_not_replay": true,
+    "completion_warning_and_failure_tones": true,
+    "retry_and_explicit_task_location": true,
+    "acknowledgement_stops_highlight": true,
+    "reduced_motion_static_highlight": true,
+    "mobile_attention_entry": true,
+    "historical_task_navigation": true,
+    "history_read_only": true,
+    "pointer_and_keyboard_resize": true,
+    "width_restored_after_reload": true,
+    "mobile_and_tablet_drawers": true,
+    "latest_message_visible": true,
+    "history_scroll_preserved": true,
+    "status_recovery_without_duplicate_task": true,
+    "simplified_yield_crop_and_report": true
+  },
+  "deployment": {
+    "source_and_dist_match": true,
+    "checked_files": 31,
+    "backup_created": true,
+    "old_assets_retained": true,
+    "backend_changes": false,
+    "backend_restarted": false,
+    "services_active": ["ktp-backend", "ktp-frontend"],
+    "resources": [
+      {"path": "/health", "status": 200},
+      {"path": "/", "status": 200, "cache_control": "no-store", "hash_matches": true},
+      {"path": "/assets/MapWorkspaceDemoPage-C1wGc40r.js", "status": 200},
+      {"path": "/assets/MapWorkspaceDemoPage-DfJqGZBz.js", "status": 200},
+      {"path": "/assets/MapWorkspaceDemoPage-B6oInsJ7.js", "status": 200, "hash_matches": true},
+      {"path": "/assets/index-h3B8_pu_.css", "status": 200, "hash_matches": true}
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 import { Component, ReactNode, ErrorInfo } from 'react'
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react'
+import { isChunkLoadError } from '../utils/chunkLoadRecovery'
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -26,6 +27,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   handleRetry = () => {
+    if (isChunkLoadError(this.state.error)) {
+      window.location.reload()
+      return
+    }
     this.setState({ hasError: false, error: null })
   }
 

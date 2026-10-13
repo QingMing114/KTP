@@ -17,6 +17,32 @@ def _load_preview_server():
     return module
 
 
+def test_static_routes_cache_html_safely_and_never_return_html_for_missing_chunks(tmp_path):
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<!doctype html><title>Workbench</title>")
+    (tmp_path / "assets" / "page-abc.js").write_text("export const loaded = true;")
+    module = _load_preview_server()
+    module.FRONTEND_DIR = tmp_path
+    server = ThreadingHTTPServer(("127.0.0.1", 0), module.KTPHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        for method in ("GET", "HEAD"):
+            for path, status, content_type in (("/workspace", 200, "text/html"), ("/index.html", 200, "text/html"), ("/assets/page-abc.js", 200, "javascript"), ("/assets/page-old.js", 404, None)):
+                connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=2)
+                connection.request(method, path)
+                response = connection.getresponse()
+                assert response.status == status
+                if content_type:
+                    assert content_type in response.getheader("Content-Type")
+                cache = response.getheader("Cache-Control")
+                assert cache == ("public, max-age=31536000, immutable" if path == "/assets/page-abc.js" else "no-store")
+                response.read()
+                connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_preview_proxy_forwards_canonical_methods_and_streams_sse() -> None:
     class BackendHandler(BaseHTTPRequestHandler):
         received: list[tuple[str, str, bytes]] = []

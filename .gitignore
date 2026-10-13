@@ -52,3 +52,6 @@ backend/plugins/
 
 # Machine-bound deployment secrets
 deploy/license.key
+
+# Generated deployment bundles; source scripts and validation records remain versioned.
+/deploy/*.tar.gz

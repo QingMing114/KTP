@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-12",
+  "issue": "Stale lazy module URL after replacing frontend dist; missing asset incorrectly received SPA HTML.",
+  "reported_asset": "MapWorkspaceDemoPage-C1wGc40r.js",
+  "restored_old_assets": 96,
+  "asset_http_status": 200,
+  "asset_content_type": "application/javascript",
+  "html_cache_control": "no-store",
+  "missing_asset_http_status": 404,
+  "automatic_reload_browser_check": "passed",
+  "old_module_and_dependencies_import": "passed",
+  "workflow_browser_regression": "passed",
+  "backend_health": 200,
+  "backend_proxy_tests_passed": 2,
+  "frontend_tests_passed": 12,
+  "build": "passed",
+  "eslint": "passed"
+}

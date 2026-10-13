@@ -30,7 +30,7 @@ RuntimeEventKind: TypeAlias = Literal[
     "tool_finished", "visibility_loaded",
 ]
 RuntimeArtifactKind: TypeAlias = Literal[
-    "apsim_report", "confidence_card", "file_content", "inference_card", "inversion_result",
+    "apsim_report", "simple_yield_report", "confidence_card", "file_content", "inference_card", "inversion_result",
     "knowledge_card", "lai_confidence_geotiff", "lai_geotiff", "lai_html_report", "lai_preview",
     "lai_raster", "lut_card", "registry_card", "report_card", "search_results", "simulation_data",
     "simulation_log", "simulation_result", "text_card", "training_card", "visualization_card",
@@ -348,6 +348,8 @@ class RunDetail(RunSummary):
     replay_of_run_id: str | None = None
     trace: list[TraceEventV2] = Field(default_factory=list)
     task_digest: dict | None = None
+    product_parts: list[dict[str, Any]] = Field(default_factory=list)
+    product_created_at: str | None = None
 
 
 class RunEventV2(BaseModel):

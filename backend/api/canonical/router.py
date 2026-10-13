@@ -36,6 +36,13 @@ from runtime.farm_store import FarmStore
 from runtime.idempotency_store import IdempotencyStore
 from runtime.submission_store import SubmissionStore
 from runtime.lai_analysis_store import LaiAnalysisStore
+from runtime.crop_analysis_store import CropAnalysisStore
+from runtime.analysis_workflow_store import AnalysisWorkflowStore
+from runtime.analysis_workflow_runner import ensure_workflow_reports, run_analysis_workflow
+from runtime.workspace_assistant import plan_workspace, workspace_parts, can_rebase_preview, TASK_LABELS
+from schemas.workspace import WorkspaceContext, WorkspaceIntent
+from runtime.workflow_reports import REPORT_VERSION, register_crop_report
+from runtime.yield_input_assessment import assess_yield_inputs
 from infra.imagery.stac_provider import ImagerySearchError, SentinelStacProvider
 from infra.imagery.aoi_band_reader import AoiBandReadError, read_prosail_reflectance_aoi
 from schemas.canonical import (
@@ -65,9 +72,15 @@ from schemas.canonical import (
 )
 from schemas.errors import ErrorCode, canonical_error_response
 from schemas.spatial import FarmListResponse
-from schemas.spatial import CreateLaiAnalysisRequest, LaiAnalysisSummary, ImagerySearchRequest, ImagerySearchResponse
+from schemas.spatial import CreateLaiAnalysisRequest, LaiAnalysisSummary, CreateCropAnalysisRequest, CropAnalysisSummary, ImagerySearchRequest, ImagerySearchResponse
+from schemas.analysis_workflow import (
+    AnalysisWorkflowEventsResponse, AnalysisWorkflowSummary, CreateAnalysisWorkflowRequest,
+    RetryAnalysisWorkflowRequest,
+    UpdateYieldInputsRequest,
+)
 from shared.config.paths import get_lai_report_dir
 from v2.tools.lai_report_handler import run_lai_html_report
+from infra.imagery.crop_spatial import CropInferenceError, run_crop_spatial_analysis, verify_crop_model
 from v2.tools.apsim_report_handler import get_apsim_demo_db_path, run_apsim_yield_report
 from v2.runtime.engine import BoundedRuntimeEngine
 from v2.runtime.store import RuntimeStore
@@ -76,6 +89,7 @@ from schemas.runtime import (
     ResolvedDatasetV2,
     RunDetail,
     RunEventV2,
+    SessionMessage,
 )
 
 logger = logging.getLogger(__name__)
@@ -230,6 +244,7 @@ _IDEMPOTENT_POST_ENDPOINTS = {
     "/conversations",
     "/conversations/{conversation_id}/submissions",
     "/submissions/{submission_id}/cancel",
+    "/analysis-workflows",
 }
 
 
@@ -251,11 +266,16 @@ def build_canonical_router() -> APIRouter:
         return request.app.state.runtime_engine
 
     # Artifact kinds whose content is renderable HTML.
-    _HTML_ARTIFACT_KINDS: set[str] = {"lai_html_report", "apsim_report"}
+    _HTML_ARTIFACT_KINDS: set[str] = {
+        "lai_html_report", "apsim_report", "simple_yield_report", "canopy_index_report",
+        "crop_classification_report", "growth_observation_report", "workflow_summary_report",
+        "workflow_demo_step_report",
+    }
     _BINARY_ARTIFACT_KINDS: set[str] = {
         "lai_raster",
         "lai_preview",
         "reflectance_tif",
+        "analysis_result_json",
         "classification_result",
         "segmentation_mask",
         "segmentation_preview",
@@ -294,6 +314,25 @@ def build_canonical_router() -> APIRouter:
         assert store is not None, "artifact_store not initialized"
         return store
 
+    def _check_map_report_owner(record: ArtifactRecord, request: Request) -> None:
+        if record.artifact_type not in {
+            "crop_classification_report", "growth_observation_report",
+            "workflow_summary_report", "canopy_index_report", "apsim_report", "simple_yield_report",
+            "analysis_result_json",
+            "workflow_demo_step_report",
+        }:
+            return
+        owner = _analysis_workflow_store(request).owner_of(record.run_id)
+        if owner is None:
+            crop_analysis = _crop_analysis_store(request).get(record.run_id)
+            if crop_analysis is not None and crop_analysis.owner_id is None:
+                return  # Historical crop analyses were stored without an owner.
+            owner = crop_analysis.owner_id if crop_analysis is not None else None
+        if owner is None and record.artifact_type == "apsim_report":
+            return  # Existing independent APSIM demo reports have no map workflow owner.
+        if owner is None or owner != _extract_user(request):
+            raise HTTPException(status_code=404, detail="Artifact not found")
+
     def _idempotency_store(request: Request) -> IdempotencyStore:
         store: IdempotencyStore | None = getattr(request.app.state, "product_idempotency_store", None)
         assert store is not None, "idempotency_store not initialized"
@@ -312,6 +351,16 @@ def build_canonical_router() -> APIRouter:
     def _lai_analysis_store(request: Request) -> LaiAnalysisStore:
         store: LaiAnalysisStore | None = getattr(request.app.state, "lai_analysis_store", None)
         assert store is not None, "lai_analysis_store not initialized"
+        return store
+
+    def _crop_analysis_store(request: Request) -> CropAnalysisStore:
+        store: CropAnalysisStore | None = getattr(request.app.state, "crop_analysis_store", None)
+        assert store is not None, "crop_analysis_store not initialized"
+        return store
+
+    def _analysis_workflow_store(request: Request) -> AnalysisWorkflowStore:
+        store: AnalysisWorkflowStore | None = getattr(request.app.state, "analysis_workflow_store", None)
+        assert store is not None, "analysis_workflow_store not initialized"
         return store
 
     def _extract_user(request: Request) -> str:
@@ -500,7 +549,9 @@ def build_canonical_router() -> APIRouter:
             run_id=run.run_id,
             conversation_id=run.session_id,
             status=run.status,
-            assistant={"summary": assistant_summary, "parts": assistant_parts},
+            assistant={"summary": assistant_summary, "parts": run.product_parts or assistant_parts},
+            input_message=run.input_message,
+            created_at=run.product_created_at,
             artifacts=_build_artifact_list(run, art_store),
             workflow_summary=run.observation.summary if run.observation else None,
             termination_reason=run.observation.payload.get("error") if run.observation and run.observation.status == "error" else None,
@@ -619,12 +670,17 @@ def build_canonical_router() -> APIRouter:
                 "idempotency": True,
                 "multi_agent": True,
                 "map_workspace": True,
+                "workspace_context": True,
+                "workspace_card_context": True,
+                "workspace_assistant_actions": True,
+                "simple_yield_estimation": True,
+                "analysis_parameter_cards": True,
                 "demo_farms": True,
                 "apsim_yield_report": True,
             },
             delivery_modes=["async"],
             supported_preferences=["include_visualization", "include_knowledge"],
-            artifact_kinds=["lai_html_report", "lai_raster", "lai_preview", "apsim_report", "inference_card", "report_card", "visualization"],
+            artifact_kinds=["lai_html_report", "lai_raster", "lai_preview", "apsim_report", "simple_yield_report", "inference_card", "report_card", "visualization"],
             compat_adapters=["/v2", "/v1"],
             limits={"max_file_mb": 500},
             debug_extension=True,
@@ -722,6 +778,405 @@ def build_canonical_router() -> APIRouter:
                 request_id=_req_id(),
             )
         return ImagerySearchResponse(items=candidates, search_id=str(uuid4()))
+
+    def _launch_analysis_workflow(
+        request: Request, workflow: AnalysisWorkflowSummary, selected_item: dict,
+        run_task_ids: set[str],
+    ) -> AnalysisWorkflowSummary:
+        workflows = _analysis_workflow_store(request)
+        owner_id = workflow.owner_id
+        artifact_root = Path(getattr(request.app.state, "product_artifact_root", _PRODUCT_ARTIFACT_ROOT)).resolve()
+        if not workflows.claim_start(workflow.workflow_id, owner_id=owner_id):
+            return workflows.get(workflow.workflow_id, owner_id=owner_id) or workflow
+
+        def worker() -> None:
+            try:
+                run_analysis_workflow(
+                    workflow.workflow_id, owner_id=owner_id, selected_item=selected_item,
+                    artifact_root=artifact_root, workflows=workflows,
+                    crops=_crop_analysis_store(request), lais=_lai_analysis_store(request),
+                    artifacts=_artifact_store(request), make_lai_result=_lai_product_result,
+                    run_task_ids=run_task_ids,
+                )
+            except Exception:
+                logger.exception("analysis_workflow_unhandled_failure | workflow_id=%s", workflow.workflow_id)
+                current = workflows.get(workflow.workflow_id, owner_id=owner_id)
+                if current is not None:
+                    for step in current.steps:
+                        if step.status == "running":
+                            workflows.update_step(workflow.workflow_id, step.step_id, owner_id=owner_id,
+                                                  status="failed", detail="任务执行意外中断，请重试该步骤。")
+                    workflows.update_status(workflow.workflow_id, owner_id=owner_id,
+                                            status="failed", detail="工作流执行意外中断，请重试失败步骤。")
+
+        threading.Thread(target=worker, daemon=True, name=f"workflow-{workflow.workflow_id[:8]}").start()
+        updated = workflows.get(workflow.workflow_id, owner_id=owner_id)
+        assert updated is not None
+        return updated
+
+    async def _create_verified_workflow(
+        body: CreateAnalysisWorkflowRequest, request: Request,
+        workspace: WorkspaceContext | None = None,
+        cancellation_event=None,
+    ) -> AnalysisWorkflowSummary:
+        """Shared application service for card buttons and assistant actions."""
+        if workspace is None and body.workspace_id:
+            workspace = _analysis_workflow_store(request).get_workspace(body.workspace_id, owner_id=_extract_user(request))
+            if workspace is None or workspace.revision != body.workspace_revision or workspace.aoi != body.aoi or workspace.imagery_item_id != body.imagery_item_id:
+                raise HTTPException(409, "工作台上下文已变化，请重新提交当前任务。")
+            if workspace.execution_mode != "live":
+                raise HTTPException(400, "演示模式不能创建真实工作流")
+        if body.conversation_id:
+            session = _store(request).get_session(body.conversation_id)
+            if session is None or session.created_by != _extract_user(request):
+                raise HTTPException(404, "Conversation not found")
+        if body.imagery_snapshot is None:
+            raise HTTPException(400, "A server-issued imagery_snapshot is required for a workflow")
+        if body.data_mode == "demo":
+            if body.imagery_snapshot.item_id != body.imagery_item_id:
+                raise HTTPException(400, "演示任务选片信息不一致")
+            if cancellation_event is not None and cancellation_event.is_set():
+                raise HTTPException(409, "本次问答已取消，任务未启动。")
+            try:
+                workflow = _analysis_workflow_store(request).create(body, owner_id=_extract_user(request), workspace=workspace)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            return _launch_analysis_workflow(request, workflow, {}, set()) if body.start_immediately else workflow
+        provider = _imagery_provider(request)
+        try:
+            selected_item = await asyncio.to_thread(provider.get_item, body.imagery_item_id)
+        except ImagerySearchError:
+            raise HTTPException(502, "The selected Sentinel item cannot be verified")
+        try:
+            verified_snapshot = provider.validate_selection(
+                body.imagery_snapshot, selected_item,
+                body.aoi.geometry.model_dump(mode="json"),
+            )
+        except ImagerySearchError:
+            raise HTTPException(400, "The selected imagery snapshot is invalid or no longer matches this AOI")
+        verified_body = body.model_copy(update={"imagery_snapshot": verified_snapshot})
+        if cancellation_event is not None and cancellation_event.is_set():
+            raise HTTPException(409, "本次问答已取消，任务未启动。")
+        try:
+            workflow = _analysis_workflow_store(request).create(
+                verified_body, owner_id=_extract_user(request), workspace=workspace,
+            )
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        if not body.start_immediately:
+            return workflow
+        return _launch_analysis_workflow(
+            request, workflow, selected_item,
+            set(workflow.effective_task_ids) & {"crop", "lai"},
+        )
+
+    @router.post("/analysis-workflows", status_code=201, response_model=AnalysisWorkflowSummary)
+    async def create_analysis_workflow(
+        body: CreateAnalysisWorkflowRequest, request: Request,
+        idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+    ) -> AnalysisWorkflowSummary:
+        replay = await _idempotency_result(request, idempotency_key, "/analysis-workflows", await _read_body_bytes(request))
+        if replay is not None:
+            return replay
+        if idempotency_key and body.action_id is None:
+            body = body.model_copy(update={"action_id": idempotency_key})
+        result = await _create_verified_workflow(body, request)
+        _cache_idempotency(request, 201, result.model_dump(mode="json"))
+        return result
+
+    @router.put("/workspaces/{workspace_id}/context", response_model=WorkspaceContext)
+    async def sync_workspace_context(workspace_id: str, body: WorkspaceContext, request: Request):
+        if body.workspace_id != workspace_id:
+            raise HTTPException(400, "Workspace ID does not match")
+        if body.active_workflow_id and _analysis_workflow_store(request).get(body.active_workflow_id, owner_id=_extract_user(request)) is None:
+            raise HTTPException(404, "Analysis workflow not found")
+        try:
+            _analysis_workflow_store(request).sync_workspace(body, owner_id=_extract_user(request))
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return body
+
+    @router.get("/workspaces/{workspace_id}/workflows", response_model=list[AnalysisWorkflowSummary])
+    async def list_workspace_workflows(workspace_id: str, request: Request):
+        return _analysis_workflow_store(request).list_for_workspace(workspace_id, owner_id=_extract_user(request))
+
+    @router.post("/analysis-workflows/{workflow_id}/start", status_code=202, response_model=AnalysisWorkflowSummary)
+    async def start_analysis_workflow(workflow_id: str, request: Request) -> AnalysisWorkflowSummary:
+        owner_id = _extract_user(request)
+        workflow = _analysis_workflow_store(request).get(workflow_id, owner_id=owner_id)
+        if workflow is None:
+            raise HTTPException(status_code=404, detail="Analysis workflow not found")
+        if workflow.status != "planned":
+            raise HTTPException(status_code=409, detail="Only a planned workflow can be started")
+        if workflow.data_mode == "demo":
+            return _launch_analysis_workflow(request, workflow, {}, set())
+        provider = _imagery_provider(request)
+        try:
+            selected_item = await asyncio.to_thread(provider.get_item, workflow.imagery_item_id)
+            provider.validate_selection(workflow.imagery_snapshot, selected_item,
+                                        workflow.aoi.geometry.model_dump(mode="json"))
+        except ImagerySearchError:
+            raise HTTPException(status_code=400, detail="Selected imagery must be searched again")
+        return _launch_analysis_workflow(
+            request, workflow, selected_item,
+            set(workflow.effective_task_ids) & {"crop", "lai"},
+        )
+
+    @router.post("/analysis-workflows/{workflow_id}/retry", status_code=202, response_model=AnalysisWorkflowSummary)
+    async def retry_analysis_workflow_step(
+        workflow_id: str, body: RetryAnalysisWorkflowRequest, request: Request,
+    ) -> AnalysisWorkflowSummary:
+        owner_id = _extract_user(request)
+        workflows = _analysis_workflow_store(request)
+        workflow = workflows.get(workflow_id, owner_id=owner_id)
+        if workflow is None:
+            raise HTTPException(status_code=404, detail="Analysis workflow not found")
+        if workflow.status == "running":
+            raise HTTPException(status_code=409, detail="Workflow is already running")
+        target = next((step for step in workflow.steps if step.step_id == body.step_id), None)
+        if target is None or target.status not in {"failed", "blocked"}:
+            raise HTTPException(status_code=409, detail="Only a failed or blocked step can be retried")
+        image = next(step for step in workflow.steps if step.step_id == "imagery")
+        if body.step_id != "imagery" and image.status != "completed":
+            raise HTTPException(status_code=409, detail="Retry imagery preparation before this step")
+        if workflow.data_mode == "demo":
+            workflows.update_step(workflow_id, body.step_id, owner_id=owner_id, status="planned", progress_percent=0, result={}, detail="等待重新演示")
+            workflows.update_status(workflow_id, owner_id=owner_id, status="planned", detail="等待重新演示")
+            return _launch_analysis_workflow(request, workflows.get(workflow_id, owner_id=owner_id), {}, set())
+        provider = _imagery_provider(request)
+        try:
+            selected_item = await asyncio.to_thread(provider.get_item, workflow.imagery_item_id)
+            provider.validate_selection(workflow.imagery_snapshot, selected_item,
+                                        workflow.aoi.geometry.model_dump(mode="json"))
+        except ImagerySearchError:
+            raise HTTPException(status_code=400, detail="Selected imagery must be searched again")
+        run_tasks = ({body.step_id} & {"crop", "lai"}) if body.step_id != "imagery" else set(workflow.effective_task_ids) & {"crop", "lai"}
+        if body.step_id == "potential" and any(
+            step.status != "completed" for step in workflow.steps if step.step_id in {"crop", "lai"}
+        ):
+            raise HTTPException(status_code=409, detail="Complete crop recognition and LAI before retrying canopy index")
+        reset_steps = {body.step_id} if body.step_id != "imagery" else {"imagery", *run_tasks}
+        for step_id in reset_steps:
+            workflows.update_step(workflow_id, step_id, owner_id=owner_id,
+                                  status="planned", progress_percent=0, detail="等待重新执行",
+                                  result={}, analysis_id=None)
+        refreshed = workflows.get(workflow_id, owner_id=owner_id)
+        assert refreshed is not None
+        workflows.update_status(workflow_id, owner_id=owner_id, status="planned", detail="等待重新执行")
+        return _launch_analysis_workflow(request, refreshed, selected_item, run_tasks)
+
+    @router.get("/analysis-workflows/{workflow_id}", response_model=AnalysisWorkflowSummary)
+    async def get_analysis_workflow(
+        workflow_id: str, request: Request,
+    ) -> AnalysisWorkflowSummary:
+        owner_id = _extract_user(request)
+        workflows = _analysis_workflow_store(request)
+        item = workflows.get(workflow_id, owner_id=owner_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Analysis workflow not found")
+        if item.status in {"completed", "blocked", "failed"} and (
+            not item.report_uri or item.report_version != REPORT_VERSION or any(
+                step.status == "completed" and (
+                    step.step_id in {"crop", "growth", "potential", "yield_simple", "yield"} and
+                    step.result.get("report_version") != REPORT_VERSION
+                    or step.step_id == "lai" and
+                    step.result.get("report_uri") and not step.result.get("report_data_uri")
+                ) for step in item.steps
+            )
+        ):
+            try:
+                ensure_workflow_reports(
+                    workflows, workflow_id, owner_id,
+                    Path(getattr(request.app.state, "product_artifact_root", _PRODUCT_ARTIFACT_ROOT)).resolve(),
+                    _artifact_store(request),
+                )
+                item = workflows.get(workflow_id, owner_id=owner_id) or item
+            except Exception:
+                logger.exception("analysis_workflow_report_backfill_failed | workflow_id=%s", workflow_id)
+        return item
+
+    @router.put("/analysis-workflows/{workflow_id}/yield-inputs", response_model=AnalysisWorkflowSummary)
+    async def update_analysis_workflow_yield_inputs(
+        workflow_id: str, body: UpdateYieldInputsRequest, request: Request,
+    ) -> AnalysisWorkflowSummary:
+        owner_id = _extract_user(request)
+        workflows = _analysis_workflow_store(request)
+        workflow = workflows.get(workflow_id, owner_id=owner_id)
+        if workflow is None:
+            raise HTTPException(status_code=404, detail="Analysis workflow not found")
+        if not set(workflow.effective_task_ids) & {"yield", "yield_simple"}:
+            raise HTTPException(status_code=409, detail="Workflow has no yield task")
+        if workflow.status == "running":
+            raise HTTPException(status_code=409, detail="Wait for the running workflow to finish")
+        if "yield_simple" in workflow.effective_task_ids and "yield" not in workflow.effective_task_ids:
+            from runtime.simple_yield_runner import resolve_simple_yield_crop
+            from runtime.simple_yield import SimpleYieldError
+            try:
+                resolve_simple_yield_crop(workflow.model_copy(update={"yield_inputs": body.yield_inputs}))
+            except SimpleYieldError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            simple = next(step for step in workflow.steps if step.step_id == "yield_simple")
+            if simple.status == "completed":
+                if workflow.yield_inputs != body.yield_inputs:
+                    raise HTTPException(409, "已完成估产的输入不可修改，请创建新的分析任务。")
+                return workflow
+        updated = workflows.update_yield_inputs(workflow_id, owner_id=owner_id, inputs=body.yield_inputs)
+        simple_step = next((step for step in updated.steps if step.step_id == "yield_simple"), None)
+        if simple_step and simple_step.status == "blocked" and "yield" not in updated.effective_task_ids:
+            from runtime.simple_yield_runner import resolve_simple_yield_crop
+            from runtime.simple_yield import SimpleYieldError
+            try:
+                resolve_simple_yield_crop(updated)
+            except SimpleYieldError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            provider = _imagery_provider(request)
+            try:
+                selected_item = await asyncio.to_thread(provider.get_item, updated.imagery_item_id)
+                provider.validate_selection(updated.imagery_snapshot, selected_item, updated.aoi.geometry.model_dump(mode="json"))
+            except ImagerySearchError:
+                raise HTTPException(400, "Selected imagery must be searched again")
+            workflows.update_step(workflow_id, "yield_simple", owner_id=owner_id,
+                                  status="planned", progress_percent=0, detail="已确认作物，等待简化估产", result={})
+            workflows.update_status(workflow_id, owner_id=owner_id, status="planned", detail="已确认作物，等待执行")
+            return _launch_analysis_workflow(request, workflows.get(workflow_id, owner_id=owner_id), selected_item, set())
+        if "yield" not in updated.effective_task_ids:
+            return updated
+        yield_step = next(step for step in updated.steps if step.step_id == "yield")
+        if yield_step.status == "blocked":
+            assessment = assess_yield_inputs(updated)
+            if assessment.status == "ready":
+                provider = _imagery_provider(request)
+                try:
+                    selected_item = await asyncio.to_thread(provider.get_item, updated.imagery_item_id)
+                    provider.validate_selection(updated.imagery_snapshot, selected_item,
+                                                updated.aoi.geometry.model_dump(mode="json"))
+                except ImagerySearchError:
+                    raise HTTPException(status_code=400, detail="Selected imagery must be searched again")
+                workflows.update_step(workflow_id, "yield", owner_id=owner_id,
+                                      status="planned", progress_percent=0, detail="APSIM 输入已核验，等待模拟", result={})
+                refreshed = workflows.get(workflow_id, owner_id=owner_id)
+                assert refreshed is not None
+                workflows.update_status(workflow_id, owner_id=owner_id, status="planned", detail="APSIM 输入已核验")
+                return _launch_analysis_workflow(request, refreshed, selected_item, set())
+            updated = workflows.update_step(
+                workflow_id, "yield", owner_id=owner_id, status="blocked",
+                detail=f"产量估计尚有 {len(assessment.issues)} 项启动条件未满足",
+                result={"input_assessment": assessment.model_dump(mode="json")},
+            )
+            try:
+                ensure_workflow_reports(
+                    workflows, workflow_id, owner_id,
+                    Path(getattr(request.app.state, "product_artifact_root", _PRODUCT_ARTIFACT_ROOT)).resolve(),
+                    _artifact_store(request), force_summary=True,
+                )
+                updated = workflows.get(workflow_id, owner_id=owner_id) or updated
+            except Exception:
+                logger.exception("analysis_workflow_report_refresh_failed | workflow_id=%s", workflow_id)
+        return updated
+
+    @router.get("/analysis-workflows/{workflow_id}/events", response_model=AnalysisWorkflowEventsResponse)
+    async def list_analysis_workflow_events(
+        workflow_id: str, request: Request,
+    ) -> AnalysisWorkflowEventsResponse:
+        items = _analysis_workflow_store(request).list_events(
+            workflow_id, owner_id=_extract_user(request),
+        )
+        if items is None:
+            raise HTTPException(status_code=404, detail="Analysis workflow not found")
+        return AnalysisWorkflowEventsResponse(items=items)
+
+    @router.post("/crop-analyses", status_code=202, response_model=CropAnalysisSummary)
+    async def create_crop_analysis(body: CreateCropAnalysisRequest, request: Request) -> CropAnalysisSummary:
+        try:
+            verify_crop_model()
+        except CropInferenceError as exc:
+            return canonical_error_response(503, code=ErrorCode.INVALID_REFERENCE,
+                                            message=str(exc), request_id=_req_id())
+        if body.imagery_snapshot is None:
+            return canonical_error_response(400, code=ErrorCode.INVALID_REFERENCE,
+                                            message="A server-issued imagery_snapshot is required for crop recognition",
+                                            request_id=_req_id())
+        provider = _imagery_provider(request)
+        try:
+            item = await asyncio.to_thread(provider.get_item, body.imagery_item_id)
+            snapshot = provider.validate_selection(
+                body.imagery_snapshot, item, body.aoi.geometry.model_dump(mode="json")
+            )
+        except ImagerySearchError as exc:
+            return canonical_error_response(400, code=ErrorCode.INVALID_REFERENCE,
+                                            message="The selected imagery snapshot is invalid or unavailable",
+                                            detail={"reason": str(exc)}, request_id=_req_id())
+        body = body.model_copy(update={"imagery_snapshot": snapshot})
+        analyses = _crop_analysis_store(request)
+        analysis = analyses.create(body, owner_id=_extract_user(request))
+        artifact_root = Path(getattr(request.app.state, "product_artifact_root", _PRODUCT_ARTIFACT_ROOT)).resolve()
+
+        def worker() -> None:
+            try:
+                analyses.update(analysis.analysis_id, status="running", stage="imagery",
+                                progress_percent=5, detail="正在读取所选 Sentinel 影像")
+
+                def progress(detail: str, percent: int) -> None:
+                    analyses.update(analysis.analysis_id,
+                                    stage="inference" if percent >= 90 else "preparing" if percent >= 85 else "imagery",
+                                    progress_percent=min(95, 5 + round(percent * 0.9)), detail=detail)
+
+                result = run_crop_spatial_analysis(
+                    item=item, geometry=body.aoi.geometry.model_dump(mode="json"),
+                    output_dir=artifact_root / "crop" / analysis.analysis_id, progress_callback=progress,
+                )
+                result["imagery_provenance"] = {
+                    "item_id": snapshot.item_id, "collection": snapshot.collection,
+                    "acquired_at": snapshot.acquired_at, "cloud_cover": snapshot.cloud_cover,
+                    "asset_fingerprint": snapshot.asset_fingerprint,
+                }
+                result.update(register_crop_report(
+                    _artifact_store(request), run_id=analysis.analysis_id,
+                    output_dir=artifact_root / "crop" / analysis.analysis_id,
+                    imagery_item_id=body.imagery_item_id,
+                    observed_at=snapshot.acquired_at,
+                    area_hectares=body.aoi.area_hectares, result=result,
+                ))
+                analyses.update(analysis.analysis_id, status="completed", stage="completed",
+                                progress_percent=100, detail="作物识别已完成", result=result,
+                                completed_at=datetime.now(timezone.utc).isoformat())
+            except (CropInferenceError, AoiBandReadError) as exc:
+                logger.warning("crop_analysis_failed | analysis_id=%s | reason=%s", analysis.analysis_id, type(exc).__name__)
+                analyses.update(analysis.analysis_id, status="failed", stage="failed",
+                                detail=str(exc), result={"error": str(exc)},
+                                completed_at=datetime.now(timezone.utc).isoformat())
+            except Exception:
+                logger.exception("crop_analysis_failed | analysis_id=%s", analysis.analysis_id)
+                detail = "作物识别执行失败，请稍后重试或选择其他影像。"
+                analyses.update(analysis.analysis_id, status="failed", stage="failed",
+                                detail=detail, result={"error": detail},
+                                completed_at=datetime.now(timezone.utc).isoformat())
+
+        threading.Thread(target=worker, daemon=True, name=f"crop-{analysis.analysis_id[:8]}").start()
+        return analysis
+
+    @router.get("/crop-analyses/{analysis_id}", response_model=CropAnalysisSummary)
+    async def get_crop_analysis(analysis_id: str, request: Request) -> CropAnalysisSummary:
+        analysis = _crop_analysis_store(request).get(analysis_id)
+        if analysis is None or (analysis.owner_id is not None and analysis.owner_id != _extract_user(request)):
+            raise HTTPException(status_code=404, detail="Crop analysis not found")
+        if analysis.status == "completed" and analysis.result.get("report_version") != REPORT_VERSION:
+            try:
+                report_refs = register_crop_report(
+                    _artifact_store(request), run_id=analysis.analysis_id,
+                    output_dir=Path(getattr(request.app.state, "product_artifact_root", _PRODUCT_ARTIFACT_ROOT)).resolve()
+                    / "crop" / analysis.analysis_id,
+                    imagery_item_id=analysis.imagery_item_id,
+                    observed_at=analysis.imagery_snapshot.acquired_at if analysis.imagery_snapshot else "",
+                    area_hectares=analysis.aoi.area_hectares,
+                    result=analysis.result,
+                )
+                analysis = _crop_analysis_store(request).update(
+                    analysis_id, result={**analysis.result, **report_refs},
+                )
+            except Exception:
+                logger.exception("crop_report_backfill_failed | analysis_id=%s", analysis_id)
+        return analysis
 
     @router.post("/lai-analyses", status_code=202, response_model=LaiAnalysisSummary)
     async def create_lai_analysis(body: CreateLaiAnalysisRequest, request: Request) -> LaiAnalysisSummary:
@@ -1209,6 +1664,8 @@ def build_canonical_router() -> APIRouter:
                 404, code=ErrorCode.CONVERSATION_NOT_FOUND,
                 message=f"Conversation {conversation_id} not found", request_id=_req_id())
         runs = store.list_runs_for_session(conversation_id)
+        if any(run.product_parts for run in runs) and session.created_by != _extract_user(request):
+            raise HTTPException(404, "Conversation not found")
         offset = int(cursor) if cursor else 0
         page = runs[offset : offset + limit]
         items = [_run_to_canonical(r, art_store) for r in page]
@@ -1222,6 +1679,122 @@ def build_canonical_router() -> APIRouter:
     # ═══════════════════════════════════════════════════════════
     #  Submissions
     # ═══════════════════════════════════════════════════════════
+
+    async def _run_workspace_submission(request, body, conversation_id, submission_id, cancellation_event):
+        context = body.context.workspace
+        owner_id = _extract_user(request)
+        workflows = _analysis_workflow_store(request)
+        store = _store(request)
+        subs = _submission_store(request)
+        run_id = str(uuid4())
+        run_context = RequestContextV2(entrypoint="api", extra_params={
+            "workspace": context.model_dump(mode="json"),
+            "workspace_ui": body.context.workspace_ui.model_dump(mode="json") if body.context.workspace_ui else None,
+        })
+        run = RunDetail(run_id=run_id, session_id=conversation_id, status="running",
+                        input_message=body.input.message, input_context=run_context, output_message="",
+                        product_created_at=datetime.now(timezone.utc).isoformat())
+        store.save_run(run)
+        subs.update_submission(submission_id, run_id=run_id)
+        store.append_message(conversation_id, SessionMessage(role="user", content=body.input.message))
+        _emit_event(subs, submission_id, "run.progress", run_id=run_id, stage="processing", detail="正在核对当前选区、影像和任务配置")
+        active = workflows.get(context.active_workflow_id, owner_id=owner_id) if context.active_workflow_id else None
+        try:
+            if body.input.workspace_action:
+                action = body.input.workspace_action
+                if action.source_run_id:
+                    source = store.get_run(action.source_run_id)
+                    if source is None or source.session_id != conversation_id or not source.input_context:
+                        raise HTTPException(404, "任务草案不存在")
+                    original = WorkspaceContext.model_validate(source.input_context.extra_params.get("workspace"))
+                    fields = {"workspace_id", "execution_mode", "farm_id", "aoi", "imagery_item_id", "imagery_snapshot"}
+                    if original.model_dump(include=fields) != context.model_dump(include=fields):
+                        raise HTTPException(409, "选区或影像已变化，请在当前分析卡片重新启动。")
+                    if not any(p.get("type") == "action_card" and p.get("data", {}).get("action_id") == action.action_id for p in source.product_parts):
+                        raise HTTPException(400, "无效的任务卡片动作")
+                elif len(action.task_ids) != len(set(action.task_ids)) or set(action.task_ids) != set(context.draft_task_ids):
+                    # The active card confirms the synchronized draft directly;
+                    # historical card actions still validate their source Run.
+                    raise HTTPException(409, "任务选择已变化，请确认当前分析卡片后重试。")
+                intent = WorkspaceIntent(intent="execute", explicit_execution=True,
+                    yield_demo_crop=action.yield_demo_crop,
+                    task_ids=body.input.workspace_action.task_ids, summary="正在核验任务输入。",
+                    rationale="按你在任务卡片中选择的任务执行。")
+                action_id = body.input.workspace_action.action_id
+            else:
+                intent = await asyncio.to_thread(plan_workspace, _engine(request).llm_provider,
+                    body.input.message, context, store.get_session(conversation_id).messages[:-1], active,
+                    body.context.workspace_ui,
+                    [previous for previous in store.list_runs_for_session(conversation_id) if previous.run_id != run_id and previous.status == "completed"])
+                action_id = submission_id
+            if cancellation_event.is_set():
+                store.save_run(run.model_copy(update={"status": "cancelled", "output_message": "已停止本次问答。专业任务状态请查看任务卡片。"}))
+                return
+            try:
+                workflows.check_workspace(context, owner_id=owner_id)
+            except ValueError:
+                latest = workflows.get_workspace(context.workspace_id, owner_id=owner_id)
+                # Only read-only planning may follow a selection made while the
+                # model was answering. Execution always requires its original snapshot.
+                if latest is None or intent.intent == "execute" or not can_rebase_preview(context, latest):
+                    raise
+                context = latest
+                active = workflows.get(context.active_workflow_id, owner_id=owner_id) if context.active_workflow_id else None
+                run_context = run_context.model_copy(update={"extra_params": {**run_context.extra_params, "workspace": context.model_dump(mode="json")}})
+                run = run.model_copy(update={"input_context": run_context})
+                if intent.intent == "advise" and context.imagery_item_id:
+                    intent = intent.model_copy(update={"summary": "已读取最新选片状态，可在当前任务卡片继续选择分析任务。"})
+            summary, parts = workspace_parts(intent, context, action_id, active)
+            plan = parts[0]["data"] if parts else {}
+            for part in parts:
+                _emit_event(subs, submission_id, "assistant.part.updated", run_id=run_id, stage="processing", data={"part": part})
+            if intent.intent == "execute" and intent.explicit_execution and plan["requested_task_ids"] and not plan["missing_inputs"]:
+                if context.execution_mode == "live":
+                    if cancellation_event.is_set():
+                        store.save_run(run.model_copy(update={"status": "cancelled", "output_message": "已停止本次问答。"}))
+                        return
+                    created = await _create_verified_workflow(CreateAnalysisWorkflowRequest(
+                        aoi=context.aoi, imagery_item_id=context.imagery_item_id, imagery_snapshot=context.imagery_snapshot,
+                        farm_id=context.farm_id, requested_task_ids=plan["requested_task_ids"],
+                        action_id=action_id, workspace_id=context.workspace_id, workspace_revision=context.revision,
+                        conversation_id=conversation_id, run_id=run_id,
+                        data_mode="demo" if intent.yield_demo_crop else "live", demo_crop=intent.yield_demo_crop,
+                    ), request, workspace=context, cancellation_event=cancellation_event)
+                    parts[1]["data"]["state"] = "effective"
+                    reference = {"type": "workflow_reference", "part_id": f"{action_id}:workflow", "data": {
+                        "workflow_id": created.workflow_id, "plan_id": action_id, "execution_mode": "live",
+                        "workspace_id": context.workspace_id, "revision": context.revision, "status": created.status,
+                        "data_mode": created.data_mode, "demo_crop": created.demo_crop,
+                    }}
+                    parts.append(reference)
+                    parts[2]["data"]["can_execute"] = False
+                    parts[2]["data"]["executed"] = True
+                    summary = "已启动" + "、".join(TASK_LABELS[t] for t in created.requested_task_ids) + "。左侧分析面板可查看进度和结果。"
+                    if created.data_mode == "demo":
+                        summary = "已启动" + ("小麦" if created.demo_crop == "wheat" else "玉米") + "估产模拟演示。左侧可查看进度、示例结果及 APSIM 模板报告；数值不代表实际产量。"
+                    _emit_event(subs, submission_id, "workflow.linked", run_id=run_id, stage="processing", data={"part": reference})
+                else:
+                    parts[2]["data"]["demo_started"] = True
+                    parts[2]["data"]["can_execute"] = False
+                    summary = "已准备 LAI 演示流程，下方进度和配置均为演示数据。"
+                    _emit_event(subs, submission_id, "action.updated", run_id=run_id, stage="processing", data={"part": parts[2]})
+            run = run.model_copy(update={"status": "completed", "output_message": summary, "product_parts": parts})
+            store.save_run(run)
+            store.append_message(conversation_id, SessionMessage(role="assistant", content=summary))
+            session = store.get_session(conversation_id)
+            session.latest_run_id = run_id
+            store.save_session(session)
+            for part in parts:
+                _emit_event(subs, submission_id, "assistant.part.updated", run_id=run_id, stage="finalizing", data={"part": part})
+            completed = subs.update_submission(submission_id, status="completed", stage="completed", completed_at=datetime.now(timezone.utc).isoformat())
+            if completed.status == "completed":
+                _emit_event(subs, submission_id, "run.completed", run_id=run_id, stage="completed", data={"assistant_part_text": summary})
+        except Exception as exc:
+            detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+            run = run.model_copy(update={"status": "failed", "output_message": detail,
+                "product_parts": [{"type": "error", "text": detail}]})
+            store.save_run(run)
+            raise
 
     @router.post("/conversations/{conversation_id}/submissions", status_code=201, response_model=SubmissionResponse)
     async def create_submission(
@@ -1246,6 +1819,21 @@ def build_canonical_router() -> APIRouter:
             return canonical_error_response(
                 404, code=ErrorCode.CONVERSATION_NOT_FOUND,
                 message=f"Conversation {conversation_id} not found", request_id=_req_id())
+
+        if body.context and body.context.workspace:
+            if session.created_by != user_id:
+                raise HTTPException(404, "Conversation not found")
+            context = body.context.workspace
+            if context.active_workflow_id and _analysis_workflow_store(request).get(context.active_workflow_id, owner_id=user_id) is None:
+                raise HTTPException(404, "Analysis workflow not found")
+            try:
+                _analysis_workflow_store(request).check_workspace(context, owner_id=user_id)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+        elif body.input.workspace_action:
+            raise HTTPException(400, "A workspace action requires the current workspace context")
+        elif body.context and body.context.workspace_ui:
+            raise HTTPException(400, "Workspace card context requires the current workspace snapshot")
 
         # Validate delivery mode
         mode = body.mode
@@ -1334,6 +1922,10 @@ def build_canonical_router() -> APIRouter:
                 if running_submission is None or running_submission.status != "running":
                     return
                 _emit_event(sub_store, submission_id, "run.started", stage="processing")
+
+                if body.context and body.context.workspace:
+                    asyncio.run(_run_workspace_submission(request, body, conversation_id, submission_id, cancellation_event))
+                    return
 
                 for internal_event in engine.stream(
                     session_id=conversation_id,
@@ -1566,6 +2158,8 @@ def build_canonical_router() -> APIRouter:
             return canonical_error_response(
                 404, code=ErrorCode.RUN_NOT_FOUND,
                 message=f"Run {run_id} not found", request_id=_req_id())
+        if run.product_parts and store.get_session(run.session_id).created_by != _extract_user(request):
+            raise HTTPException(404, "Run not found")
         return _run_to_canonical(run, art_store)
 
     @router.get("/runs", response_model=PaginatedRunsResponse)
@@ -1622,6 +2216,7 @@ def build_canonical_router() -> APIRouter:
         if artifact_id.startswith("art_"):
             record = art_store.get(artifact_id)
             if record is not None:
+                _check_map_report_owner(record, request)
                 return _record_to_canonical(record)
             return canonical_error_response(
                 404, code=ErrorCode.ARTIFACT_NOT_FOUND,
@@ -1656,6 +2251,7 @@ def build_canonical_router() -> APIRouter:
         if artifact_id.startswith("art_"):
             record = art_store.get(artifact_id)
             if record is not None:
+                _check_map_report_owner(record, request)
                 binary_path = _binary_artifact_path(record, request)
                 if binary_path is not None:
                     return FileResponse(
@@ -1718,6 +2314,7 @@ def build_canonical_router() -> APIRouter:
             record = art_store.get(artifact_id)
             if record is None:
                 raise HTTPException(status_code=404, detail=f"Artifact {artifact_id} not found")
+            _check_map_report_owner(record, request)
             if record.artifact_type not in _HTML_ARTIFACT_KINDS:
                 raise HTTPException(
                     status_code=400,
@@ -1914,6 +2511,8 @@ def install_canonical_product_api(
     app.state.product_farm_store = FarmStore()
     app.state.sentinel_stac_provider = SentinelStacProvider()
     app.state.lai_analysis_store = LaiAnalysisStore(db_path=db_path)
+    app.state.crop_analysis_store = CropAnalysisStore(db_path=db_path)
+    app.state.analysis_workflow_store = AnalysisWorkflowStore(db_path=db_path)
     if auth_required is None:
         auth_required = os.getenv("APP_AUTH_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
     app.state.product_auth_required = auth_required
@@ -1937,6 +2536,8 @@ def install_canonical_product_api(
             (app.state.product_artifact_store, "close"),
             (app.state.product_idempotency_store, "close"),
             (app.state.lai_analysis_store, "close_store"),
+            (app.state.crop_analysis_store, "close"),
+            (app.state.analysis_workflow_store, "close"),
         )
         for store, method_name in stores_and_methods:
             try:

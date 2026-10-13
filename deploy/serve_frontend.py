@@ -34,10 +34,16 @@ class KTPHandler(http.server.SimpleHTTPRequestHandler):
         if self._should_proxy():
             self._proxy_request()
             return
-        requested = Path(self.translate_path(self.path))
-        if not requested.is_file():
-            self.path = "/index.html"
+        self._resolve_static_route()
         super().do_GET()
+
+    def _resolve_static_route(self) -> None:
+        path = urlsplit(self.path).path
+        requested = Path(self.translate_path(self.path))
+        # Only client-side page routes receive the SPA shell. Missing JS/CSS
+        # must return 404 rather than HTML masquerading as a successful asset.
+        if not requested.is_file() and not path.startswith("/assets/") and not Path(path).suffix:
+            self.path = "/index.html"
 
     def do_POST(self) -> None:
         self._proxy_or_not_found()
@@ -52,7 +58,11 @@ class KTPHandler(http.server.SimpleHTTPRequestHandler):
         self._proxy_or_not_found()
 
     def do_HEAD(self) -> None:
-        self._proxy_or_not_found()
+        if self._should_proxy():
+            self._proxy_request()
+            return
+        self._resolve_static_route()
+        super().do_HEAD()
 
     def do_OPTIONS(self) -> None:
         if self._should_proxy():
@@ -122,6 +132,12 @@ class KTPHandler(http.server.SimpleHTTPRequestHandler):
                 connection.close()
 
     def end_headers(self) -> None:
+        if not self._should_proxy():
+            path = urlsplit(self.path).path
+            if path.startswith("/assets/") and Path(self.translate_path(self.path)).is_file():
+                self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+            else:
+                self.send_header("Cache-Control", "no-store")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, Last-Event-ID")

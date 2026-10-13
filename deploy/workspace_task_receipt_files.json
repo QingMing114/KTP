@@ -1,0 +1,12 @@
+[
+  "backend/api/canonical/router.py",
+  "frontend/src/features/workspace-assistant/WorkspaceAssistantPanel.tsx",
+  "frontend/src/features/workspace-assistant/workspaceFlow.ts",
+  "frontend/src/services/spatialClient.ts",
+  "frontend/src/pages/MapWorkspaceDemoPage.tsx",
+  "frontend/src/test/workspaceFlow.test.tsx",
+  "frontend/src/test/workspaceSimpleYield.test.tsx",
+  "frontend/src/test/workspaceTaskReceipt.test.tsx",
+  "docs/workspace_assistant_integration.md",
+  "deploy/workspace_task_receipt_live_smoke.py"
+]

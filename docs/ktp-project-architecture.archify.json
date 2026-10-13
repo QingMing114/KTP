@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "KTP 遥感智能分析平台架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "ktp-project-architecture.html",
+    "repository": {
+      "url": "https://github.com/QingMing114/KTP",
+      "provider": "github",
+      "revision": "6c023fdffd000835ce525ab7e7d03bac194b016b"
+    }
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "用户", "sublabel": "自然语言 / 影像 / AOI", "pos": [40, 60], "size": [160, 72] },
+    { "id": "frontend", "type": "frontend", "label": "React Web 前端", "sublabel": "对话、地图、结果与任务页", "tag": "React 18 · Vite · TypeScript", "sources": [{ "path": "frontend/src/main.tsx", "label": "前端入口" }, { "path": "frontend/src/context/AppContext.tsx", "label": "会话与流式状态" }], "pos": [40, 300], "size": [160, 72] },
+    { "id": "gateway", "type": "backend", "label": "FastAPI API Gateway", "sublabel": "认证、限流、兼容路由", "tag": "/v2 · /chat · /v1", "sources": [{ "path": "backend/apps/api_gateway/main.py", "label": "网关装配" }], "pos": [290, 300], "size": [170, 72] },
+    { "id": "canonical", "type": "backend", "label": "Canonical 产品协议层", "sublabel": "统一会话、提交、运行与产物契约", "tag": "/api/product/v1", "sources": [{ "path": "backend/api/canonical/router.py", "label": "协议路由与映射" }, { "path": "frontend/src/services/canonical/request.ts", "label": "前端协议客户端" }], "pos": [550, 300], "size": [190, 72] },
+    { "id": "runtime", "type": "backend", "label": "有界 Agent Runtime", "sublabel": "Planner → Policy → Executor", "tag": "会话 / Run / Trace", "sources": [{ "path": "backend/ktp_backend/runtime_host.py", "label": "组合根" }, { "path": "backend/v2/runtime/engine.py", "label": "运行时引擎" }], "pos": [850, 300], "size": [180, 72] },
+    { "id": "tools", "type": "backend", "label": "工具、领域包与服务", "sublabel": "Registry · KtpExecutionContext", "tag": "推理 · 训练 · RAG · 报告 · 可视化", "sources": [{ "path": "backend/v2/tools/registry.py", "label": "工具注册表" }, { "path": "backend/v2/adapters/python_services/ktp_services.py", "label": "领域服务适配器" }], "pos": [1130, 300], "size": [190, 72] },
+    { "id": "llm", "type": "external", "label": "LLM Provider", "sublabel": "OpenAI-compatible / Qwen", "tag": "heuristic fallback", "sources": [{ "path": "backend/infra/llm/provider.py", "label": "模型提供者" }], "pos": [850, 60], "size": [180, 72] },
+    { "id": "store", "type": "database", "label": "Runtime Store", "sublabel": "SQLite WAL / Memory", "tag": "会话 · Run · Trace", "sources": [{ "path": "backend/v2/runtime/sqlite_store.py", "label": "SQLite 存储" }], "pos": [650, 560], "size": [180, 72] },
+    { "id": "knowledge", "type": "database", "label": "知识与模型数据", "sublabel": "FAISS · 数据集 · 模型仓库", "sources": [{ "path": "backend/services/rag_service/vectorstore.py", "label": "向量存储" }, { "path": "backend/services/model_registry/repository.py", "label": "模型仓库" }], "pos": [1130, 60], "size": [190, 72] },
+    { "id": "prosail", "type": "external", "label": "PROSAIL", "sublabel": "光谱模拟、LUT、LAI 反演", "sources": [{ "path": "backend/prosail_python/prosail.py", "label": "PROSAIL 引擎" }], "pos": [920, 560], "size": [180, 72] },
+    { "id": "apsim", "type": "external", "label": "APSIM Next Gen", "sublabel": "作物生长模拟", "tag": ".NET 子进程", "sources": [{ "path": "backend/v2/tools/apsim_adapter.py", "label": "APSIM 适配器" }], "pos": [1130, 560], "size": [190, 72] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "浏览器", "wraps": ["frontend"], "pad": 24 },
+    { "kind": "region", "label": "KTP Backend", "wraps": ["gateway", "canonical", "runtime", "tools", "store"], "pad": 28 },
+    { "kind": "security-group", "label": "API 安全边界", "wraps": ["gateway", "canonical"], "pad": 16 }
+  ],
+  "connections": [
+    { "id": "user-ui", "from": "user", "to": "frontend", "label": "交互与文件输入", "variant": "emphasis", "labelAt": [120, 146] },
+    { "id": "ui-gateway", "from": "frontend", "to": "gateway", "label": "REST + SSE", "variant": "emphasis" },
+    { "id": "gateway-canonical", "from": "gateway", "to": "canonical", "label": "路由分发", "variant": "emphasis" },
+    { "id": "canonical-runtime", "from": "canonical", "to": "runtime", "label": "协议映射", "variant": "emphasis" },
+    { "id": "runtime-tools", "from": "runtime", "to": "tools", "label": "受策略约束的工具调用", "variant": "emphasis", "labelAt": [1080, 386] },
+    { "id": "runtime-llm", "from": "runtime", "to": "llm", "label": "规划与生成", "fromSide": "top", "toSide": "bottom" },
+    { "id": "runtime-store", "from": "runtime", "to": "store", "label": "持久化与重放", "fromSide": "bottom", "toSide": "top" },
+    { "id": "tools-knowledge", "from": "tools", "to": "knowledge", "label": "检索 / 模型查询", "fromSide": "top", "toSide": "bottom" },
+    { "id": "tools-prosail", "from": "tools", "to": "prosail", "label": "Python 直调", "fromSide": "bottom", "toSide": "top" },
+    { "id": "tools-apsim", "from": "tools", "to": "apsim", "label": "Models 子进程", "fromSide": "bottom", "toSide": "top", "labelAt": [1290, 386] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Canonical 产品协议", "items": ["前端统一使用 /api/product/v1 访问会话、提交、运行、数据集与产物", "协议路由将 Canonical 请求映射到内部 V2 Runtime，并以 REST/SSE 返回"] },
+    { "dot": "violet", "title": "运行时核心", "items": ["单一 BackendRuntimeHost 装配 Store、Registry 与 BoundedRuntimeEngine", "Planner、PolicyGuard 和 Executor 构成有界 Agent Loop"] },
+    { "dot": "emerald", "title": "遥感能力", "items": ["KTP Pack 通过 KtpExecutionContext 编排推理、训练、RAG、报告与可视化", "PROSAIL 与 APSIM 作为专业算法引擎接入工具层"] }
+  ]
+}

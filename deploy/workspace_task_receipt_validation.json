@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-12",
+  "target": "172.27.127.3",
+  "release": "/data/yuehao/apps/ktp/releases/workspace-task-receipts-20261012",
+  "backend_tests_passed": 28,
+  "frontend_tests_passed": 28,
+  "build": "passed",
+  "lint": "passed",
+  "browser_local": {
+    "launch_reply_contains_task": true,
+    "one_task_per_workflow": true,
+    "details_inside_same_reply": true,
+    "history_reference_restore": true,
+    "read_only_status_reply_has_no_duplicate_task": true,
+    "sync_failure_recovered_without_duplicate_task": true,
+    "latest_reply_visible": true,
+    "history_scroll_preserved": true,
+    "desktop_and_mobile": true,
+    "mobile_task_action_visible": true,
+    "crop_only_simple_yield_form": true
+  },
+  "browser_server": "same checks passed",
+  "live_backend": {
+    "passed": true,
+    "real_crop_workflow_completed": true,
+    "new_launch_summary": true,
+    "reply_run_matches_workflow_run": true,
+    "history_reference_persisted": true,
+    "idempotency": true,
+    "one_workflow": true,
+    "report_200": true
+  },
+  "deployment": {
+    "checked_files": 34,
+    "source_and_dist_match": true,
+    "backup_created": true,
+    "old_assets_retained": true,
+    "old_and_new_assets_200": true,
+    "health_200": true
+  }
+}

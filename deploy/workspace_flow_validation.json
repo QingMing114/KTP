@@ -1,0 +1,40 @@
+{
+  "backend_tests_passed": 57,
+  "frontend_tests_passed": 21,
+  "build": "passed",
+  "lint": "passed",
+  "browser": {
+    "local_build": true,
+    "server_build": true,
+    "one_current_card": true,
+    "typed_button": true,
+    "double_click_single_submission": true,
+    "read_only_status": true,
+    "next_analysis_configuration": true,
+    "natural_execution": true,
+    "failed_state_fetch_recovery": true,
+    "refresh_restoration": true,
+    "javascript_errors": []
+  },
+  "server": {
+    "host": "172.27.127.3",
+    "app": "/data/yuehao/apps/ktp/app",
+    "backup": "/data/yuehao/apps/ktp/releases/workspace-flow-20261012/backup",
+    "old_assets_retained": true,
+    "backend_health": 200,
+    "frontend_health": 200,
+    "legacy_chunk_status": 200,
+    "backend_service": "active",
+    "frontend_service": "active"
+  },
+  "live_smoke": {
+    "conversation_id": "040025ad-43b7-481f-8026-9da6ba6ae4d7",
+    "button_workflow_id": "b0971142-6bb2-430b-9841-006e414fc3d5",
+    "natural_workflow_id": "b8dd83ae-ea05-4154-a563-1b639c459fc8",
+    "both_completed": true,
+    "workflow_count": 2,
+    "typed_replay_same_submission": true,
+    "read_only_question_has_no_configuration": true
+  },
+  "verified_source_and_build_files": 41
+}

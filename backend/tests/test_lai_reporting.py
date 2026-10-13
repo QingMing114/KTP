@@ -16,6 +16,30 @@ from schemas.spatial import AoiGeometry, CreateLaiAnalysisRequest, GeoJsonGeomet
 from shared.config.paths import get_lai_report_dir
 
 
+def test_lai_report_uses_bundled_template_without_external_dev_data(tmp_path, monkeypatch) -> None:
+    from v2.tools import lai_report_handler
+
+    monkeypatch.delenv("LAI_REPORT_TEMPLATE_PATH", raising=False)
+    monkeypatch.setattr(lai_report_handler, "_KTP_PRODUCT", tmp_path / "empty-checkout-parent")
+    report_data = {"meta": {"width": 2, "height": 3}, "lai": [[1.2, 2.3]]}
+    rendered = lai_report_handler._build_html(report_data, "field.tif", "lut.txt")
+    assert "<title>LAI 遥感反演分析报告</title>" in rendered
+    assert "const __INLINE_DATA__ =" in rendered
+    assert '"lai":[[1.2,2.3]]' in rendered
+    assert "fetch('lai_report_data.json')" not in rendered
+
+
+def test_lai_report_preserves_explicit_template_override(tmp_path, monkeypatch) -> None:
+    from v2.tools import lai_report_handler
+
+    bundled = Path(lai_report_handler.__file__).parent / "templates" / "lai_report_v3.html"
+    custom = tmp_path / "custom.html"
+    custom.write_text(bundled.read_text(encoding="utf-8") + "<!-- custom-template -->", encoding="utf-8")
+    monkeypatch.setenv("LAI_REPORT_TEMPLATE_PATH", str(custom))
+    rendered = lai_report_handler._build_html({"meta": {"width": 2, "height": 3}}, "field.tif", "lut.txt")
+    assert "<!-- custom-template -->" in rendered
+
+
 def test_lai_report_directory_uses_one_configured_location(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("V2_REPORTS_DIR", str(tmp_path / "legacy"))
     monkeypatch.setenv("LAI_REPORT_OUTPUT_DIR", str(tmp_path / "reports"))

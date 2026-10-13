@@ -1,6 +1,7 @@
 /** Canonical run client — GET /api/product/v1/runs. */
 
 import { canonicalJson } from './request'
+import type { CanonicalAssistantPart } from './workspaceClient'
 
 export interface CanonicalArtifactRef {
   artifact_id: string
@@ -14,7 +15,9 @@ export interface CanonicalRun {
   run_id: string
   conversation_id: string
   status: string
-  assistant?: { summary?: string; parts?: Array<{ type: string; text?: string; artifact_id?: string }> }
+  assistant?: { summary?: string; parts?: CanonicalAssistantPart[] }
+  input_message?: string
+  created_at?: string
   artifacts?: CanonicalArtifactRef[]
   workflow_summary?: string
   termination_reason?: string
@@ -36,8 +39,14 @@ export async function listRuns(cursor?: string): Promise<PaginatedRuns> {
 }
 
 export async function getConversationRuns(conversationId: string): Promise<CanonicalRun[]> {
-  const resp = await canonicalJson<{ items: CanonicalRun[]; has_more?: boolean }>(
-    `/conversations/${encodeURIComponent(conversationId)}/runs`,
-  )
-  return resp.items
+  const items: CanonicalRun[] = []
+  let cursor: string | undefined
+  do {
+    const resp = await canonicalJson<{ items: CanonicalRun[]; has_more?: boolean; next_cursor?: string }>(
+      `/conversations/${encodeURIComponent(conversationId)}/runs${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+    )
+    items.push(...resp.items)
+    cursor = resp.has_more ? resp.next_cursor : undefined
+  } while (cursor)
+  return items
 }

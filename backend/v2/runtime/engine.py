@@ -69,6 +69,11 @@ def _run_async_or_sync(coro, timeout: float = 60):
 class BoundedRuntimeEngine:
     """Bounded runtime engine for the V2 KTP single-agent flow."""
 
+    @property
+    def llm_provider(self) -> AgentLLMProvider | None:
+        """Share the configured provider with bounded product application services."""
+        return self._llm_provider
+
     def __init__(
         self,
         *,

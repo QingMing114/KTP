@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-12",
+  "backend_tests_passed": 47,
+  "frontend_tests_passed": 9,
+  "build": "passed",
+  "eslint": "passed",
+  "browser_context_cards_execution_refresh": "passed",
+  "server": "172.27.127.3",
+  "server_app": "/data/yuehao/apps/ktp/app",
+  "deployment_verified_files": 47,
+  "deployment_mismatches": [],
+  "backend_health": 200,
+  "frontend_health": 200,
+  "services": {
+    "ktp-backend": "active",
+    "ktp-frontend": "active"
+  },
+  "live_workflow_id": "e50f958e-619b-4462-980b-12e4e05b4f46",
+  "live_steps": {
+    "imagery": "completed",
+    "crop": "completed",
+    "lai": "completed"
+  },
+  "known_test_limitation": "Legacy tests/test_agent_llm_provider.py cannot collect because shared.schemas.executor has been removed."
+}

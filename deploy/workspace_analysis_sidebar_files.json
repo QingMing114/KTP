@@ -1,0 +1,15 @@
+[
+  "backend/api/canonical/router.py",
+  "frontend/src/components/LiveFarmMap.tsx",
+  "frontend/src/pages/MapWorkspaceDemoPage.tsx",
+  "frontend/src/features/workspace-assistant/WorkspaceAssistantPanel.tsx",
+  "frontend/src/features/workspace-assistant/WorkspaceAnalysisPanel.tsx",
+  "frontend/src/features/workspace-assistant/WorkspaceAnalysisCards.tsx",
+  "frontend/src/features/workspace-assistant/workspacePanelTypes.ts",
+  "frontend/src/features/workspace-assistant/useWorkspaceLayout.ts",
+  "frontend/src/test/workspaceFlow.test.tsx",
+  "frontend/src/test/workspaceSimpleYield.test.tsx",
+  "frontend/src/test/workspaceTaskReceipt.test.tsx",
+  "docs/workspace_assistant_integration.md",
+  "deploy/workspace_analysis_sidebar_live_smoke.py"
+]

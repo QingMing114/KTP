@@ -1,0 +1,33 @@
+{
+  "backend_tests_passed": 33,
+  "frontend_tests_passed": 21,
+  "build": "passed",
+  "lint": "passed",
+  "browser": {
+    "local_build": true,
+    "server_build": true,
+    "long_blocked_workflow": true,
+    "latest_reply_visible": true,
+    "independent_analysis_scroll": true,
+    "viewport_resize": true,
+    "mobile": true,
+    "history_reading_preserved": true,
+    "full_launch_flow": true,
+    "javascript_errors": []
+  },
+  "server": {
+    "host": "172.27.127.3",
+    "backup": "/data/yuehao/apps/ktp/releases/workspace-chat-visibility-20261012/backup",
+    "old_assets_retained": true,
+    "backend_service": "active",
+    "frontend_service": "active"
+  },
+  "real_model": {
+    "conversation_id": "3434e87e-9a03-4a2c-9bc9-29a9ec5d727d",
+    "run_id": "712e56eb-43c4-433c-ba65-b2152f413c83",
+    "answer": "冠层指数不能替代APSIM估产，缺气象土壤资料时不可直接用冠层分数作为产量。",
+    "read_only": true,
+    "workflow_count": 0
+  },
+  "source_and_dist_files": 30
+}

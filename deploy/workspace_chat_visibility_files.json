@@ -1,0 +1,8 @@
+[
+  "frontend/src/features/workspace-assistant/WorkspaceAssistantPanel.tsx",
+  "frontend/src/features/workspace-assistant/workspaceTasks.ts",
+  "frontend/src/test/workspaceFlow.test.tsx",
+  "backend/runtime/workspace_assistant.py",
+  "docs/workspace_assistant_integration.md",
+  "deploy/workspace_chat_visibility_live_smoke.py"
+]

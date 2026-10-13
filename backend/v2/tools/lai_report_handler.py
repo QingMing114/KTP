@@ -140,7 +140,7 @@ def _build_html(report_data: dict, source_file: str, lut_file: str) -> str:
     template_path = (
         Path(configured_template).expanduser().resolve()
         if configured_template
-        else _KTP_PRODUCT / "dev-data" / "new" / "lai_report_v3.html"
+        else _HANDLER_DIR.parent / "templates" / "lai_report_v3.html"
     )
     if not template_path.is_file():
         raise FileNotFoundError(f"LAI 报告模板不存在: {template_path}")

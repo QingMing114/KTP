@@ -11,7 +11,7 @@ KTP（Knowledge-driven Task Platform）将自然语言交互、遥感物理模�
 APSIM Next Gen 以 Git submodule 方式固定在 `ApsimX/`。首次克隆请使用：
 
 ```bash
-git clone --recurse-submodules https://github.com/mxlking/KTP.git
+git clone --recurse-submodules https://github.com/QingMing114/KTP.git
 ```
 
 如果已经执行了普通的 `git clone`，再补充初始化即可：
@@ -185,6 +185,8 @@ ktp/
 | Trace / Replay | 调试与审计数据 | 与稳定产品 API 分离，只能向已授权的运维或调试角色开放。 |
 
 LAI 报告是自包含 HTML。真实像元任务开始即推送 `(0, total)`，默认每 512 个有效像元更新一次，可由 `LAI_INVERSION_BATCH` 调整。报告目录必须经 `LAI_REPORT_OUTPUT_DIR` 统一解析；Canonical Artifact 的 `render` URL 是前端正式打开报告的路径，`/v2/reports/*` 仅为兼容访问。
+
+报告模板随代码版本管理：LAI 默认使用 `backend/v2/tools/templates/lai_report_v3.html`，也可通过 `LAI_REPORT_TEMPLATE_PATH` 指定自定义模板；APSIM 生长曲线模板内置于 `backend/v2/tools/apsim_report_handler.py`，地图分析报告共用 `backend/runtime/workflow_report_design.py`。安装后端 Python 包时同样包含 LAI HTML 模板，不依赖仓库外的 `dev-data` 目录。运行时生成的报告仍保存到配置的报告目录。
 
 ## API 与集成
 

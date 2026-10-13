@@ -10,6 +10,23 @@
 
 The canonical protocol is the only long-term product contract. New frontend work should target it instead of binding to current `/v2` payload shapes.
 
+Workspace extension (2026-10-12): [workspace assistant integration](workspace_assistant_integration.md) defines workspace context, product-facing plans/parameters/actions, and links to analysis workflows. These additive capabilities are advertised by the manifest; old clients may ignore them. Internal trace remains debug-only.
+
+### Workspace assistant extension
+
+- Manifest features: `workspace_context`, `workspace_assistant_actions`, `analysis_parameter_cards`.
+- `PUT /workspaces/{workspace_id}/context`: synchronize the current typed workspace snapshot. A stale revision or conflicting snapshot returns 409. Workspace state is scoped to the authenticated owner.
+- `GET /workspaces/{workspace_id}/workflows`: recover that owner's associated workflows.
+- Submissions accept optional `context.workspace`; ordinary Chat submissions continue to use the existing runtime path.
+- `context.workspace_ui` optionally includes the original workbench's current card content: farm/AOI summaries, imagery candidates and explicit selection, task options and checked tasks, parameters, workflow status, and historical plan cards. It is a bounded observation object, separate from the versioned execution snapshot; its contents cannot authorize execution or invalidate a task merely because a progress card updated.
+- The planner also receives recent persisted structured plans, labelled by whether their AOI and imagery still match. The current workspace snapshot and checked tasks take priority over historical missing-input messages.
+- The active task card sends `input.workspace_action = {action_id, task_ids}` to explicitly confirm the synchronized draft; its task set must match `context.workspace.draft_task_ids`. This path does not call the model. Older cards may also include `source_run_id`; the server validates their originating conversation, action ID and map inputs. Both paths use the same verified workflow service as natural-language execution.
+- Assistant parts add `analysis_plan`, `parameter_set`, `action_card`, `workflow_reference`, each with a stable `part_id` and `data`. Status and explanation turns return text without generating new configuration cards.
+- SSE adds `assistant.part.updated`, `action.updated`, `workflow.linked`; parts are also persisted in the final Run for reconnect and refresh recovery.
+- `POST /analysis-workflows` accepts `Idempotency-Key` and optional `action_id`, `workspace_id`, `workspace_revision`, `conversation_id`. Durable action deduplication and an atomic start claim prevent duplicate workers.
+- Workflow resources include a server-owned `parameters` snapshot. Fixed parameters are read-only; their values are shared by execution, cards and the workflow report.
+- A completed conversation Run does not imply a completed analysis workflow. Cancelling a Submission stops the current assistant turn; an already submitted analysis remains independent.
+
 ## Resources
 
 - `Manifest`
@@ -236,6 +253,8 @@ Representative error codes:
 - `INTERNAL_ERROR`
 
 ## Recommended Frontend Usage
+
+Map workspace yield extension (2026-10-12): `yield_simple` is an independent experimental grain dry-matter estimate for wheat/maize, with automatic optical season detection and public radiation. It depends on `crop`, requires no manual planting/harvest dates, and publishes `simple_yield_report`. Manifest declares `simple_yield_estimation`. `yield` remains APSIM; `potential` remains a dimensionless canopy index. See [method, inputs and output contract](simple_yield_estimation.md).
 
 ### Large dataset flow
 

@@ -262,6 +262,32 @@ class LaiAnalysisSummary(BaseModel):
     result: dict[str, Any] = Field(default_factory=dict)
 
 
+class CreateCropAnalysisRequest(BaseModel):
+    """Classify the selected AOI using the verified server-issued imagery item."""
+
+    aoi: AoiGeometry
+    imagery_item_id: str = Field(min_length=1)
+    imagery_snapshot: ImageryCandidate | None = None
+    farm_id: str | None = None
+
+
+class CropAnalysisSummary(BaseModel):
+    analysis_id: str
+    owner_id: str | None = None
+    status: Literal["queued", "running", "completed", "failed"]
+    stage: Literal["accepted", "imagery", "preparing", "inference", "completed", "failed"]
+    aoi: AoiGeometry
+    imagery_item_id: str
+    imagery_snapshot: ImageryCandidate | None = None
+    farm_id: str | None = None
+    created_at: str
+    updated_at: str
+    completed_at: str | None = None
+    progress_percent: int = Field(default=0, ge=0, le=100)
+    detail: str = ""
+    result: dict[str, Any] = Field(default_factory=dict)
+
+
 class AnalysisEvent(BaseModel):
     """SSE payload that maps directly to one updateable Agent UI card."""
 

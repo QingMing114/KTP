@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "KTP 代码结构与 API 路由架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "ktp-project-code-architecture.html",
+    "repository": {
+      "url": "https://github.com/QingMing114/KTP",
+      "provider": "github",
+      "revision": "6c023fdffd000835ce525ab7e7d03bac194b016b"
+    },
+    "views": [
+      { "id": "gateway-routes", "label": "API Gateway 路由树", "focus": ["frontend", "third-party", "gateway", "canonical-api", "openai-api", "v2-api", "system-api"], "note": "点击 API Gateway 或路由节点，在详情卡中查看真实代码入口与上下游关系。" },
+      { "id": "shared-runtime", "label": "Agent Runtime Engine", "focus": ["canonical-api", "openai-api", "v2-api", "runtime", "agents", "observer", "tools", "data"], "note": "同一引擎协调 Planner、PolicyGuard、ToolExecutor、RunObserver 与 RuntimeStore。" },
+      { "id": "execution-assets", "label": "Agent、工具与数据", "focus": ["runtime", "agents", "tools", "data"], "note": "展开运行时下游的规划、算法调用、持久化与产物管理代码。" }
+    ]
+  },
+  "components": [
+    { "id": "third-party", "type": "external", "label": "第三方客户端", "sublabel": "OpenAI SDK / HTTP Client", "pos": [40, 120], "size": [170, 72] },
+    { "id": "frontend", "type": "frontend", "label": "KTP React 前端", "sublabel": "Canonical / V2 Client", "sources": [{ "path": "frontend/src/services/canonical/request.ts", "label": "Canonical 请求与 SSE" }, { "path": "frontend/src/services/api.ts", "label": "V2 API 与 SSE" }], "pos": [40, 360], "size": [170, 72] },
+    { "id": "gateway", "type": "backend", "label": "API Gateway", "sublabel": "FastAPI 应用装配与路由分发", "tag": "apps/api_gateway/main.py", "sources": [{ "path": "backend/apps/api_gateway/main.py", "label": "应用装配入口" }], "pos": [290, 360], "size": [180, 72] },
+    { "id": "canonical-api", "type": "backend", "label": "Canonical 产品 API", "sublabel": "会话 · 提交 · 运行 · 数据集 · 产物", "tag": "/api/product/v1", "sources": [{ "path": "backend/api/canonical/router.py", "label": "Canonical 路由与映射" }, { "path": "backend/schemas/canonical.py", "label": "产品协议模型" }], "pos": [550, 120], "size": [190, 72] },
+    { "id": "openai-api", "type": "backend", "label": "OpenAI 兼容 API", "sublabel": "Chat Completions 适配", "tag": "/v1", "sources": [{ "path": "backend/apps/api_gateway/routers/openai_adapter.py", "label": "OpenAI 兼容路由" }], "pos": [550, 280], "size": [190, 72] },
+    { "id": "v2-api", "type": "backend", "label": "V2 / 旧版兼容 API", "sublabel": "会话、运行、Chat 与 Detect", "tag": "/v2 · /chat · /detect", "sources": [{ "path": "backend/ktp_backend/api.py", "label": "V2 API" }, { "path": "backend/ktp_backend/gateway_bridge.py", "label": "兼容路由桥接" }], "pos": [550, 440], "size": [190, 72] },
+    { "id": "system-api", "type": "security", "label": "系统与访问入口", "sublabel": "登录 · 健康检查 · 静态页面", "tag": "/v2/auth · /health · /v2/ui", "sources": [{ "path": "backend/ktp_backend/auth.py", "label": "登录与 JWT" }, { "path": "backend/apps/api_gateway/routers/health.py", "label": "健康检查" }, { "path": "backend/apps/api_gateway/routers/v2_ui.py", "label": "静态产品页面" }], "pos": [550, 600], "size": [190, 72] },
+    { "id": "runtime", "type": "backend", "label": "Agent Runtime Engine", "sublabel": "run() · stream() · replay()", "tag": "BoundedRuntimeEngine", "sources": [{ "path": "backend/ktp_backend/runtime_host.py", "label": "BackendRuntimeHost 装配" }, { "path": "backend/v2/runtime/engine.py", "label": "入口、Agent Loop 与完成落库" }, { "path": "backend/v2/runtime/events.py", "label": "RunEventEmitter 流式事件" }], "pos": [830, 360], "size": [190, 72] },
+    { "id": "observer", "type": "backend", "label": "RunObserver", "sublabel": "重复调用检测 · 步数上限 · 终止", "sources": [{ "path": "backend/v2/runtime/observer.py", "label": "Agent Loop 终止判定" }], "pos": [830, 120], "size": [190, 72] },
+    { "id": "agents", "type": "backend", "label": "Agent 与策略", "sublabel": "Planner · Executor · PolicyGuard", "sources": [{ "path": "backend/v2/runtime/planner.py", "label": "ChatFirstPlanner" }, { "path": "backend/v2/policies/guard.py", "label": "策略守卫" }, { "path": "backend/v2/agents/registry.py", "label": "Agent 注册表" }], "pos": [1100, 120], "size": [190, 72] },
+    { "id": "tools", "type": "backend", "label": "算法工具与领域服务", "sublabel": "KTP Pack · PROSAIL · APSIM", "tag": "ToolRegistryV2", "sources": [{ "path": "backend/v2/tools/registry.py", "label": "工具注册表" }, { "path": "backend/v2/tools/handlers.py", "label": "工具处理器" }, { "path": "backend/v2/adapters/python_services/ktp_services.py", "label": "领域服务编排" }], "pos": [1100, 360], "size": [190, 72] },
+    { "id": "data", "type": "database", "label": "数据、状态与产物", "sublabel": "SQLite · Dataset · Artifact", "sources": [{ "path": "backend/v2/runtime/sqlite_store.py", "label": "运行时状态" }, { "path": "backend/runtime/dataset_store.py", "label": "数据集存储" }, { "path": "backend/runtime/artifact_store.py", "label": "产物存储" }], "pos": [1100, 600], "size": [190, 72] }
+  ],
+  "boundaries": [
+    { "kind": "security-group", "label": "API Surface", "wraps": ["gateway", "canonical-api", "openai-api", "v2-api", "system-api"], "pad": 24 },
+    { "kind": "region", "label": "共享 Agent Runtime：BackendRuntimeHost", "wraps": ["runtime", "observer", "agents", "tools", "data"], "pad": 28 }
+  ],
+  "connections": [
+    { "id": "third-party-gateway", "from": "third-party", "to": "gateway", "label": "HTTP / OpenAI SDK", "variant": "emphasis" },
+    { "id": "frontend-gateway", "from": "frontend", "to": "gateway", "label": "REST + SSE", "variant": "emphasis", "labelAt": [330, 450] },
+    { "id": "gateway-canonical", "from": "gateway", "to": "canonical-api", "variant": "emphasis" },
+    { "id": "gateway-openai", "from": "gateway", "to": "openai-api" },
+    { "id": "gateway-v2", "from": "gateway", "to": "v2-api" },
+    { "id": "gateway-system", "from": "gateway", "to": "system-api", "variant": "security" },
+    { "id": "canonical-runtime", "from": "canonical-api", "to": "runtime", "label": "协议映射", "variant": "emphasis" },
+    { "id": "openai-runtime", "from": "openai-api", "to": "runtime", "label": "OpenAI 映射", "labelAt": [870, 260] },
+    { "id": "v2-runtime", "from": "v2-api", "to": "runtime", "label": "V2 / Bridge" },
+    { "id": "runtime-agents", "from": "runtime", "to": "agents", "label": "规划与策略" },
+    { "id": "runtime-observer", "from": "runtime", "to": "observer", "label": "循环终止判定", "fromSide": "top", "toSide": "bottom" },
+    { "id": "runtime-tools", "from": "runtime", "to": "tools", "label": "受控工具调用", "variant": "emphasis", "labelAt": [1010, 450] },
+    { "id": "runtime-data", "from": "runtime", "to": "data", "label": "会话 / Run / Trace" },
+    { "id": "tools-data", "from": "tools", "to": "data", "label": "数据集与产物", "labelAt": [1195, 446] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "如何查看代码结构", "items": ["点击 API Gateway 节点，详情卡会列出四个下游路由族", "继续点击各路由节点，可查看源码入口、协议前缀以及到 Runtime 的映射关系"] },
+    { "dot": "violet", "title": "Agent Runtime Engine 执行循环", "items": ["_execute_agent_loop：Planner → PolicyGuard → ToolExecutor → Observation → 下一轮规划", "RunObserver 检测重复调用与步数上限；reply / clarify / fail 结束本轮运行"] },
+    { "dot": "emerald", "title": "运行入口、事件与状态", "items": ["run() 汇总 stream()；后台线程通过 SimpleQueue 输出 RunEventV2，API 转换为 SSE", "_finalize_run 写入 RuntimeStore；replay() 以不持久化模式重新执行已保存输入"] }
+  ]
+}

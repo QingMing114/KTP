@@ -10,6 +10,8 @@ from __future__ import annotations
 from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from schemas.workspace import WorkspaceContext, WorkspaceUiState
+from schemas.analysis_workflow import TaskId
 
 
 DatasetSourceKind: TypeAlias = Literal["local_path"]
@@ -23,7 +25,7 @@ CanonicalRunStatus: TypeAlias = Literal[
     "pending", "running", "completed", "failed", "abstained", "cancelled", "awaiting_approval"
 ]
 CanonicalArtifactKind: TypeAlias = Literal[
-    "apsim_report", "confidence_card", "file_content", "inference_card", "inversion_result",
+    "apsim_report", "simple_yield_report", "confidence_card", "file_content", "inference_card", "inversion_result",
     "knowledge_card", "lai_confidence_geotiff", "lai_geotiff", "lai_html_report", "lai_preview",
     "lai_raster", "lut_card", "reflectance_tif", "registry_card", "report_card", "search_results",
     "simulation_data", "simulation_log", "simulation_result", "text_card", "training_card",
@@ -33,6 +35,7 @@ CanonicalArtifactKind: TypeAlias = Literal[
 SubmissionEventKind: TypeAlias = Literal[
     "submission.accepted", "submission.approval_required", "submission.cancelled",
     "run.started", "run.progress", "artifact.available", "run.completed", "run.failed",
+    "assistant.part.updated", "workflow.linked", "action.updated",
 ]
 
 
@@ -138,11 +141,22 @@ class SubmissionReference(BaseModel):
 class SubmissionInput(BaseModel):
     message: str = Field(min_length=1)
     refs: list[SubmissionReference] = Field(default_factory=list)
+    workspace_action: "WorkspaceCardAction | None" = None
+
+
+class WorkspaceCardAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action_id: str = Field(min_length=1, max_length=150)
+    task_ids: list[TaskId] = Field(min_length=1)
+    source_run_id: str | None = Field(default=None, min_length=1)
+    yield_demo_crop: Literal["wheat", "maize"] | None = None
 
 
 class SubmissionContext(BaseModel):
     inherit: Literal["latest", "none"] = "none"
     inherit_run_id: str | None = None
+    workspace: WorkspaceContext | None = None
+    workspace_ui: WorkspaceUiState | None = None
 
 
 class SubmissionMode(BaseModel):
@@ -232,9 +246,11 @@ class ApsimYieldReportResponse(BaseModel):
 
 class CanonicalAssistantPart(BaseModel):
     """A single part of a canonical assistant message."""
-    type: Literal["text", "status", "artifact_ref", "warning", "error"]
+    type: Literal["text", "status", "artifact_ref", "warning", "error", "analysis_plan", "parameter_set", "action_card", "workflow_reference"]
     text: str | None = None
     artifact_id: str | None = None
+    part_id: str | None = None
+    data: dict[str, Any] | None = None
 
 
 class CanonicalAssistant(BaseModel):
@@ -253,6 +269,8 @@ class CanonicalRunResponse(BaseModel):
     artifacts: list[CanonicalArtifact] = Field(default_factory=list)
     workflow_summary: str | None = None
     termination_reason: str | None = None
+    input_message: str | None = None
+    created_at: str | None = None
 
 
 class PaginatedRunsResponse(BaseModel):

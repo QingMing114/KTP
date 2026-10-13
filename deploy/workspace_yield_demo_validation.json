@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-13",
+  "target": "172.27.127.3",
+  "release": "/data/yuehao/apps/ktp/releases/workspace-yield-demo-20261013",
+  "frontend_tests_passed": 41,
+  "backend_tests_passed": 54,
+  "build": "passed",
+  "lint": "passed",
+  "diff_check": "passed",
+  "browser_local_and_server_with_api_fixtures": {
+    "wheat_and_maize": true,
+    "simplified_and_apsim_tasks": true,
+    "explicit_typed_demo_action": true,
+    "double_click_one_task": true,
+    "simulation_marked": true,
+    "card_and_report_yields_match": true,
+    "apsim_template": true,
+    "three_curve_tabs": true,
+    "mobile_report_no_horizontal_overflow": true,
+    "report_after_reload": true,
+    "existing_real_yield_crop_form": true,
+    "analysis_attention_and_sidebar_regression": true
+  },
+  "live_backend": {
+    "typed_demo_cases_passed": 4,
+    "tasks": ["yield_simple", "yield"],
+    "crops": ["wheat", "maize"],
+    "real_model_natural_demo": true,
+    "natural_demo_crop": "maize",
+    "report_and_structured_data_200": true,
+    "summary_report_200": true,
+    "card_report_data_match": true,
+    "history_reference_matches": true,
+    "one_workflow_per_confirmation": true
+  },
+  "deployment": {
+    "source_and_dist_match": true,
+    "checked_files": 47,
+    "http_resources_checked": 27,
+    "backup_created": true,
+    "index_published_after_backend_health": true,
+    "old_hashed_assets_retained": true,
+    "services_active": ["ktp-backend", "ktp-frontend"]
+  },
+  "semantics": {
+    "data_mode_required_for_demo": "demo",
+    "demo_version": "synthetic_yield_demo_v1",
+    "real_data_failure_never_falls_back_to_demo": true,
+    "wheat_example_yield_t_ha": 6.2,
+    "maize_example_yield_t_ha": 9.1,
+    "yield_basis": "grain_dry_matter",
+    "apsim_executed_for_demo": false,
+    "owner_scoped_reports": true
+  }
+}

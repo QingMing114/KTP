@@ -37,6 +37,7 @@ interface Props {
   onAoiError: (message: string) => void
   clearVersion: number
   aoiAreaHectares: number | null
+  restoredAoi: AoiGeometry | null
   laiOverlay: LaiMapOverlay | null
   overlayVisible: boolean
   overlayOpacity: number
@@ -45,6 +46,21 @@ interface Props {
 }
 
 const defaultCenter: Position = [38.55, 101.3]
+
+function MapLayoutResize() {
+  const map = useMap()
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(() => map.invalidateSize({ pan: false }))
+    })
+    observer.observe(map.getContainer())
+    return () => { observer.disconnect(); window.cancelAnimationFrame(frame) }
+  }, [map])
+  return null
+}
 
 const aoiStyle: L.PathOptions = {
   color: '#67e8f9',
@@ -88,7 +104,7 @@ function validationMessage(reason: 'invalid_geometry' | 'too_small' | 'self_inte
   return '无法识别该 AOI，请绘制一个有效的闭合区域。'
 }
 
-function DrawControl({ onAoiChange, onAoiError, clearVersion }: Pick<Props, 'onAoiChange' | 'onAoiError' | 'clearVersion'>) {
+function DrawControl({ onAoiChange, onAoiError, clearVersion, restoredAoi }: Pick<Props, 'onAoiChange' | 'onAoiError' | 'clearVersion' | 'restoredAoi'>) {
   const map = useMap()
   const drawnItemsRef = useRef<L.FeatureGroup | null>(null)
   const callback = useRef(onAoiChange)
@@ -173,6 +189,14 @@ function DrawControl({ onAoiChange, onAoiError, clearVersion }: Pick<Props, 'onA
     callback.current(null, null)
   }, [clearVersion])
 
+  useEffect(() => {
+    if (!restoredAoi || !drawnItemsRef.current) return
+    const group = drawnItemsRef.current
+    group.clearLayers()
+    L.geoJSON(restoredAoi).eachLayer((layer) => group.addLayer(layer))
+    map.fitBounds(group.getBounds(), { padding: [44, 44], maxZoom: 16 })
+  }, [map, restoredAoi])
+
   return null
 }
 
@@ -184,6 +208,7 @@ export default function LiveFarmMap({
   onAoiError,
   clearVersion,
   aoiAreaHectares,
+  restoredAoi,
   laiOverlay,
   overlayVisible,
   overlayOpacity,
@@ -226,6 +251,7 @@ export default function LiveFarmMap({
 
   return <div className="absolute inset-0 z-30 bg-[#12382c]" aria-label="农场分析地图">
     <MapContainer center={defaultCenter} zoom={8} zoomControl className="ktp-live-map h-full w-full">
+      <MapLayoutResize />
       <TileLayer
         attribution={satelliteEnabled
           ? 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
@@ -236,7 +262,7 @@ export default function LiveFarmMap({
       />
       <FarmFocus farm={selectedFarm} />
       <OverlayFocus overlay={laiOverlay} />
-      <DrawControl onAoiChange={onAoiChange} onAoiError={onAoiError} clearVersion={clearVersion} />
+      <DrawControl onAoiChange={onAoiChange} onAoiError={onAoiError} clearVersion={clearVersion} restoredAoi={restoredAoi} />
       {mapFarms.map((farm) => <GeoJSON key={farm.farm_id} data={farm.feature as never} style={{ color: farm.farm_id === selectedFarmId ? '#86efac' : '#e2e8f0', weight: farm.farm_id === selectedFarmId ? 3 : 2, fillColor: '#10b981', fillOpacity: farm.farm_id === selectedFarmId ? 0.3 : 0.12 }} eventHandlers={{ click: () => onFarmSelect(farm.farm_id) }} />)}
       {laiOverlay && overlayImageUrl && overlayVisible && <ImageOverlay
         url={overlayImageUrl}

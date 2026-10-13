@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-12",
+  "backend_tests": {
+    "passed": 58,
+    "environment": "local"
+  },
+  "frontend_tests": {
+    "passed": 24
+  },
+  "build": "passed",
+  "lint": "passed",
+  "browser_local": {
+    "simplified_yield_flow": "passed",
+    "crop_only_form": true,
+    "no_manual_dates": true,
+    "double_click_one_submission": true,
+    "result_units_and_scenarios": true,
+    "chat_visibility_regression": "passed"
+  },
+  "browser_server": {
+    "simplified_yield_flow": "passed",
+    "new_assets_hash_match": true,
+    "old_lazy_module_200": true,
+    "health_200": true
+  },
+  "deployment": {
+    "target": "172.27.127.3",
+    "release": "/data/yuehao/apps/ktp/releases/workspace-simple-yield-20261012",
+    "backup_created": true,
+    "checksums_matched": 51,
+    "old_assets_retained": true
+  },
+  "science": {
+    "locally_calibrated": false,
+    "historical_yield_labels_available": false,
+    "accuracy_validated": false
+  },
+  "production_pytest": "not run: pytest is absent in production environment; local checks and live smoke used",
+  "live_smoke": {
+    "passed": true,
+    "real_model": true,
+    "real_public_observations": true,
+    "workflow_id": "9404b0e0-00cf-421c-bc4a-c7741f6696af",
+    "observations": 20,
+    "as_of": "2026-09-10",
+    "status": "blocked",
+    "reason_code": "season_in_progress",
+    "no_false_final_yield": true,
+    "no_manual_dates": true,
+    "no_lai_or_apsim": true,
+    "read_only_status_question": true,
+    "one_workflow": true,
+    "summary_report_200": true,
+    "crop_profile_was_engineering_assumption": true
+  }
+}

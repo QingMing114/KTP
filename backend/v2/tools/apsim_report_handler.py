@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import html
 import logging
 import os
 import shutil
@@ -276,7 +277,7 @@ def _build_report_data(ts: dict[str, Any], params: dict[str, Any]) -> dict[str, 
 
 
 def _build_html(report_data: dict[str, Any]) -> str:
-    inline_json = json.dumps(report_data, separators=(",", ":"), ensure_ascii=False)
+    inline_json = json.dumps(report_data, separators=(",", ":"), ensure_ascii=False).replace("<", "\\u003c")
     meta = report_data.get("meta", {})
     crop_type = meta.get("crop_type", "wheat")
     region = meta.get("region", "")
@@ -287,14 +288,18 @@ def _build_html(report_data: dict[str, Any]) -> str:
     max_biomass = meta.get("max_biomass", 0)
     final_yield = meta.get("final_yield_t_ha", 0)
     sim_days = meta.get("sim_days", 0)
-    subtitle = f"{crop_type.upper()} · {region} · {start_year}~{end_year} · 品种 {cultivar}"
+    subtitle = html.escape(f"{crop_type.upper()} · {region} · {start_year}~{end_year} · 品种 {cultivar}")
+    title = "估产模拟演示报告 · APSIM 模板" if meta.get("simulated") else "APSIM 作物生长模拟报告"
+    notice = ('<div role="note" style="padding:14px 18px;margin-bottom:20px;border:1px solid #b88922;border-radius:8px;background:#332810;color:#ffe1a0">'
+              '<strong>模拟数据 · 仅用于功能演示</strong><br>产量、LAI、生物量、子粒重和生长阶段均为构造示例；未运行 APSIM，未读取地块气象、土壤或遥感数据，不代表当前地块的实际产量。'
+              '报告仅复用 APSIM 展示模板，预设日期不是实际播种/收获记录。</div>') if meta.get("simulated") else ""
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>APSIM 作物生长模拟报告 — {crop_type} {region}</title>
+<title>{title} — {html.escape(str(crop_type))}</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;background:#0f1117;color:#e0e6ef;min-height:100vh}}
@@ -325,10 +330,11 @@ canvas{{display:block;width:100%!important}}
 </head>
 <body>
 <div class="hdr">
-  <h1>🌾 APSIM 作物生长模拟报告</h1>
+  <h1>🌾 {title}</h1>
   <div class="sub">{subtitle}</div>
 </div>
 <div class="wrap">
+  {notice}
   <div class="cards">
     <div class="card"><div class="lbl">估算产量</div>
       <div class="val">{final_yield:.3f}<span class="unit">t/ha</span></div>
@@ -369,7 +375,7 @@ canvas{{display:block;width:100%!important}}
 <script>
 const D = {inline_json};
 const SC = ['#2563a8','#0d9488','#059669','#7c3aed','#b45309','#dc2626','#0891b2','#9333ea','#1d6fa8','#065f46'];
-const SN = {{1:'出苗',2:'分蘖',3:'拔节',4:'抽穗',5:'开花',6:'灌浆',7:'乳熟',8:'蜡熟',9:'完熟',10:'收获'}};
+const SN = D.meta.stage_labels || {{1:'出苗',2:'分蘖',3:'拔节',4:'抽穗',5:'开花',6:'灌浆',7:'乳熟',8:'蜡熟',9:'完熟',10:'收获'}};
 let curTab = 0;
 
 function showTab(i) {{
@@ -453,12 +459,13 @@ function drawParams() {{
   const rows = [
     ['作物类型', m.crop_type||'—'],['品种', m.cultivar||'—'],
     ['模拟区域', m.region||'—'],['气象站', m.station||'—'],
-    ['纬度 / 经度', (m.latitude||'?')+'°N / '+(m.longitude||'?')+'°E'],
+    ...(m.simulated ? [] : [['纬度 / 经度', (m.latitude||'?')+'°N / '+(m.longitude||'?')+'°E']]),
     ['模拟期', (m.start_year||'?')+' ~ '+(m.end_year||'?')],
-    ['播种日', m.sowing_doy?'第 '+m.sowing_doy+' 天':'—'],
+    ...(m.simulated ? [] : [['播种日', m.sowing_doy?'第 '+m.sowing_doy+' 天':'—']]),
     ['峰值 LAI', (m.peak_lai||0).toFixed(3)+' m²/m²'],
     ['最大生物量', (m.max_biomass||0).toFixed(0)+' g/m²'],
     ['估算产量', (m.final_yield_t_ha||0).toFixed(3)+' t/ha'],
+    ...(m.simulated ? [['数据来源','构造的模拟数据'],['预设生长期',m.season_start+' 至 '+m.season_end],['示例情景范围',(m.scenario_range_t_ha||[]).join('–')+' t/ha（预设值）'],['选区面积',m.area_hectares+' ha'],['示例总产量',m.estimated_total_t+' t（面积 × 示例单产）'],['产量口径','粮食干重；非实收重量'],['任务 ID',m.workflow_id]] : []),
   ];
   document.getElementById('pgrid').innerHTML=rows.map(([k,v])=>
     `<div class="prow"><span class="pk">${{k}}</span><span class="pv">${{v}}</span></div>`
@@ -470,6 +477,11 @@ window.addEventListener('resize',()=>drawChart());
 </script>
 </body>
 </html>"""
+
+
+def render_apsim_timeseries_report(timeseries: dict[str, Any], parameters: dict[str, Any]) -> str:
+    """Reuse the APSIM report layout with an explicit data provenance label."""
+    return _build_html(_build_report_data(timeseries, parameters))
 
 
 def _apsim_bin_available() -> bool:

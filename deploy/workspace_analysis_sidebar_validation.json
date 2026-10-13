@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-12",
+  "target": "172.27.127.3",
+  "release": "/data/yuehao/apps/ktp/releases/workspace-analysis-sidebar-20261012",
+  "frontend_tests_passed": 28,
+  "backend_tests_passed": 28,
+  "build": "passed",
+  "lint": "passed",
+  "browser_local_and_server": {
+    "left_independent_analysis": true,
+    "chat_contains_only_task_summary": true,
+    "current_and_historical_task_navigation": true,
+    "history_read_only": true,
+    "pointer_and_keyboard_resize": true,
+    "width_restored_after_reload": true,
+    "map_reflows": true,
+    "mobile_and_tablet_drawers": true,
+    "latest_message_visible": true,
+    "history_scroll_preserved": true,
+    "status_recovery_without_duplicate_task": true,
+    "simplified_yield_crop_and_report": true
+  },
+  "live_backend": {
+    "real_crop_workflow_completed": true,
+    "summary_points_to_left_analysis": true,
+    "task_reply_and_history_reference_match": true,
+    "idempotency": true,
+    "one_workflow": true,
+    "report_200": true
+  },
+  "deployment": {
+    "source_and_dist_match": true,
+    "checked_files": 37,
+    "backup_created": true,
+    "old_assets_retained": true,
+    "resources": [
+      {
+        "path": "/health",
+        "status": 200
+      },
+      {
+        "path": "/",
+        "status": 200
+      },
+      {
+        "path": "/assets/MapWorkspaceDemoPage-C1wGc40r.js",
+        "status": 200
+      },
+      {
+        "path": "/assets/MapWorkspaceDemoPage-BxaAtuVT.js",
+        "status": 200
+      },
+      {
+        "path": "/assets/MapWorkspaceDemoPage-DfJqGZBz.js",
+        "status": 200,
+        "hash_matches": true
+      }
+    ]
+  }
+}

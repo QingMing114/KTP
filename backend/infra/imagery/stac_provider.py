@@ -124,7 +124,7 @@ class SentinelStacProvider:
         """Apply one Planetary Computer SAS token to the required Azure COG assets."""
         token_base_url = self._settings.asset_token_url
         assets = feature.get("assets") or {}
-        required_keys = ("B02", "B03", "B04", "B07", "B08")
+        required_keys = ("B02", "B03", "B04", "B07", "B08", "SCL")
         azure_assets: list[tuple[str, dict[str, Any], str, str]] = []
         for key in required_keys:
             asset = assets.get(key)

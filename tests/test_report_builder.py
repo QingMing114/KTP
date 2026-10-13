@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from services.report_service.builder import ReportBuilder
 from services.report_service.config import ReportServiceConfig
@@ -67,9 +68,16 @@ def test_report_builder_renders_expected_sections(tmp_path: Path) -> None:
         )
     )
 
-    assert "河南小麦长势报告" in (result.html or "")
-    assert "摘要" in (result.html or "")
-    assert "推理结果" in (result.html or "")
-    assert "知识检索" in (result.html or "")
-    assert "阳性覆盖率" in (result.html or "")
-    assert "告警" in (result.html or "")
+    rendered = result.html or ""
+    assert result.sections == ["summary", "inference", "rag", "confidence"]
+    for value in [
+        "河南小麦长势报告", "该报告由工作流输出自动生成。", "推理置信度较高。",
+        "wheat-health-segmentation", "已检索河南小麦相关农学背景。",
+        "local://knowledge/henan-wheat", "掩膜结构异常，导致图像置信度下降。",
+        "mask coverage is near-total and should be reviewed manually",
+        "mask contains a single positive value across the full image",
+    ]:
+        assert value in rendered
+    # The health dashboard displays the healthy share, complementary to affected pixels.
+    ratio = re.search(r'id="lbl-kpi-2-val">\s*([\d.]+)', rendered)
+    assert ratio and float(ratio.group(1)) == 63.0

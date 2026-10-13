@@ -64,6 +64,7 @@ include = [
 exclude = ["docs*", "prompts*"]
 
 [tool.setuptools.package-data]
+"v2.tools" = ["templates/*.html"]
 "apps.api_gateway" = ["templates/*.j2"]
 "plugins" = ["*.json"]
 "prosail_python" = ["*.npy", "*.pkl", "*.md"]

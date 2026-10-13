@@ -6,11 +6,15 @@
 
 import { canonicalJson, canonicalEventStream } from './request'
 import type { SubmissionSseEvent } from './request'
+import type { WorkspaceContext, WorkspaceUiState } from './workspaceClient'
+import type { WorkflowTaskId } from '../spatialClient'
 
 export interface CreateSubmissionRequest {
   message: string
   dataset_refs?: Array<{ type: 'dataset'; id: string }>
-  context?: { inherit?: 'latest' | 'none'; inherit_run_id?: string }
+  context?: { inherit?: 'latest' | 'none'; inherit_run_id?: string; workspace?: WorkspaceContext; workspace_ui?: WorkspaceUiState }
+  workspace_action?: { action_id: string; task_ids: WorkflowTaskId[]; source_run_id?: string; yield_demo_crop?: 'wheat' | 'maize' }
+  idempotency_key?: string
   mode?: { interaction?: 'task' | 'chat'; delivery?: 'async' }
   preferences?: Record<string, unknown>
   client?: { name?: string; version?: string }
@@ -34,10 +38,12 @@ export async function createSubmission(
     `/conversations/${encodeURIComponent(conversationId)}/submissions`,
     {
       method: 'POST',
+      headers: req.idempotency_key ? { 'Idempotency-Key': req.idempotency_key } : undefined,
       body: JSON.stringify({
         input: {
           message: req.message,
           refs: req.dataset_refs ?? [],
+          workspace_action: req.workspace_action,
         },
         context: req.context,
         mode: req.mode,

@@ -13,7 +13,7 @@ import threading
 import time
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Protocol, TypeVar, get_args, get_origin
+from typing import Any, Literal, Protocol, TypeVar, get_args, get_origin
 
 import httpx
 from pydantic import BaseModel
@@ -1053,6 +1053,8 @@ def _build_structured_prompt(
     response_model: type[StructuredModelT],
 ) -> str:
     schema_contract = _build_response_contract(response_model)
+    examples = response_model.model_json_schema().get("examples", [])
+    example_text = json.dumps(examples[0], ensure_ascii=False) if examples else '{"action": "call_tools", "reasoning": "需要执行模拟", "tool_calls": [{"tool_name": "prosail.simulation", "tool_input": {"lai": 3.0}}]}'
     return (
         f"User Input:\n{user_prompt}\n\n"
         "Instructions:\n"
@@ -1060,7 +1062,7 @@ def _build_structured_prompt(
         "Use null for missing optional fields.\n"
         f"Required JSON keys and types:\n{json.dumps(schema_contract, ensure_ascii=True, sort_keys=True)}\n\n"
         "Example Output Format:\n"
-        '{"action": "call_tools", "reasoning": "需要执行模拟", "tool_calls": [{"tool_name": "prosail.simulation", "tool_input": {"lai": 3.0}}]}\n\n'
+        f'{example_text}\n\n'
         "Now, output the final JSON based on the User Input:"
     )
 
@@ -1105,6 +1107,9 @@ def _describe_annotation(annotation: Any) -> str:
         if not item_types:
             return "array"
         return f"array[{_describe_annotation(item_types[0])}]"
+
+    if origin is Literal:
+        return "enum " + json.dumps(list(get_args(annotation)), ensure_ascii=False)
 
     if origin is dict:
         return "object"

@@ -14,6 +14,8 @@ The stable contract is the canonical product protocol:
 
 - [canonical_product_protocol.md](canonical_product_protocol.md)
 
+For the map workspace assistant integration, see [workspace_assistant_integration.md](workspace_assistant_integration.md) (2026-10-12). Its product parts represent analysis steps, parameter snapshots and executable cards. Frontends consume validated product data rather than internal tool traces; explicit chat commands and card buttons use the same workflow execution service. Synchronize the current workspace before submitting, render cards by stable ID, and recover persisted Run parts and associated workflows on refresh.
+
 ## Current Backend Status
 
 Backend canonical protocol is already available and should be treated as the source of truth:

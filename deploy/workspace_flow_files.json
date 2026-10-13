@@ -1,0 +1,19 @@
+[
+  "backend/api/canonical/router.py",
+  "backend/schemas/canonical.py",
+  "backend/runtime/workspace_assistant.py",
+  "backend/runtime/analysis_workflow_store.py",
+  "backend/tests/test_workspace_assistant.py",
+  "frontend/src/features/workspace-assistant/WorkspaceAssistantPanel.tsx",
+  "frontend/src/features/workspace-assistant/WorkspaceComposer.tsx",
+  "frontend/src/features/workspace-assistant/useWorkspaceConversation.ts",
+  "frontend/src/features/workspace-assistant/workspaceFlow.ts",
+  "frontend/src/features/workspace-assistant/AnalysisDetails.tsx",
+  "frontend/src/services/canonical/submissionClient.ts",
+  "frontend/src/pages/MapWorkspaceDemoPage.tsx",
+  "frontend/src/test/workspaceFlow.test.tsx",
+  "frontend/src/test/workspaceLaunch.test.ts",
+  "docs/canonical_product_protocol.md",
+  "docs/workspace_assistant_integration.md",
+  "deploy/workspace_flow_live_smoke.py"
+]

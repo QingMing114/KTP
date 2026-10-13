@@ -1,3 +1,6 @@
+import type { CanonicalAssistantPart } from '../../services/canonical/workspaceClient'
+import type { AnalysisWorkflow } from '../../services/spatialClient'
+
 export interface WorkspaceCandidateCardItem {
   id: string
   date: string
@@ -56,6 +59,8 @@ export interface WorkspaceAgentMessageTimelineItem extends WorkspaceTimelineBase
 }
 
 export type WorkspaceTimelineItem =
+  | (WorkspaceTimelineBase & { kind: 'agent_part'; part: CanonicalAssistantPart; runId?: string })
+  | (WorkspaceTimelineBase & { kind: 'workflow'; workflow: AnalysisWorkflow })
   | WorkspaceAoiTimelineItem
   | WorkspaceCandidatesTimelineItem
   | WorkspaceSelectionTimelineItem
@@ -87,7 +92,7 @@ export function workspaceTimelineReducer(
   const index = state.findIndex((item) => item.eventId === action.item.eventId)
   if (index < 0) return [...state, action.item]
   const next = [...state]
-  next[index] = action.item
+  next[index] = { ...action.item, timestamp: state[index].timestamp }
   return next
 }
 
