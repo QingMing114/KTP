@@ -9,6 +9,8 @@ import type { AnalysisViewRequest, WorkspacePanelProps } from '../features/works
 import { useWorkspaceLayout } from '../features/workspace-assistant/useWorkspaceLayout'
 import { ATTENTION_COLORS, useWorkspaceAttention } from '../features/workspace-assistant/useWorkspaceAttention'
 import { useWorkspaceConversation } from '../features/workspace-assistant/useWorkspaceConversation'
+import { useProfessionalReviews } from '../features/workspace-assistant/useProfessionalReviews'
+import { defaultManualImageryDates, assistantImagerySearch } from '../features/workspace-assistant/imagerySearchDefaults'
 import { getWorkspaceWorkflows, type WorkspaceContext } from '../services/canonical/workspaceClient'
 import { getLastLoginUser } from '../services/api'
 import { buildWorkspaceUiState, sameTaskSelection } from '../features/workspace-assistant/workspaceUiContext'
@@ -23,7 +25,13 @@ import {
 
 type AnalysisStage = 'idle' | 'candidates' | 'ready' | 'running' | 'done'
 
+const DEFAULT_FARM_ID = 'farm-zouping'
+
 const DEMO_FARMS: LiveFarm[] = [
+  {
+    farm_id: DEFAULT_FARM_ID, name: '邹平无人示范农场', location_label: '山东 · 邹平', area_hectares: 21.4415077109104,
+    geometry: { type: 'Polygon', coordinates: [[[117.7960098, 36.9507297], [117.7958331, 36.9480382], [117.8039052, 36.9478264], [117.8040377, 36.9505179], [117.7960098, 36.9507297]]] },
+  },
   {
     farm_id: 'farm-heihe', name: '黑河绿洲示范农场', location_label: '甘肃 · 张掖', area_hectares: 1286,
     geometry: { type: 'Polygon', coordinates: [[[100.354, 38.955], [100.401, 38.955], [100.401, 38.98], [100.354, 38.98], [100.354, 38.955]]] },
@@ -49,13 +57,6 @@ const ACTIVE_ANALYSIS_KEY = 'ktp_active_lai_analysis_id'
 const ACTIVE_CROP_KEY = 'ktp_active_crop_analysis_id'
 const ACTIVE_WORKFLOW_KEY = 'ktp_active_analysis_workflow_id'
 
-function formatLocalIsoDate(value: Date): string {
-  const year = value.getFullYear()
-  const month = String(value.getMonth() + 1).padStart(2, '0')
-  const day = String(value.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
 // 工作台必须默认使用实时接口。这样即使某个旧路由遗漏了 `live` 参数，
 // 也不会回退为包含 2025 年固定日期的演示候选影像。
 export default function MapWorkspaceDemoPage({ live = true }: { live?: boolean }) {
@@ -67,8 +68,11 @@ export default function MapWorkspaceDemoPage({ live = true }: { live?: boolean }
     setAnalysisView((previous) => ({ workflowId, requestId: (previous?.requestId ?? 0) + 1 }))
     if (!layout.docked) layout.openDrawer()
   }
-  const [selectedFarm, setSelectedFarm] = useState(DEMO_FARMS[0].farm_id)
+  const [selectedFarm, setSelectedFarm] = useState(DEFAULT_FARM_ID)
   const [selectedImage, setSelectedImage] = useState('')
+  const [autoExecute, setAutoExecute] = useState(false)
+  const [professionalMode, setProfessionalMode] = useState(false)
+  const [apsimMode, setApsimMode] = useState<'field' | 'example'>('example')
   const [stage, setStage] = useState<AnalysisStage>('idle')
   const [progress, setProgress] = useState(0)
   const [liveFarms, setLiveFarms] = useState<LiveFarm[]>([])
@@ -273,7 +277,9 @@ export default function MapWorkspaceDemoPage({ live = true }: { live?: boolean }
   const farm = displayedFarms.find((item) => item.farm_id === selectedFarm) ?? displayedFarms[0]
   const aoiReady = liveAoi != null && liveAoiArea != null && liveAoiArea > 0
   const aoiAreaLabel = formatAoiArea(liveAoiArea)
-  const imagerySearchEndDate = formatLocalIsoDate(new Date())
+  const [initialImageryDates] = useState(() => defaultManualImageryDates())
+  const [imagerySearchEndDate, setImagerySearchEndDate] = useState(initialImageryDates.end)
+  const [imagerySearchStartDate, setImagerySearchStartDate] = useState(initialImageryDates.start)
   const displayedCandidates = useMemo(() => {
     if (!live) return DEMO_CANDIDATES
     return (liveCandidates ?? []).map((item) => ({
@@ -648,6 +654,10 @@ export default function MapWorkspaceDemoPage({ live = true }: { live?: boolean }
 
   const findImagery = async () => {
     if (launchLocked.current || imageryIsSearching || stage === 'running') return
+    if (!imagerySearchStartDate || !imagerySearchEndDate || imagerySearchStartDate > imagerySearchEndDate) {
+      setAnalysisError('请选择有效的起止日期，开始日期不能晚于结束日期。')
+      return
+    }
     const requestId = ++imageryRequest.current
     if (!aoiReady || !liveAoi || liveAoiArea == null) {
       const detail = '请先绘制有效的 AOI。'
@@ -671,13 +681,14 @@ export default function MapWorkspaceDemoPage({ live = true }: { live?: boolean }
       const items = await searchLiveImagery({
         aoi: { geometry: liveAoi, source: 'drawn', area_hectares: Number(liveAoiArea.toFixed(2)) },
         end_date: imagerySearchEndDate,
+        start_date: imagerySearchStartDate,
         max_cloud_cover: 20,
       })
       if (requestId !== imageryRequest.current) return
       setLiveCandidates(items)
       setSelectedImage('')
       setLiveStatus(items.length ? `找到 ${items.length} 景候选影像` : '未找到满足条件的候选影像')
-      if (!items.length) setAnalysisError('未找到满足当前日期和云量条件的影像，可稍后重新搜索。')
+      if (!items.length) setAnalysisError('未找到满足当前日期和云量条件的影像，请扩大日期范围后重新搜索。')
       setStage('candidates')
       dispatchTimeline({
         type: 'upsert',
@@ -725,28 +736,60 @@ export default function MapWorkspaceDemoPage({ live = true }: { live?: boolean }
     })
   }
 
+  const assistantSearch = useMemo(() => assistantImagerySearch(autoExecute, imagerySearchStartDate, imagerySearchEndDate), [autoExecute, imagerySearchStartDate, imagerySearchEndDate])
   const workspaceContext = useMemo<WorkspaceContext>(() => {
     workspaceRevision.current = Math.max(Date.now(), workspaceRevision.current + 1)
     const candidate = liveCandidates?.find((item) => item.item_id === selectedImage)
     return {
       workspace_id: workspaceId, revision: workspaceRevision.current,
       execution_mode: live ? 'live' : 'demo', farm_id: selectedFarm,
+      auto_execute: autoExecute,
+      professional_mode: professionalMode,
+      imagery_search: assistantSearch,
       aoi: liveAoi && liveAoiArea != null ? { geometry: liveAoi, source: 'drawn', area_hectares: liveAoiArea } : null,
       imagery_item_id: selectedImage || null, imagery_snapshot: candidate ?? null,
-      active_workflow_id: workflow?.workflow_id ?? null, draft_task_ids: draftTaskIds,
+      active_workflow_id: workflow?.workflow_id ?? null, draft_task_ids: draftTaskIds, apsim_mode: apsimMode,
     }
-  }, [workspaceId, live, selectedFarm, liveAoi, liveAoiArea, selectedImage, liveCandidates, workflow?.workflow_id, draftTaskIds])
+  }, [workspaceId, live, selectedFarm, liveAoi, liveAoiArea, selectedImage, liveCandidates, workflow?.workflow_id, draftTaskIds, apsimMode, autoExecute, professionalMode, assistantSearch])
+
+  useEffect(() => {
+    if (professionalMode) window.sessionStorage.setItem(`ktp_professional_context:${workspaceId}`, JSON.stringify(workspaceContext))
+  }, [professionalMode, workspaceId, workspaceContext])
+  useEffect(() => {
+    if (!live || window.localStorage.getItem(ACTIVE_WORKFLOW_KEY)) return
+    const saved = window.sessionStorage.getItem(`ktp_professional_context:${workspaceId}`)
+    if (!saved) return
+    try {
+      const context = JSON.parse(saved) as WorkspaceContext
+      if (context.aoi) { setLiveAoi(context.aoi.geometry as AoiGeometry); setRestoredAoi(context.aoi.geometry as AoiGeometry); setLiveAoiArea(context.aoi.area_hectares) }
+      if (context.farm_id) setSelectedFarm(context.farm_id)
+      setSelectedImage(context.imagery_item_id ?? '')
+      if (context.imagery_snapshot) setLiveCandidates([context.imagery_snapshot])
+      updateDraftTaskIds(context.draft_task_ids)
+      setApsimMode(context.apsim_mode ?? 'field')
+      if (context.imagery_search?.start_date) setImagerySearchStartDate(context.imagery_search.start_date)
+      if (context.imagery_search?.end_date) setImagerySearchEndDate(context.imagery_search.end_date)
+    } catch { window.sessionStorage.removeItem(`ktp_professional_context:${workspaceId}`) }
+  }, [workspaceId, live, updateDraftTaskIds])
 
   const workspaceContextRef = useRef(workspaceContext)
   workspaceContextRef.current = workspaceContext
   const onWorkflowLinked = useCallback(async (workflowId: string, activate = true) => {
     const captured = workspaceContextRef.current
-    if (activate) window.localStorage.setItem(ACTIVE_WORKFLOW_KEY, workflowId)
     const created = await getAnalysisWorkflow(workflowId)
     appendTimelineItem({ eventId: `workflow-${workflowId}`, kind: 'workflow', workflow: created, timestamp: created.created_at })
     const current = workspaceContextRef.current
-    if (!activate || current.workspace_id !== captured.workspace_id || current.imagery_item_id !== created.imagery_item_id || current.farm_id !== created.farm_id || JSON.stringify(current.aoi?.geometry) !== JSON.stringify(created.aoi.geometry)) return
+    if (!activate || current.revision !== captured.revision || current.workspace_id !== captured.workspace_id || current.farm_id !== created.farm_id || JSON.stringify(current.aoi?.geometry) !== JSON.stringify(created.aoi.geometry)) return
+    if (current.imagery_item_id !== created.imagery_item_id && !captured.auto_execute && !captured.professional_mode) return
+    window.localStorage.setItem(ACTIVE_WORKFLOW_KEY, workflowId)
+    if (current.imagery_snapshot?.item_id !== created.imagery_item_id) {
+      setSelectedImage(created.imagery_item_id)
+      setLiveCandidates((items) => items?.some((item) => item.item_id === created.imagery_item_id) ? items : [...(items ?? []), created.imagery_snapshot])
+      appendTimelineItem({ eventId: 'imagery-candidates', kind: 'imagery_candidates', candidates: [{ id: created.imagery_item_id, date: created.imagery_snapshot.acquired_at.slice(0, 10), cloud: created.imagery_snapshot.cloud_cover == null ? '未知' : `${created.imagery_snapshot.cloud_cover.toFixed(1)}%`, recommended: true }], timestamp: created.created_at })
+      appendTimelineItem({ eventId: 'imagery-selection', kind: 'imagery_selected', candidateId: created.imagery_item_id, timestamp: created.created_at })
+    }
     clearAnalysisProducts()
+    setApsimMode(created.data_mode === 'apsim_example' ? 'example' : 'field')
     updateDraftTaskIds(created.requested_task_ids)
     applyWorkflow(created)
   }, [applyWorkflow, appendTimelineItem, updateDraftTaskIds])
@@ -757,7 +800,7 @@ export default function MapWorkspaceDemoPage({ live = true }: { live?: boolean }
     workspaceUi.cards = [...workspaceUi.cards.slice(0, 11), { card_id: 'analysis-panel-view', kind: 'workflow', title: '左侧正在查看的任务', state: visibleAnalysisTaskId === workflow?.workflow_id ? 'current' : 'historical', workflow_id: visibleAnalysisTaskId, summary: viewedWorkflow?.detail, task_ids: viewedWorkflow?.requested_task_ids, fields: { 展示位置: '左侧分析面板', 仅查看记录: visibleAnalysisTaskId === workflow?.workflow_id ? '否' : '是' } }]
   }
   const workspaceConversation = useWorkspaceConversation(appendTimelineItem, {
-    context: workspaceContext, ui: workspaceUi, onWorkflowLinked,
+    context: workspaceContext, ui: workspaceUi, onWorkflowLinked, onApsimMode: setApsimMode,
     onDraftTasks: (tasks) => {
       if (stage === 'done') {
         resetAnalysisTracking()
@@ -769,7 +812,9 @@ export default function MapWorkspaceDemoPage({ live = true }: { live?: boolean }
     onDemoStart: startDemoTasks,
   })
 
-  launchLocked.current = workspaceConversation.isLaunching
+  const professionalReviews = useProfessionalReviews(workspaceContext, workspaceConversation.isSending, onWorkflowLinked, appendTimelineItem)
+
+  launchLocked.current = workspaceConversation.isLaunching || professionalReviews.isLaunching
 
   useEffect(() => {
     let disposed = false
@@ -796,16 +841,21 @@ export default function MapWorkspaceDemoPage({ live = true }: { live?: boolean }
 
   const panelProps: WorkspacePanelProps = {
     farm: { name: farm.name, locationLabel: farm.location_label, areaLabel: formatAoiArea(farm.area_hectares) },
-    aoiReady, aoiAreaLabel, imagerySearchEndDate, stage, timeline, selectedImage, selectedCandidate: displayedImage,
+    aoiReady, aoiAreaLabel, imagerySearchEndDate, imagerySearchStartDate, onApsimMode: setApsimMode,
+    onAutoExecute: live ? setAutoExecute : undefined,
+    onProfessionalMode: live ? setProfessionalMode : undefined,
+    professionalReviews: professionalReviews.reviews, onProfessionalDecision: professionalReviews.decide, professionalReviewBusy: professionalReviews.busy,
+    onImagerySearchDates: (start: string, end: string) => { setImagerySearchStartDate(start); setImagerySearchEndDate(end) },
+    stage, timeline, selectedImage, selectedCandidate: displayedImage,
     analysisError, progress, detail: analysisDetail, elapsedSeconds, lastUpdateSeconds, delayed: analysisDelayed,
     connectionIssue: analysisConnectionIssue, pixelProgress, reportUrl, rasterUrl, cropAnalysis, workflow,
     onFindImagery: findImagery, onSelectCandidate: selectImageryCandidate, onStartAnalysis: () => void workspaceConversation.executeTasks(),
     onStartYieldDemo: (crop) => void workspaceConversation.executeTasks(crop),
     onRetryWorkflowStep: retryWorkflowStep, onUpdateYieldInputs: updateYieldInputs,
     onReset: () => { resetAnalysisTracking(); dispatchTimeline({ type: 'removeKinds', kinds: ['analysis_progress', 'analysis_result'] }); setStage(selectedImage ? 'ready' : 'idle'); setProgress(0); setAnalysisError('') },
-    assistantIsSending: workspaceConversation.isSending, assistantIsLaunching: workspaceConversation.isLaunching,
-    imageryIsSearching, assistantError: workspaceConversation.error, onSendAssistantMessage: workspaceConversation.sendMessage,
-    onCancelAssistantMessage: workspaceConversation.cancelMessage, onRecoverTask: workspaceConversation.recoverWorkflow,
+    assistantIsSending: workspaceConversation.isSending, assistantIsLaunching: workspaceConversation.isLaunching || professionalReviews.isLaunching,
+    imageryIsSearching, assistantError: professionalReviews.error || workspaceConversation.error, onSendAssistantMessage: workspaceConversation.sendMessage,
+    onCancelAssistantMessage: workspaceConversation.cancelMessage, onRecoverTask: professionalReviews.error ? professionalReviews.recover : workspaceConversation.recoverWorkflow,
     executionMode: live ? 'live' : 'demo', workspaceContext, draftTaskIds, onDraftTaskIds: updateDraftTaskIds,
   }
 

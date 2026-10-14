@@ -22,8 +22,10 @@ def _geometry() -> GeoJsonGeometry:
 def test_demo_farms_are_loadable_geojson_navigation_presets() -> None:
     farms = FarmStore().list_farms()
 
-    assert [farm.farm_id for farm in farms] == ["farm-heihe", "farm-yongchang", "farm-wuwei"]
+    assert [farm.farm_id for farm in farms] == ["farm-zouping", "farm-heihe", "farm-yongchang", "farm-wuwei"]
     assert all(farm.is_demo and farm.geometry.type == "Polygon" for farm in farms)
+    assert farms[0].name == "邹平无人示范农场"
+    assert farms[0].area_hectares == pytest.approx(farms[0].geometry.area_hectares())
 
 
 def test_analysis_requires_an_explicit_imagery_item() -> None:
@@ -82,13 +84,22 @@ def test_imagery_search_rejects_reversed_date_range() -> None:
         )
 
 
-def test_imagery_search_defaults_to_a_ninety_day_window_from_end_date() -> None:
+def test_imagery_search_defaults_to_a_year_window_from_end_date() -> None:
     request = ImagerySearchRequest(
         aoi=AoiGeometry(geometry=_geometry()),
         end_date="2025-06-10",
     )
 
-    assert request.start_date == "2025-03-12"
+    assert request.start_date == "2024-06-10"
+
+
+@pytest.mark.parametrize(("start", "end", "field"), [
+    ("not-a-date", "2025-05-31", "start_date"),
+    ("2025-05-01", "2025-02-30", "end_date"),
+])
+def test_imagery_search_rejects_invalid_explicit_dates(start, end, field) -> None:
+    with pytest.raises(ValidationError, match=field):
+        ImagerySearchRequest(aoi=AoiGeometry(geometry=_geometry()), start_date=start, end_date=end)
 
 
 def test_lai_analysis_state_is_persisted() -> None:

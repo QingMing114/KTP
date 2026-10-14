@@ -12,6 +12,8 @@ import hashlib
 import hmac
 import json
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
 from typing import Any
 from urllib.parse import quote, urlparse
 
@@ -54,13 +56,37 @@ class SentinelStacProvider:
         self._settings = settings or SentinelStacSettings.from_environment()
 
     def search(self, request: ImagerySearchRequest) -> list[ImageryCandidate]:
+        # Search each part of the growing cycle separately, so recent scenes
+        # cannot consume the entire result limit before older scenes are seen.
+        start = date.fromisoformat(request.start_date)
+        end = date.fromisoformat(request.end_date)
+        days = (end - start).days + 1
+        count = min(12, max(1, (days + 30) // 31))
+        windows = [
+            (start + timedelta(days=days * index // count),
+             start + timedelta(days=days * (index + 1) // count - 1))
+            for index in range(count)
+        ]
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            groups = list(executor.map(lambda window: self._search_window(request, *window), windows))
+        unique = {candidate.item_id: candidate for group in groups for candidate in group}
+        candidates = sorted(unique.values(), key=lambda item: (item.acquired_at, item.item_id), reverse=True)
+        if candidates:
+            recommended = min(candidates, key=lambda item: (item.cloud_cover is None, item.cloud_cover or 0))
+            candidates = [item.model_copy(update={
+                "is_recommended": item.item_id == recommended.item_id,
+                "recommendation_reason": "候选影像中云量最低；请结合拍摄日期确认作物处于生长期，低云量不代表未收获。" if item.item_id == recommended.item_id else None,
+            }) for item in candidates]
+        return candidates
+
+    def _search_window(self, request: ImagerySearchRequest, start: date, end: date) -> list[ImageryCandidate]:
         payload = {
             "collections": [request.collection or self._settings.collection],
             "intersects": request.aoi.geometry.model_dump(mode="json"),
-            "datetime": f"{request.start_date}T00:00:00Z/{request.end_date}T23:59:59Z",
+            "datetime": f"{start.isoformat()}T00:00:00Z/{end.isoformat()}T23:59:59Z",
             "limit": self._settings.result_limit,
             "query": {"eo:cloud_cover": {"lte": request.max_cloud_cover}},
-            "sortby": [{"field": "properties.datetime", "direction": "desc"}],
+            "sortby": [{"field": "properties.eo:cloud_cover", "direction": "asc"}, {"field": "properties.datetime", "direction": "desc"}],
         }
         try:
             response = httpx.post(self._settings.search_url, json=payload, timeout=self._settings.timeout_seconds)
@@ -78,12 +104,6 @@ class SentinelStacProvider:
             if (candidate.coverage_percent or 0) >= self._settings.minimum_coverage_percent
         ]
         candidates.sort(key=lambda item: (item.cloud_cover is None, item.cloud_cover or 0, item.acquired_at), reverse=False)
-        if candidates:
-            recommended = candidates[0]
-            candidates[0] = recommended.model_copy(update={
-                "is_recommended": True,
-                "recommendation_reason": "候选影像中云量最低，且满足当前 AOI 与时间范围。",
-            })
         return candidates[:5]
 
     def validate_selection(

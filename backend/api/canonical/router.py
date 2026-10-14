@@ -39,8 +39,12 @@ from runtime.lai_analysis_store import LaiAnalysisStore
 from runtime.crop_analysis_store import CropAnalysisStore
 from runtime.analysis_workflow_store import AnalysisWorkflowStore
 from runtime.analysis_workflow_runner import ensure_workflow_reports, run_analysis_workflow
-from runtime.workspace_assistant import plan_workspace, workspace_parts, can_rebase_preview, TASK_LABELS
-from schemas.workspace import WorkspaceContext, WorkspaceIntent
+from runtime.workspace_assistant import (plan_workspace, workspace_parts, can_rebase_preview, TASK_LABELS,
+                                         automatic_imagery_request, choose_automatic_imagery)
+from runtime.workspace_lai import workspace_lai_query
+from schemas.workspace import WorkspaceContext, WorkspaceIntent, ProfessionalReview, ConfirmProfessionalReviewRequest
+from runtime.professional_review import create_review, review_part, validate_lai_lut_ranges
+from schemas.runtime import SceneParameters
 from runtime.workflow_reports import REPORT_VERSION, register_crop_report
 from runtime.yield_input_assessment import assess_yield_inputs
 from infra.imagery.stac_provider import ImagerySearchError, SentinelStacProvider
@@ -673,6 +677,8 @@ def build_canonical_router() -> APIRouter:
                 "workspace_context": True,
                 "workspace_card_context": True,
                 "workspace_assistant_actions": True,
+                "workspace_auto_execution": True,
+                "workspace_professional_reviews": True,
                 "simple_yield_estimation": True,
                 "analysis_parameter_cards": True,
                 "demo_farms": True,
@@ -797,6 +803,7 @@ def build_canonical_router() -> APIRouter:
                     crops=_crop_analysis_store(request), lais=_lai_analysis_store(request),
                     artifacts=_artifact_store(request), make_lai_result=_lai_product_result,
                     run_task_ids=run_task_ids,
+                    llm_provider=getattr(getattr(request.app.state, "runtime_engine", None), "llm_provider", None),
                 )
             except Exception:
                 logger.exception("analysis_workflow_unhandled_failure | workflow_id=%s", workflow.workflow_id)
@@ -875,6 +882,10 @@ def build_canonical_router() -> APIRouter:
         body: CreateAnalysisWorkflowRequest, request: Request,
         idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     ) -> AnalysisWorkflowSummary:
+        if body.workspace_id:
+            current = _analysis_workflow_store(request).get_workspace(body.workspace_id, owner_id=_extract_user(request))
+            if current and current.professional_mode:
+                raise HTTPException(409, "专业模式请先在助手中生成并确认参数卡片")
         replay = await _idempotency_result(request, idempotency_key, "/analysis-workflows", await _read_body_bytes(request))
         if replay is not None:
             return replay
@@ -899,6 +910,116 @@ def build_canonical_router() -> APIRouter:
     @router.get("/workspaces/{workspace_id}/workflows", response_model=list[AnalysisWorkflowSummary])
     async def list_workspace_workflows(workspace_id: str, request: Request):
         return _analysis_workflow_store(request).list_for_workspace(workspace_id, owner_id=_extract_user(request))
+
+    @router.get("/workspaces/{workspace_id}/professional-reviews", response_model=list[ProfessionalReview])
+    async def list_professional_reviews(workspace_id: str, request: Request):
+        return _analysis_workflow_store(request).list_reviews(workspace_id, owner_id=_extract_user(request))
+
+    @router.post("/professional-reviews/{review_id}/decision")
+    async def decide_professional_review(review_id: str, body: ConfirmProfessionalReviewRequest, request: Request,
+                                          idempotency_key: str | None = Header(None, alias="Idempotency-Key")):
+        replay = await _idempotency_result(request, idempotency_key, f"/professional-reviews/{review_id}/decision", await _read_body_bytes(request))
+        if replay is not None:
+            return replay
+        try:
+            return await _perform_professional_review_decision(review_id, body, request)
+        except Exception:
+            _release_idempotency(request)
+            raise
+
+    async def _perform_professional_review_decision(review_id, body, request):
+        owner_id = _extract_user(request)
+        workflows = _analysis_workflow_store(request)
+        review = workflows.get_review(review_id, owner_id=owner_id)
+        if review is None:
+            raise HTTPException(404, "确认卡片不存在")
+        next_review = None
+        created = None
+        # Validate everything before consuming the durable confirmation.
+        selected = None
+        selected_item = None
+        search = None
+        tasks = body.task_ids or review.intent.task_ids or review.context.draft_task_ids
+        mode = body.apsim_mode or review.intent.apsim_mode or review.context.apsim_mode
+        if body.decision == "confirm":
+            if review.phase == "search":
+                search_values = review.search.model_dump(exclude={"aoi"})
+                if body.search:
+                    search_values.update(body.search.model_dump(mode="json", exclude_none=True, exclude_unset=True))
+                search = ImagerySearchRequest(aoi=review.context.aoi, **search_values)
+            elif review.phase == "workflow":
+                selected = next((item for item in review.candidates if item.item_id == (body.imagery_item_id or review.selected_imagery_id)), None)
+                if selected is None or not tasks or len(set(tasks)) != len(tasks):
+                    raise HTTPException(400, "请选择卡片中的有效影像及不重复的分析任务")
+            else:
+                if body.scene is None:
+                    raise HTTPException(400, "请提交完整的 LAI 参数范围配置")
+                try:
+                    await asyncio.to_thread(validate_lai_lut_ranges, body.scene.model_dump())
+                except ValueError as exc:
+                    raise HTTPException(400, str(exc)) from exc
+                flow = workflows.get(review.workflow_id, owner_id=owner_id)
+                if flow is None:
+                    raise HTTPException(404, "工作流不存在")
+                try:
+                    selected_item = await asyncio.to_thread(_imagery_provider(request).get_item, flow.imagery_item_id)
+                    _imagery_provider(request).validate_selection(flow.imagery_snapshot, selected_item, flow.aoi.geometry.model_dump(mode="json"))
+                except ImagerySearchError as exc:
+                    raise HTTPException(400, "影像信息已失效，请重新搜索和确认") from exc
+        try:
+            workflows.claim_review(review_id, body.context, owner_id=owner_id, parameters=body.model_dump(mode="json", exclude={"context"}), cancelling=body.decision == "cancel")
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        try:
+            if body.decision == "cancel":
+                review = workflows.finish_review(review_id, owner_id=owner_id, status="cancelled", detail="用户已取消本次操作")
+                if review.phase == "lai":
+                    workflows.update_status(review.workflow_id, owner_id=owner_id, status="cancelled", detail="用户取消了后续 LAI 分析，已完成步骤保留")
+            elif review.phase == "search":
+                try:
+                    candidates = await asyncio.to_thread(_imagery_provider(request).search, search)
+                except ImagerySearchError as exc:
+                    raise HTTPException(502, "影像搜索暂不可用，请稍后重试") from exc
+                workflows.check_workspace(body.context, owner_id=owner_id)
+                from runtime.workspace_assistant import choose_automatic_imagery
+                recommended = choose_automatic_imagery(candidates, search)
+                if not candidates:
+                    raise HTTPException(400, "未找到符合条件的影像，请修改搜索参数")
+                candidates = [item.model_copy(update={"is_recommended": recommended is not None and item.item_id == recommended.item_id}) for item in candidates]
+                next_review = create_review(workflows, owner_id=owner_id, context=body.context,
+                    intent=review.intent.model_copy(update={"imagery_search": None}), run_id=review.source_run_id,
+                    conversation_id=review.conversation_id, phase="workflow", candidates=candidates, search=search)
+                review = workflows.finish_review(review_id, owner_id=owner_id, status="confirmed", next_review_id=next_review.review_id,
+                                                  detail="已按确认的参数搜索，等待确认影像与任务")
+            elif review.phase == "workflow":
+                apsim_example = "yield" in tasks and mode == "example"
+                created = await _create_verified_workflow(CreateAnalysisWorkflowRequest(
+                    professional_mode=True, aoi=review.context.aoi, farm_id=review.context.farm_id,
+                    imagery_item_id=selected.item_id, imagery_snapshot=selected, requested_task_ids=tasks,
+                    workspace_id=body.context.workspace_id, workspace_revision=body.context.revision,
+                    action_id=f"professional-{review_id}", run_id=review.source_run_id, conversation_id=review.conversation_id,
+                    lai_query=review.intent.summary + "\n" + (_store(request).get_run(review.source_run_id).input_message if _store(request).get_run(review.source_run_id) else ""),
+                    data_mode="demo" if review.intent.yield_demo_crop else "apsim_example" if apsim_example else "live",
+                    demo_crop=review.intent.yield_demo_crop,
+                ), request, workspace=body.context)
+                review = workflows.finish_review(review_id, owner_id=owner_id, status="confirmed", workflow_id=created.workflow_id,
+                                                  detail="已按确认的影像与任务启动工作流")
+            else:
+                scene = SceneParameters.model_validate({**review.proposed_scene, **body.scene.model_dump(), "source": "user_confirmed"}).model_dump(mode="json")
+                scene.update(context=review.proposed_scene.get("context"), recommendation=review.proposed_scene, confirmation_review_id=review_id)
+                workflows.update_step(review.workflow_id, "lai", owner_id=owner_id, status="planned", progress_percent=0,
+                                      result={"scene_parameters": scene, "parameters_confirmed": True}, detail="参数已由用户确认，等待反演")
+                flow = workflows.update_status(review.workflow_id, owner_id=owner_id, status="planned", detail="正在使用用户确认的参数继续执行")
+                review = workflows.finish_review(review_id, owner_id=owner_id, status="confirmed", detail="已按确认的参数继续 LAI 反演")
+                created = _launch_analysis_workflow(request, flow, selected_item, {"lai"})
+        except Exception as exc:
+            # Retryable preparation errors preserve the editor and its proposal.
+            workflows.finish_review(review_id, owner_id=owner_id, status="pending", detail=exc.detail if isinstance(exc, HTTPException) else "操作未完成，请重试")
+            raise
+        result = {"review": review.model_dump(mode="json"), "next_review": next_review.model_dump(mode="json") if next_review else None,
+                  "workflow": created.model_dump(mode="json") if created else None}
+        _cache_idempotency(request, 200, result)
+        return result
 
     @router.post("/analysis-workflows/{workflow_id}/start", status_code=202, response_model=AnalysisWorkflowSummary)
     async def start_analysis_workflow(workflow_id: str, request: Request) -> AnalysisWorkflowSummary:
@@ -933,6 +1054,9 @@ def build_canonical_router() -> APIRouter:
             raise HTTPException(status_code=404, detail="Analysis workflow not found")
         if workflow.status == "running":
             raise HTTPException(status_code=409, detail="Workflow is already running")
+        if workflow.professional_mode and any(review.workflow_id == workflow_id and review.status in {"pending", "processing"}
+                                               for review in workflows.list_reviews(workflow.workspace_id, owner_id=owner_id)):
+            raise HTTPException(409, "专业参数等待确认，请使用确认卡片继续或取消")
         target = next((step for step in workflow.steps if step.step_id == body.step_id), None)
         if target is None or target.status not in {"failed", "blocked"}:
             raise HTTPException(status_code=409, detail="Only a failed or blocked step can be retried")
@@ -957,9 +1081,11 @@ def build_canonical_router() -> APIRouter:
             raise HTTPException(status_code=409, detail="Complete crop recognition and LAI before retrying canopy index")
         reset_steps = {body.step_id} if body.step_id != "imagery" else {"imagery", *run_tasks}
         for step_id in reset_steps:
+            previous_step = next(step for step in workflow.steps if step.step_id == step_id)
+            saved_scene = previous_step.result.get("scene_parameters") if step_id == "lai" else None
             workflows.update_step(workflow_id, step_id, owner_id=owner_id,
                                   status="planned", progress_percent=0, detail="等待重新执行",
-                                  result={}, analysis_id=None)
+                                  result={"scene_parameters": saved_scene} if saved_scene else {}, analysis_id=None)
         refreshed = workflows.get(workflow_id, owner_id=owner_id)
         assert refreshed is not None
         workflows.update_status(workflow_id, owner_id=owner_id, status="planned", detail="等待重新执行")
@@ -1707,7 +1833,7 @@ def build_canonical_router() -> APIRouter:
                     if source is None or source.session_id != conversation_id or not source.input_context:
                         raise HTTPException(404, "任务草案不存在")
                     original = WorkspaceContext.model_validate(source.input_context.extra_params.get("workspace"))
-                    fields = {"workspace_id", "execution_mode", "farm_id", "aoi", "imagery_item_id", "imagery_snapshot"}
+                    fields = {"workspace_id", "execution_mode", "farm_id", "aoi", "imagery_item_id", "imagery_snapshot", "apsim_mode"}
                     if original.model_dump(include=fields) != context.model_dump(include=fields):
                         raise HTTPException(409, "选区或影像已变化，请在当前分析卡片重新启动。")
                     if not any(p.get("type") == "action_card" and p.get("data", {}).get("action_id") == action.action_id for p in source.product_parts):
@@ -1744,7 +1870,53 @@ def build_canonical_router() -> APIRouter:
                 run = run.model_copy(update={"input_context": run_context})
                 if intent.intent == "advise" and context.imagery_item_id:
                     intent = intent.model_copy(update={"summary": "已读取最新选片状态，可在当前任务卡片继续选择分析任务。"})
+            # Keep authorization bound to the submitted snapshot. Automatic
+            # selection is a derived input, never a client workspace mutation.
+            authorized_context = context
+            automatic = context.auto_execute and intent.intent == "execute" and not body.input.workspace_action
+            selection_note = ""
+            if automatic:
+                intent = intent.model_copy(update={"explicit_execution": True})
+            if (automatic and context.execution_mode == "live" and context.aoi is not None
+                    and (intent.task_ids or context.draft_task_ids) and not intent.unsupported_parameters
+                    and not (active and active.status in {"planned", "running"})
+                    and (not context.imagery_item_id or context.imagery_snapshot is None or intent.imagery_search is not None)):
+                search = automatic_imagery_request(context, intent)
+                _emit_event(subs, submission_id, "run.progress", run_id=run_id, stage="processing",
+                            detail=f"自动执行：正在搜索 {search.start_date} 至 {search.end_date} 的影像")
+                try:
+                    candidates = await asyncio.to_thread(_imagery_provider(request).search, search)
+                except ImagerySearchError as exc:
+                    raise HTTPException(502, "自动搜索影像暂不可用，本次任务未启动，请稍后重试。") from exc
+                workflows.check_workspace(authorized_context, owner_id=owner_id)
+                if cancellation_event.is_set():
+                    store.save_run(run.model_copy(update={"status": "cancelled", "output_message": "已停止自动执行，任务未启动。"}))
+                    return
+                selected = choose_automatic_imagery(candidates, search)
+                if selected is None:
+                    raise HTTPException(400, "未找到符合日期、云量和区域覆盖要求的影像，本次任务未启动。请调整搜索条件后重试。")
+                context = context.model_copy(update={"imagery_item_id": selected.item_id, "imagery_snapshot": selected})
+                selection_note = f"已自动选择 {selected.acquired_at[:10]} 的影像（云量 {selected.cloud_cover:g}%），在指定日期范围内优先低云量，同等云量优先较新影像。"
+                run = run.model_copy(update={"input_context": run_context.model_copy(update={"extra_params": {
+                    **run_context.extra_params, "effective_workspace": context.model_dump(mode="json"),
+                    "automatic_imagery_search": search.model_dump(mode="json"),
+                }})})
+                _emit_event(subs, submission_id, "run.progress", run_id=run_id, stage="processing", detail=selection_note)
             summary, parts = workspace_parts(intent, context, action_id, active)
+            if (context.professional_mode and context.execution_mode == "live" and intent.intent == "execute"
+                    and context.aoi is not None and (intent.task_ids or context.draft_task_ids)
+                    and not intent.unsupported_parameters and not (active and active.status in {"planned", "running"})):
+                review = create_review(workflows, owner_id=owner_id, context=context, intent=intent,
+                                       run_id=run_id, conversation_id=conversation_id)
+                parts.append(review_part(review))
+                parts[2]["data"]["can_execute"] = False
+                summary = "已生成推荐配置。请在确认卡片中编辑参数，点击“确认并执行”后继续。"
+                intent = intent.model_copy(update={"explicit_execution": False})
+            if selection_note:
+                parts[0]["data"]["rationale"] = selection_note + parts[0]["data"]["rationale"]
+                for parameter in parts[1]["data"]["parameters"]:
+                    if parameter["name"] == "影像":
+                        parameter["source"] = "automatic"
             plan = parts[0]["data"] if parts else {}
             for part in parts:
                 _emit_event(subs, submission_id, "assistant.part.updated", run_id=run_id, stage="processing", data={"part": part})
@@ -1758,18 +1930,25 @@ def build_canonical_router() -> APIRouter:
                         farm_id=context.farm_id, requested_task_ids=plan["requested_task_ids"],
                         action_id=action_id, workspace_id=context.workspace_id, workspace_revision=context.revision,
                         conversation_id=conversation_id, run_id=run_id,
-                        data_mode="demo" if intent.yield_demo_crop else "live", demo_crop=intent.yield_demo_crop,
-                    ), request, workspace=context, cancellation_event=cancellation_event)
+                        lai_query=workspace_lai_query(
+                            body.input.message, context,
+                            [previous for previous in store.list_runs_for_session(conversation_id) if previous.run_id != run_id],
+                        ),
+                        data_mode=plan["data_mode"], demo_crop=intent.yield_demo_crop,
+                    ), request, workspace=authorized_context, cancellation_event=cancellation_event)
                     parts[1]["data"]["state"] = "effective"
                     reference = {"type": "workflow_reference", "part_id": f"{action_id}:workflow", "data": {
                         "workflow_id": created.workflow_id, "plan_id": action_id, "execution_mode": "live",
                         "workspace_id": context.workspace_id, "revision": context.revision, "status": created.status,
                         "data_mode": created.data_mode, "demo_crop": created.demo_crop,
+                        "auto_execute": automatic,
                     }}
                     parts.append(reference)
                     parts[2]["data"]["can_execute"] = False
                     parts[2]["data"]["executed"] = True
                     summary = "已启动" + "、".join(TASK_LABELS[t] for t in created.requested_task_ids) + "。左侧分析面板可查看进度和结果。"
+                    if automatic:
+                        summary = selection_note + "已自动启动" + "、".join(TASK_LABELS[t] for t in created.requested_task_ids) + "，完成后会在此提醒你。"
                     if created.data_mode == "demo":
                         summary = "已启动" + ("小麦" if created.demo_crop == "wheat" else "玉米") + "估产模拟演示。左侧可查看进度、示例结果及 APSIM 模板报告；数值不代表实际产量。"
                     _emit_event(subs, submission_id, "workflow.linked", run_id=run_id, stage="processing", data={"part": reference})

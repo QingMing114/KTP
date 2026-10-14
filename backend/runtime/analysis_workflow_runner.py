@@ -16,16 +16,21 @@ from runtime.crop_analysis_store import CropAnalysisStore
 from runtime.lai_analysis_store import LaiAnalysisStore
 from runtime.yield_input_assessment import assess_yield_inputs
 from runtime.apsim_field_runner import ApsimFieldError, run_field_yield
+from runtime.apsim_example import ApsimExampleError, run_example, register_example_report
 from runtime.yield_potential import YieldPotentialError, estimate_yield_potential
 from runtime.simple_yield import SimpleYieldError
 from runtime.simple_yield_runner import run_simple_yield
 from runtime.yield_demo import run_yield_demo, register_yield_demo_report
 from runtime.lai_quality import assess_lai_raster_quality
+from runtime.workspace_lai import configure_workspace_lai
+from runtime.professional_review import create_review
+from schemas.runtime import SceneParameters
 from runtime.workflow_reports import (
     REPORT_VERSION, register_crop_report, register_growth_report, register_map_report,
     register_potential_report, register_result_json, register_yield_report, register_simple_yield_report,
 )
 from schemas.analysis_workflow import AnalysisWorkflowSummary
+from schemas.workspace import WorkspaceIntent
 from schemas.spatial import CreateCropAnalysisRequest, CreateLaiAnalysisRequest
 from v2.tools.lai_report_handler import run_lai_html_report
 
@@ -62,6 +67,7 @@ def run_analysis_workflow(
     artifacts: ArtifactStore,
     make_lai_result: Callable[..., dict],
     run_task_ids: set[str],
+    llm_provider: Any = None,
 ) -> None:
     """Keep independent task failures while sharing one image download."""
     workflow = workflows.get(workflow_id, owner_id=owner_id)
@@ -124,7 +130,26 @@ def run_analysis_workflow(
     if "crop" in run_task_ids:
         _run_crop(workflow, reflectance, root, workflows, crops, artifacts, owner_id)
     if "lai" in run_task_ids:
-        _run_lai(workflow, reflectance, root, workflows, lais, artifacts, make_lai_result, owner_id)
+        workflow = workflows.get(workflow_id, owner_id=owner_id) or workflow
+        if workflow.professional_mode:
+            step = next(s for s in workflow.steps if s.step_id == "lai")
+            if not step.result.get("parameters_confirmed"):
+                scene = step.result.get("scene_parameters") or configure_workspace_lai(workflow, reflectance, llm_provider)
+                context = workflows.get_workspace(workflow.workspace_id, owner_id=owner_id)
+                if context is None:
+                    raise ValueError("专业模式缺少工作台输入快照")
+                review = create_review(workflows, owner_id=owner_id, context=context,
+                    intent=WorkspaceIntent(intent="execute", task_ids=workflow.requested_task_ids, summary="确认反演参数"),
+                    run_id=workflow.run_id or workflow_id, conversation_id=workflow.conversation_id,
+                    phase="lai", workflow=workflow, scene=scene)
+                updated = workflows.update_step(workflow_id, "lai", owner_id=owner_id, status="blocked", progress_percent=0,
+                    detail="场景参数已推荐，等待编辑并确认后执行 LAI 反演",
+                    result={"scene_parameters": scene, "reason_code": "professional_confirmation_required", "review_id": review.review_id})
+                step = next(s for s in updated.steps if s.step_id == "lai")
+                workflows.finish_review(review.review_id, owner_id=owner_id, step_version=step.updated_at)
+                workflows.update_status(workflow_id, owner_id=owner_id, status="blocked", detail="专业模式：请编辑并确认 LAI 参数后继续")
+                return
+        _run_lai(workflow, reflectance, root, workflows, lais, artifacts, make_lai_result, owner_id, llm_provider)
     _finish(workflows, workflow_id, owner_id, artifact_root=artifact_root, artifacts=artifacts)
 
 
@@ -187,6 +212,7 @@ def _run_lai(
     workflow: AnalysisWorkflowSummary, reflectance: Path, root: Path,
     workflows: AnalysisWorkflowStore, lais: LaiAnalysisStore,
     artifacts: ArtifactStore, make_lai_result: Callable[..., dict], owner_id: str,
+    llm_provider: Any = None,
 ) -> None:
     workflow_id = workflow.workflow_id
     child = lais.create(CreateLaiAnalysisRequest(
@@ -195,11 +221,20 @@ def _run_lai(
     ))
     workflows.update_step(workflow_id, "lai", owner_id=owner_id, status="running",
                           analysis_id=child.analysis_id, progress_percent=5,
-                          detail="正在执行 PROSAIL LAI 反演")
+                          detail="正在自动配置 LAI 场景参数")
     lais.update(child.analysis_id, status="running", stage="inversion", progress_percent=5,
                 detail="正在使用工作流共享影像")
     last_progress = -1
+    scene_data = {}
     try:
+        previous = next(s for s in workflow.steps if s.step_id == "lai").result.get("scene_parameters")
+        # Reuse the persisted proposal on retry instead of asking the model again.
+        scene_data = previous or configure_workspace_lai(workflow, reflectance, llm_provider)
+        constraints = SceneParameters.model_validate(scene_data).to_constraints()
+        source_label = "用户确认" if scene_data["source"] == "user_confirmed" else "大模型" if scene_data["source"] == "llm" else "规则回退"
+        workflows.update_step(workflow_id, "lai", owner_id=owner_id, status="running",
+                              detail=f"{source_label}场景参数已生成，正在执行反演",
+                              result={"scene_parameters": scene_data, "parameters_confirmed": workflow.professional_mode})
         def inversion_progress(processed: int, total: int) -> None:
             nonlocal last_progress
             percent = min(85, 10 + round(75 * processed / max(total, 1)))
@@ -216,6 +251,8 @@ def _run_lai(
         observation, report_artifacts = run_lai_html_report(
             image_path=str(reflectance), artifact_output_dir=str(root / "lai"),
             progress_callback=inversion_progress,
+            scene_constraints=constraints,
+            **({"strict_scene_constraints": True} if workflow.professional_mode else {}),
         )
         if observation.status != "success":
             raise RuntimeError(observation.summary)
@@ -235,6 +272,8 @@ def _run_lai(
             preview_artifact_id=artifact_ids["lai_preview"],
         )
         result["observation_at"] = workflow.imagery_snapshot.acquired_at
+        result["scene_parameters"] = scene_data
+        result["parameters_confirmed"] = workflow.professional_mode
         result["quality"] = assess_lai_raster_quality(
             Path(payload["lai_raster_path"]), workflow.aoi.geometry.model_dump(mode="json"),
         )
@@ -263,10 +302,10 @@ def _run_lai(
             child.analysis_id,
             {"kind": "error", "stage": "failed", "detail": detail, "data": {}},
             status="failed", stage="failed", detail=detail,
-            result={"error": detail}, completed_at=_now(),
+            result={"error": detail, "scene_parameters": scene_data}, completed_at=_now(),
         )
         workflows.update_step(workflow_id, "lai", owner_id=owner_id,
-                              status="failed", detail=detail, result={"error": detail})
+                              status="failed", detail=detail, result={"error": detail, "scene_parameters": scene_data})
     finally:
         lais.close(child.analysis_id)
 
@@ -376,7 +415,23 @@ def _finish(
                 logger.exception("simple_yield_failed | workflow_id=%s", workflow_id)
                 workflows.update_step(workflow_id, "yield_simple", owner_id=owner_id,
                                       status="failed", detail="简化估产数据读取或计算失败，请稍后重试。")
-    if "yield" in statuses:
+    if "yield" in statuses and workflow.data_mode == "apsim_example":
+        example_step = next(step for step in workflow.steps if step.step_id == "yield")
+        if example_step.status != "completed" and artifact_root is not None and artifacts is not None:
+            try:
+                workflows.update_step(workflow_id, "yield", owner_id=owner_id,
+                                      status="running", progress_percent=5, detail="正在根据作物识别选择并运行 APSIM 示例")
+                output_dir = artifact_root / "workflows" / workflow_id / "yield"
+                result = run_example(workflow, output_dir)
+                result.update(register_example_report(artifacts, workflow=workflow, result=result, output_dir=output_dir))
+                workflows.update_step(workflow_id, "yield", owner_id=owner_id,
+                                      status="completed", progress_percent=100, detail=f"{result['crop_label']} APSIM 真实示例模拟已完成；结果不代表当前地块", result=result)
+            except ApsimExampleError as exc:
+                workflows.update_step(workflow_id, "yield", owner_id=owner_id, status="blocked", detail=str(exc), result={"reason": str(exc)})
+            except Exception:
+                logger.exception("apsim_example_failed | workflow_id=%s", workflow_id)
+                workflows.update_step(workflow_id, "yield", owner_id=owner_id, status="failed", detail="APSIM 示例处理失败，请检查日志后重试。")
+    elif "yield" in statuses:
         assessment = assess_yield_inputs(workflow)
         if assessment.status == "ready" and artifact_root is not None and artifacts is not None:
             workflows.update_step(workflow_id, "yield", owner_id=owner_id,
@@ -443,7 +498,7 @@ def _write_workflow_summary_report(
     sections.append({"title": "实际生效参数", "rows": [
         ["影像准备分辨率 m", workflow.parameters["target_resolution_m"]],
         ["共享反射率波段", " / ".join(workflow.parameters["reflectance_bands"])],
-        ["参数来源", "算法固定配置"],
+        ["影像准备参数来源", "算法固定配置"],
     ]})
     for step in workflow.steps:
         result = step.result or {}
@@ -454,12 +509,22 @@ def _write_workflow_summary_report(
         elif step.step_id == "lai":
             rows += [["LAI 均值", result.get("lai_mean")],
                      ["有效覆盖率", (result.get("quality") or {}).get("valid_pixel_fraction")]]
+            scene = result.get("scene_parameters") or {}
+            application = result.get("constraint_application") or {}
+            if scene:
+                rows += [["场景参数来源", "用户编辑并确认" if scene.get("source") == "user_confirmed" else "大模型自动配置" if scene.get("source") == "llm" else "规则回退"],
+                         ["配置依据", scene.get("reasoning")],
+                         ["范围生效状态", {"applied": "已生效", "fallback": "回退完整 LUT", "unconstrained": "完整 LUT"}.get(application.get("status"), "待核验")]]
+                for key, label in (("lai_range", "LAI"), ("cab_range", "Cab"), ("lidfa_range", "叶倾角"), ("psoil_range", "土壤参数")):
+                    rows.append([f"{label} 生效范围", str(application.get("effective", {}).get(key, "完整 LUT"))])
+                if application.get("reason"):
+                    rows.append(["回退原因", application["reason"]])
         elif step.step_id == "growth":
             rows += [["植被比例", result.get("vegetation_ratio")]]
         elif step.step_id == "potential":
             rows += [["冠层指数（未校准）", result.get("canopy_index")]]
         elif step.step_id == "yield":
-            rows += [["APSIM LAI 约束产量 t/ha", result.get("constrained_yield_t_ha")]]
+            rows += ([["APSIM 示例模拟单产 t/ha", result.get("example_yield_t_ha")], ["示例模板", (result.get("input_provenance") or {}).get("template")], ["配套气象", (result.get("input_provenance") or {}).get("weather")]] if workflow.data_mode == "apsim_example" else [["APSIM LAI 约束产量 t/ha", result.get("constrained_yield_t_ha")]])
         elif step.step_id == "yield_simple":
             rows += [["粮食干重试验估计 t/ha", result.get("estimated_yield_t_ha")],
                      ["遥感有效生长期", f"{(result.get('season') or {}).get('start', '—')} 至 {(result.get('season') or {}).get('end', '—')}"],
@@ -540,6 +605,8 @@ def ensure_workflow_reports(
                 artifacts, workflow_id=workflow_id, output_dir=root / "yield_simple",
                 imagery_item_id=workflow.imagery_item_id, observed_at=workflow.imagery_snapshot.acquired_at,
                 area_hectares=workflow.aoi.area_hectares, result=result))
+        elif step.step_id == "yield" and workflow.data_mode == "apsim_example" and (not result.get("report_uri") or needs_design):
+            result.update(register_example_report(artifacts, workflow=workflow, result=result, output_dir=root / "yield"))
         elif step.step_id == "yield" and (not result.get("report_uri") or needs_design):
             result.update(register_yield_report(
                 artifacts, workflow_id=workflow_id, output_dir=root / "yield",

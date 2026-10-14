@@ -15,6 +15,7 @@ This is pure remote-sensing logic with no I/O or LLM dependencies.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 
 
 @dataclass
@@ -30,7 +31,7 @@ class SceneReasoningResult:
     constraints: dict = field(default_factory=dict)
 
 
-def prosail_scene_reasoning(query: str, image_path: str | None) -> SceneReasoningResult:
+def prosail_scene_reasoning(query: str, image_path: str | None, *, month: int | None = None) -> SceneReasoningResult:
     """Return scene parameter inference with both display steps and constraints.
 
     Detects crop type, geographic location, season/month, and growth stage
@@ -69,7 +70,9 @@ def prosail_scene_reasoning(query: str, image_path: str | None) -> SceneReasonin
         loc, climate = "未指定地区", "—"
 
     # Season / month detection
-    month = None
+    explicit_month = re.search(r"(?<!\d)(1[0-2]|[1-9])月", q)
+    if month is None and explicit_month:
+        month = int(explicit_month.group(1))
     for m, kws in {
         1: ("1月", "january", "一月"),
         3: ("3月", "march", "三月"),
@@ -81,7 +84,7 @@ def prosail_scene_reasoning(query: str, image_path: str | None) -> SceneReasonin
         9: ("9月", "september", "九月"),
         10: ("10月", "october", "十月"),
     }.items():
-        if any(k in q for k in kws):
+        if month is None and any(k in q for k in kws):
             month = m
             break
     if month is None and any(k in q for k in ("夏", "summer")):

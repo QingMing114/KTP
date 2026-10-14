@@ -10,6 +10,14 @@ const context: WorkspaceContext = {
 }
 
 describe('original workbench cards as assistant context', () => {
+  it('includes older selected imagery beyond the first five candidates', () => {
+    const candidates = Array.from({ length: 12 }, (_, index) => ({ id: `scene-${index}`, date: `2026-${String(12 - index).padStart(2, '0')}-01`, cloud: '2%', recommended: index === 0 }))
+    const ui = buildWorkspaceUiState({ ...context, imagery_item_id: 'scene-10' }, 'ready', { name: '农场', locationLabel: '', areaLabel: '' }, candidates, [])
+    expect(ui.imagery_candidates).toHaveLength(12)
+    expect(ui.imagery_candidates[10].selected).toBe(true)
+    expect(ui.cards.find((card) => card.kind === 'imagery_candidates')?.candidate_ids).toContain('scene-10')
+  })
+
   it('sends explicit image selection and the shared task card without treating a recommendation as selection', () => {
     const selected = { ...context, imagery_item_id: 'image-2', draft_task_ids: ['lai'] as const }
     const ui = buildWorkspaceUiState({ ...selected, draft_task_ids: [...selected.draft_task_ids] }, 'ready', { name: '农场', locationLabel: '甘肃', areaLabel: '1286 ha' }, [

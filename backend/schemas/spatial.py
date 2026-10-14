@@ -174,13 +174,19 @@ class ImagerySearchRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_date_range(self) -> "ImagerySearchRequest":
+        try:
+            end = date.fromisoformat(self.end_date)
+        except ValueError as exc:
+            raise ValueError("end_date must use YYYY-MM-DD format") from exc
         if self.start_date is None:
-            try:
-                self.start_date = (date.fromisoformat(self.end_date) - timedelta(days=90)).isoformat()
-            except ValueError as exc:
-                raise ValueError("end_date must use YYYY-MM-DD format") from exc
-        if self.start_date > self.end_date:
+            self.start_date = (end - timedelta(days=365)).isoformat()
+        try:
+            start = date.fromisoformat(self.start_date)
+        except ValueError as exc:
+            raise ValueError("start_date must use YYYY-MM-DD format") from exc
+        if start > end:
             raise ValueError("start_date must be earlier than or equal to end_date")
+        self.start_date, self.end_date = start.isoformat(), end.isoformat()
         return self
 
 

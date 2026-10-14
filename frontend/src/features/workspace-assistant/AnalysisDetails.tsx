@@ -11,7 +11,7 @@ export default function AnalysisDetails({ parts, demo = false, expanded = true }
           {part.data?.missing_inputs?.map((missing) => <p key={missing} className="mt-1 text-amber-200">{missing}</p>)}
         </details>
       : part.type === 'parameter_set'
-        ? <details key={part.part_id ?? index} className="rounded-lg border border-white/10 bg-black/10 p-3">
+        ? <details key={part.part_id ?? index} open={expanded} className="rounded-lg border border-white/10 bg-black/10 p-3">
             <summary className="cursor-pointer font-medium text-emerald-100">参数配置 · {part.data?.state === 'effective' ? '实际生效' : '待提交'}</summary>
             <dl className="mt-2 space-y-2">{part.data?.parameters?.map((parameter) => <div key={parameter.name} className="flex justify-between gap-3"><dt className="shrink-0 text-slate-500">{parameter.name}</dt><dd className="break-all text-right">{parameter.value} {parameter.unit}{parameter.source === 'algorithm_fixed' && <span className="ml-1 text-slate-500">固定</span>}</dd></div>)}</dl>
           </details>

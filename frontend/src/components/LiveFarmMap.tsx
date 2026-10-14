@@ -45,7 +45,7 @@ interface Props {
   onOverlayOpacityChange: (opacity: number) => void
 }
 
-const defaultCenter: Position = [38.55, 101.3]
+const defaultCenter: Position = [36.94927805, 117.7999354]
 
 function MapLayoutResize() {
   const map = useMap()
@@ -83,7 +83,7 @@ function FarmFocus({ farm }: { farm?: LiveFarm }) {
   useEffect(() => {
     const points = farm ? geometryPositions(farm.geometry) : []
     const bounds: LatLngBoundsExpression | null = points.length ? points : null
-    if (bounds) map.fitBounds(bounds, { padding: [44, 44], maxZoom: 13 })
+    if (bounds) map.fitBounds(bounds, { padding: [44, 44], maxZoom: 17 })
   }, [farm, map])
   return null
 }
@@ -250,7 +250,7 @@ export default function LiveFarmMap({
   })), [farms])
 
   return <div className="absolute inset-0 z-30 bg-[#12382c]" aria-label="农场分析地图">
-    <MapContainer center={defaultCenter} zoom={8} zoomControl className="ktp-live-map h-full w-full">
+    <MapContainer center={defaultCenter} zoom={15} zoomControl className="ktp-live-map h-full w-full">
       <MapLayoutResize />
       <TileLayer
         attribution={satelliteEnabled

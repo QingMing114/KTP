@@ -90,6 +90,10 @@ loginctl show-user zhanghuaxiang_D -p Linger
 
 ## 更新与验收
 
+用户于 2026-10-14 要求：以后每次代码修改完成并通过验证，都同步至本 gpu208 实例。该要求已经写入项目 `AGENTS.md`，同步及运行验收属于任务完成条件。
+
+本地工作树存在尚未提交的修改时，不能仅使用 `git pull`。应校验并备份服务器将被覆盖的文件，只传输本次修改及所需前端构建产物；不覆盖私有配置与运行数据。前端保留旧哈希资源，先上传新资源，最后替换 `frontend/dist/index.html`。后端变更需重启用户服务以重新加载代码和示范农场 GeoJSON。同步后检查文件哈希、服务状态、页面及相关接口。
+
 ```bash
 cd /home/D/zhanghuaxiang_D/Code/KTP
 export TMPDIR=/home/D/zhanghuaxiang_D/apps/ktp/tmp

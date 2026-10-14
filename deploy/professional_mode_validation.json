@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-14",
+  "target": "gpu208",
+  "url": "http://192.168.9.208:3002/workspace",
+  "release": "/home/D/zhanghuaxiang_D/apps/ktp/releases/professional-mode-20261014-170745",
+  "backup": "/home/D/zhanghuaxiang_D/apps/ktp/releases/professional-mode-20261014-170745/backup",
+  "installed_files": 56,
+  "local_backend_tests": {"passed": 268, "skipped": 3},
+  "local_frontend_tests": {"passed": 139},
+  "frontend_lint": "passed",
+  "frontend_production_build": "passed",
+  "server_related_tests": {"passed": 77},
+  "services": {"ktp-backend": "active", "ktp-frontend": "active"},
+  "live_checks": {"health_200": true, "workspace_200": true, "authenticated": true, "real_planner": true, "professional_review_pending": true, "no_unconfirmed_workflow": true, "cancellation": true, "idempotent_replay": true},
+  "browser_checks": {"mutually_exclusive_modes": true, "search_confirmation": true, "workflow_confirmation": true, "lai_confirmation": true, "edited_cloud_limit": 5, "edited_lai_range": [0, 2], "real_inversion_invocations": 1, "refresh_restored_pending_review": true, "mobile_horizontal_overflow": false},
+  "real_inversion_fixture": {"model_recommendation": [4, 5], "user_confirmed": [0, 2], "observed_lai_mean": 1, "report_records_confirmed_values": true, "synthetic_image_and_lut": true},
+  "limits": "Live planning and authorization were checked on the running service. Real PROSAIL parameter execution was checked with controlled synthetic imagery and LUT, not an accuracy evaluation of current farm imagery.",
+  "rollback": "Restore overwritten files from the backup, use new-files.json to identify release-added files, then restart ktp-backend and ktp-frontend. Old frontend hashed assets were retained. No credentials, private configuration, models, databases or analysis artifacts were overwritten."
+}

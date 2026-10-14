@@ -1,10 +1,19 @@
 """Product-facing map context and bounded assistant intents."""
 from typing import Literal
+from datetime import date
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from schemas.analysis_workflow import TaskId
-from schemas.spatial import AoiGeometry, ImageryCandidate
+from schemas.spatial import AoiGeometry, ImageryCandidate, ImagerySearchRequest
+from schemas.runtime import SceneParameters
+
+
+class WorkspaceImagerySearch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    start_date: date | None = None
+    end_date: date | None = None
+    max_cloud_cover: float = Field(default=20, ge=0, le=100)
 
 
 class WorkspaceContext(BaseModel):
@@ -12,12 +21,22 @@ class WorkspaceContext(BaseModel):
     workspace_id: str = Field(min_length=1, max_length=120)
     revision: int = Field(ge=0)
     execution_mode: Literal["live", "demo"] = "live"
+    auto_execute: bool = False
+    professional_mode: bool = False
+    imagery_search: WorkspaceImagerySearch | None = None
     farm_id: str | None = None
     aoi: AoiGeometry | None = None
     imagery_item_id: str | None = None
     imagery_snapshot: ImageryCandidate | None = None
     active_workflow_id: str | None = None
     draft_task_ids: list[TaskId] = Field(default_factory=list)
+    apsim_mode: Literal["field", "example"] = "field"
+
+    @model_validator(mode="after")
+    def exclusive_execution_modes(self):
+        if self.auto_execute and self.professional_mode:
+            raise ValueError("专业模式与自动执行不能同时开启")
+        return self
 
 
 class WorkspaceUiCandidate(BaseModel):
@@ -45,7 +64,7 @@ class WorkspaceUiCard(BaseModel):
     state: Literal["current", "historical"] = "current"
     summary: str = Field(default="", max_length=2500)
     task_ids: list[TaskId] = Field(default_factory=list, max_length=6)
-    candidate_ids: list[str] = Field(default_factory=list, max_length=5)
+    candidate_ids: list[str] = Field(default_factory=list, max_length=60)
     selected_candidate_id: str | None = None
     fields: dict[str, str] = Field(default_factory=dict, max_length=16)
     missing_inputs: list[str] = Field(default_factory=list, max_length=10)
@@ -58,7 +77,7 @@ class WorkspaceUiState(BaseModel):
     model_config = ConfigDict(extra="forbid")
     stage: Literal["idle", "candidates", "ready", "running", "done"]
     cards: list[WorkspaceUiCard] = Field(default_factory=list, max_length=12)
-    imagery_candidates: list[WorkspaceUiCandidate] = Field(default_factory=list, max_length=5)
+    imagery_candidates: list[WorkspaceUiCandidate] = Field(default_factory=list, max_length=60)
     task_options: list[WorkspaceUiTaskOption] = Field(default_factory=list, max_length=7)
 
 
@@ -74,4 +93,53 @@ class WorkspaceIntent(BaseModel):
     rationale: str = Field(default="", max_length=2000)
     explicit_execution: bool = False
     yield_demo_crop: Literal["wheat", "maize"] | None = None
+    apsim_mode: Literal["field", "example"] | None = None
     unsupported_parameters: list[str] = Field(default_factory=list)
+    imagery_search: WorkspaceImagerySearch | None = None
+
+
+class LaiParameterRanges(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    lai_range: tuple[float, float] | None = None
+    cab_range: tuple[float, float] | None = None
+    lidfa_range: tuple[float, float] | None = None
+    psoil_range: tuple[float, float] | None = None
+
+    @model_validator(mode="after")
+    def validate_ranges(self):
+        SceneParameters.model_validate(self.model_dump())
+        return self
+
+
+class ProfessionalReview(BaseModel):
+    review_id: str
+    workspace_id: str
+    source_run_id: str
+    conversation_id: str | None = None
+    phase: Literal["search", "workflow", "lai"]
+    status: Literal["pending", "processing", "confirmed", "cancelled", "failed"] = "pending"
+    title: str
+    rationale: str = ""
+    context: WorkspaceContext
+    intent: WorkspaceIntent
+    search: ImagerySearchRequest | None = None
+    candidates: list[ImageryCandidate] = Field(default_factory=list)
+    selected_imagery_id: str | None = None
+    proposed_scene: dict | None = None
+    workflow_id: str | None = None
+    step_version: str | None = None
+    next_review_id: str | None = None
+    created_at: str
+    detail: str = "等待编辑参数并确认"
+    confirmed_parameters: dict | None = None
+
+
+class ConfirmProfessionalReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    context: WorkspaceContext
+    decision: Literal["confirm", "cancel"] = "confirm"
+    search: WorkspaceImagerySearch | None = None
+    imagery_item_id: str | None = None
+    task_ids: list[TaskId] | None = Field(default=None, min_length=1)
+    apsim_mode: Literal["field", "example"] | None = None
+    scene: LaiParameterRanges | None = None

@@ -4,6 +4,11 @@
   "features": [
     {
       "type": "Feature",
+      "properties": {"farm_id": "farm-zouping", "name": "邹平无人示范农场", "location_label": "山东 · 邹平", "area_hectares": 21.4415077109104, "is_demo": true, "metadata": {"boundary_source": "geojson.io"}},
+      "geometry": {"type": "Polygon", "coordinates": [[[117.7960098, 36.9507297], [117.7958331, 36.9480382], [117.8039052, 36.9478264], [117.8040377, 36.9505179], [117.7960098, 36.9507297]]]}
+    },
+    {
+      "type": "Feature",
       "properties": {"farm_id": "farm-heihe", "name": "黑河绿洲示范农场", "location_label": "甘肃 · 张掖", "area_hectares": 1286.0, "is_demo": true, "metadata": {"crop_type": "maize"}},
       "geometry": {"type": "Polygon", "coordinates": [[[100.354, 38.955], [100.401, 38.955], [100.401, 38.980], [100.354, 38.980], [100.354, 38.955]]]}
     },

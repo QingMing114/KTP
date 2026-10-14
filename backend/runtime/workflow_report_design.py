@@ -63,6 +63,17 @@ def render_report(payload: dict[str, Any]) -> str:
                 )
             visuals.append(_panel(_safe(visual.get("title", "结果分布")),
                                   _safe(visual.get("hint", "")), "".join(bars)))
+        elif visual.get("type") == "line":
+            values = visual.get("values", [])
+            labels = visual.get("labels", [])
+            if values and all(isinstance(value, (int, float)) and math.isfinite(value) for value in values):
+                maximum = max(max(values), 1)
+                points = " ".join(f"{20 + index * 560 / max(len(values) - 1, 1):.2f},{170 - value * 150 / maximum:.2f}" for index, value in enumerate(values))
+                chart = (f"<svg viewBox='0 0 600 200' role='img' aria-label='{_safe(visual.get('title', '模拟曲线'))}' style='width:100%;height:auto'>"
+                         f"<polyline points='{points}' fill='none' stroke='#10b981' stroke-width='2'/>"
+                         f"<text x='20' y='195' fill='currentColor' font-size='12'>{_safe(labels[0] if labels else '')}</text>"
+                         f"<text x='580' y='195' text-anchor='end' fill='currentColor' font-size='12'>{_safe(labels[-1] if labels else '')}</text></svg>")
+                visuals.append(_panel(_safe(visual.get("title", "模拟曲线")), f"峰值 {max(values):.2f}", chart))
         elif visual.get("type") == "statuses":
             cards = []
             for item in visual.get("items", []):

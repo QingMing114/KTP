@@ -8,15 +8,15 @@ export function sameTaskSelection(first: WorkflowTaskId[], second: WorkflowTaskI
 }
 
 export function isWorkspacePartCurrent(data: WorkspacePartData | undefined, current: WorkspaceContext): boolean {
-  return !!data && data.workspace_id === current.workspace_id && data.execution_mode === current.execution_mode && data.farm_id === current.farm_id && data.imagery_item_id === current.imagery_item_id && JSON.stringify(data.input_aoi) === JSON.stringify(current.aoi?.geometry ?? null)
+  return !!data && data.workspace_id === current.workspace_id && data.execution_mode === current.execution_mode && data.farm_id === current.farm_id && (!data.apsim_mode || data.apsim_mode === (current.apsim_mode ?? 'field')) && data.imagery_item_id === current.imagery_item_id && JSON.stringify(data.input_aoi) === JSON.stringify(current.aoi?.geometry ?? null)
 }
 
 export function canApplyAssistantDraft(original: WorkspaceContext, current: WorkspaceContext): boolean {
-  return original.workspace_id === current.workspace_id && original.execution_mode === current.execution_mode && original.farm_id === current.farm_id && JSON.stringify(original.aoi?.geometry ?? null) === JSON.stringify(current.aoi?.geometry ?? null) && sameTaskSelection(original.draft_task_ids, current.draft_task_ids)
+  return original.workspace_id === current.workspace_id && original.execution_mode === current.execution_mode && original.farm_id === current.farm_id && JSON.stringify(original.aoi?.geometry ?? null) === JSON.stringify(current.aoi?.geometry ?? null) && (original.apsim_mode ?? 'field') === (current.apsim_mode ?? 'field') && sameTaskSelection(original.draft_task_ids, current.draft_task_ids)
 }
 
 export function buildWorkspaceUiState(context: WorkspaceContext, stage: WorkspaceUiState['stage'], farm: { name: string; locationLabel: string; areaLabel: string }, candidates: WorkspaceCandidateCardItem[], timeline: WorkspaceTimelineItem[]): WorkspaceUiState {
-  const options = candidates.slice(0, 5)
+  const options = candidates.slice(0, 60)
   const cards: WorkspaceUiCard[] = [{ card_id: 'current-farm', kind: 'farm', title: '当前农场', state: 'current', summary: farm.name, fields: { 位置: farm.locationLabel, 边界面积: farm.areaLabel } }]
   if (context.aoi) cards.push({ card_id: 'current-aoi', kind: 'aoi', title: '分析区域已就绪', state: 'current', fields: { 面积: `${context.aoi.area_hectares} ha` } })
   if (options.length) cards.push({ card_id: 'imagery-candidates', kind: 'imagery_candidates', title: `${options.length} 景候选影像`, state: 'current', candidate_ids: options.map((item) => item.id), selected_candidate_id: context.imagery_item_id })

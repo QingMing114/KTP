@@ -246,7 +246,7 @@ class ApsimYieldReportResponse(BaseModel):
 
 class CanonicalAssistantPart(BaseModel):
     """A single part of a canonical assistant message."""
-    type: Literal["text", "status", "artifact_ref", "warning", "error", "analysis_plan", "parameter_set", "action_card", "workflow_reference"]
+    type: Literal["text", "status", "artifact_ref", "warning", "error", "analysis_plan", "parameter_set", "action_card", "workflow_reference", "professional_review"]
     text: str | None = None
     artifact_id: str | None = None
     part_id: str | None = None

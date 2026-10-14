@@ -46,6 +46,16 @@ export default function WorkspaceAnalysisPanel(props: WorkspacePanelProps & { vi
   useEffect(() => { onViewChange?.(tab === 'task' ? selectedTask?.workflow_id ?? null : null) }, [tab, selectedTask?.workflow_id, onViewChange])
   const historical = !!selectedTask && selectedTask.workflow_id !== workflow?.workflow_id
   const attentionColor = attention ? ATTENTION_COLORS[attention.tone] : ATTENTION_COLORS.info
+  const searchDisabled = imageryIsSearching || assistantIsSending || assistantIsLaunching
+  const searchControls = <div className="space-y-2">
+    <p className="text-[10px] leading-4 text-slate-400">{workspaceContext.auto_execute ? '这里的日期仅用于手动搜索；自动执行按需求指定时间，未指定时搜索近90天。' : '手动搜索默认近一年，可按分析目标调整日期。'}</p>
+    {props.onImagerySearchDates && <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-300">
+      <label>开始日期<input type="date" aria-label="影像开始日期" value={props.imagerySearchStartDate ?? ''} disabled={searchDisabled} onChange={(event) => props.onImagerySearchDates?.(event.target.value, imagerySearchEndDate)} className="mt-1 w-full min-w-0 rounded border border-white/15 bg-[#0b1d18] p-2 text-white [color-scheme:dark]" /></label>
+      <label>结束日期<input type="date" aria-label="影像结束日期" value={imagerySearchEndDate} disabled={searchDisabled} onChange={(event) => props.onImagerySearchDates?.(props.imagerySearchStartDate ?? '', event.target.value)} className="mt-1 w-full min-w-0 rounded border border-white/15 bg-[#0b1d18] p-2 text-white [color-scheme:dark]" /></label>
+    </div>}
+    <p className="text-[10px] leading-4 text-slate-400">手动选片请按作物生长期调整日期，避开收获后的裸土影像。</p>
+    <ActionCard title={candidates.length ? '重新搜索影像' : '搜索可用影像'} subtitle={`Sentinel-2 · ${props.imagerySearchStartDate ?? ''} 至 ${imagerySearchEndDate} · 云量 ≤ 20%`} action={imageryIsSearching ? '正在搜索…' : candidates.length ? '重新搜索' : '搜索影像'} onClick={onFindImagery} disabled={searchDisabled} icon={<Search size={14} />} />
+  </div>
   return <section ref={panel} id="workspace-analysis-panel" tabIndex={-1} aria-label="当前分析面板" data-attention-id={attention?.id} data-attention-active={attention?.active ?? false}
     onClickCapture={(event) => { if (!(event.target as HTMLElement).closest('[data-attention-action]')) onAttentionRead?.() }}
     style={{ '--analysis-attention-color': attentionColor, boxShadow: attention?.unread ? `inset 0 0 0 1px rgba(${attentionColor}, .45)` : undefined } as CSSProperties}
@@ -71,13 +81,14 @@ export default function WorkspaceAnalysisPanel(props: WorkspacePanelProps & { vi
         {aoiReady && <div className="mt-2 rounded-lg bg-black/15 px-3 py-2 text-[10px] text-slate-400"><p>分析区域 <span className="float-right text-slate-200">{aoiAreaLabel}</span></p>{selectedCandidate && <p className="mt-1">已选影像 <span className="float-right text-slate-200">{selectedCandidate.date} · 云量 {selectedCandidate.cloud}</span></p>}{!!draftTaskIds.length && phase !== 'running' && phase !== 'result' && <p className="mt-1 leading-4">已选任务：<span className="text-emerald-200">{WORKSPACE_TASKS.filter((task) => draftTaskIds.includes(task.id as WorkflowTaskId)).map((task) => task.title).join('、')}</span></p>}</div>}
         {phase === 'draw' && <p className="mt-3 text-[10px] leading-5 text-slate-400">使用地图左上角的矩形或多边形工具。也可以先告诉我需要执行的任务。</p>}
         {(phase === 'search' || phase === 'choose') && <div className="mt-3 space-y-3">
-          {!!candidates.length && <CandidateList candidates={candidates} selectedImage={selectedImage} onSelect={onSelectCandidate} disabled={assistantIsLaunching || imageryIsSearching} />}
-          <ActionCard title={candidates.length ? '重新搜索影像' : '搜索可用影像'} subtitle={`Sentinel-2 · 截止 ${imagerySearchEndDate} · 云量 ≤ 20%`} action={imageryIsSearching ? '正在搜索…' : candidates.length ? '重新搜索' : '搜索影像'} onClick={onFindImagery} disabled={imageryIsSearching || assistantIsLaunching} icon={<Search size={14} />} />
+          {searchControls}
+          {!!candidates.length && <CandidateList candidates={candidates} selectedImage={selectedImage} onSelect={onSelectCandidate} disabled={searchDisabled} />}
           {!!draftTaskIds.length && <p className="text-[10px] leading-4 text-slate-400">任务选择已保留，选片后确认启动即可。</p>}
         </div>}
         {(phase === 'configure' || phase === 'ready') && selectedCandidate && <div className="mt-3 space-y-3">
-          <details className="text-[10px] text-slate-400"><summary className="cursor-pointer">更换影像</summary><div className="mt-2"><CandidateList candidates={candidates} selectedImage={selectedImage} onSelect={onSelectCandidate} disabled={assistantIsSending || imageryIsSearching} /></div></details>
-          <ProfessionalTaskCard key={selectedCandidate.id} initialTaskIds={draftTaskIds} onDraftTasks={onDraftTaskIds} executionMode={executionMode} onStartTasks={onStartAnalysis} onStartYieldDemo={props.onStartYieldDemo} disabled={assistantIsSending || imageryIsSearching} />
+          <details className="text-[10px] text-slate-400"><summary className="cursor-pointer">更换影像</summary><div className="mt-2 space-y-3">{searchControls}<CandidateList candidates={candidates} selectedImage={selectedImage} onSelect={onSelectCandidate} disabled={searchDisabled} /></div></details>
+          <ProfessionalTaskCard key={selectedCandidate.id} initialTaskIds={draftTaskIds} onDraftTasks={onDraftTaskIds} executionMode={executionMode} apsimMode={workspaceContext.apsim_mode ?? 'field'} onStartTasks={onStartAnalysis} onStartYieldDemo={props.onStartYieldDemo} disabled={assistantIsSending || imageryIsSearching} />
+          {draftTaskIds.includes('yield') && executionMode === 'live' && <label className="block text-[10px] text-slate-300">APSIM 运行方式<select aria-label="APSIM 运行方式" value={workspaceContext.apsim_mode ?? 'field'} disabled={assistantIsSending || imageryIsSearching} onChange={(event) => props.onApsimMode?.(event.target.value as 'field' | 'example')} className="mt-1 w-full rounded border border-white/15 bg-[#0b1d18] p-2 text-white"><option value="example">真实示例模拟 · 按识别作物自动选择</option><option value="field">地块情景估产 · 需核验地块资料</option></select><p className="mt-2 leading-4 text-amber-200/80">示例模式自动识别小麦、玉米或大豆，使用配套气象和示例参数运行 APSIM。结果不代表当前农田实际产量。</p></label>}
           <AnalysisDetails parts={currentDetails} demo={executionMode === 'demo'} expanded={false} />
         </div>}
         {phase === 'launching' && !hasPendingReceipt && <div className="mt-3 rounded-lg border border-cyan-300/20 p-3 text-[11px] text-cyan-200">{assistantError ? <><p className="leading-5">{assistantError}</p><button type="button" onClick={() => void onRecoverTask()} className="mt-2 rounded bg-emerald-400/15 px-3 py-2 text-emerald-200">恢复任务状态</button></> : <p className="flex items-center gap-2"><RotateCcw size={14} className="animate-spin" />正在核验配置并建立任务…</p>}</div>}

@@ -59,6 +59,7 @@ export function useWorkspaceConversation(
     context: WorkspaceContext
     ui?: WorkspaceUiState
     onWorkflowLinked: (workflowId: string, activate?: boolean) => Promise<void>
+    onApsimMode?: (mode: 'field' | 'example') => void
     onDraftTasks: (tasks: WorkflowTaskId[]) => void
     onDemoStart: (tasks: WorkflowTaskId[]) => void
   },
@@ -175,7 +176,8 @@ export function useWorkspaceConversation(
         const current = optionsRef.current
         if (!current || !workspace) return
         const sameInputs = isWorkspacePartCurrent({ ...workspace, input_aoi: workspace.aoi?.geometry ?? null }, current.context)
-        if (sameInputs && part.type === 'analysis_plan' && part.data.intent === 'execute' && !part.data.missing_inputs?.length && part.data.requested_task_ids?.length) setIsLaunching(true)
+          && (!(workspace.auto_execute || workspace.professional_mode) || workspace.revision === current.context.revision)
+        if (!workspace.professional_mode && sameInputs && part.type === 'analysis_plan' && part.data.intent === 'execute' && !part.data.missing_inputs?.length && part.data.requested_task_ids?.length) setIsLaunching(true)
         const actionKey = part.data.workflow_id ?? (part.data.demo_started ? part.data.action_id : undefined)
         if (!actionKey || handledActions.current.has(actionKey)) return
         handledActions.current.add(actionKey)
@@ -216,6 +218,10 @@ export function useWorkspaceConversation(
             runId = event.run_id || runId
             const productPart = event.data?.part as CanonicalAssistantPart | undefined
             if (productPart) acceptPart(productPart, event.timestamp || new Date().toISOString())
+            if (event.event === 'run.progress' && event.detail) {
+              onTimelineItem({ eventId: active!.assistantEventId, kind: 'agent_message', message: event.detail,
+                submissionId: active!.submissionId, runId, status: 'streaming', timestamp: event.timestamp || new Date().toISOString() })
+            }
             const part = assistantPart(event)
             if (part) {
               streamedText += part
@@ -248,7 +254,7 @@ export function useWorkspaceConversation(
       await Promise.all(linkedWorkflows)
       const plan = run?.assistant?.parts?.find((part) => part.type === 'analysis_plan')?.data
       const current = optionsRef.current
-      if (plan?.requested_task_ids && workspace && current && (plan.intent === 'configure' || plan.intent === 'execute') && !run?.assistant?.parts?.some((part) => part.type === 'workflow_reference' || part.data?.demo_started) && !plan.missing_inputs?.some((missing) => missing.includes('仍在运行')) && canApplyAssistantDraft(workspace, current.context)) current.onDraftTasks(plan.requested_task_ids)
+      if (plan?.requested_task_ids && workspace && current && (plan.intent === 'configure' || plan.intent === 'execute') && !run?.assistant?.parts?.some((part) => part.type === 'professional_review' || part.type === 'workflow_reference' || part.data?.demo_started) && !plan.missing_inputs?.some((missing) => missing.includes('仍在运行')) && canApplyAssistantDraft(workspace, current.context)) { current.onDraftTasks(plan.requested_task_ids); if (plan.apsim_mode) current.onApsimMode?.(plan.apsim_mode) }
       const finalText = extractAssistantText(run, streamedText) || '本次回答已完成。'
       onTimelineItem({
         eventId: active.assistantEventId,

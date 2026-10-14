@@ -12,7 +12,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal, TypeAlias
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 RuntimeRunStatus: TypeAlias = Literal[
@@ -143,16 +143,34 @@ class SceneParameters(BaseModel):
         reasoning:   Short explanation of the inference logic.
     """
 
+    model_config = {"json_schema_extra": {"examples": [{
+        "crop_type": "玉米", "region": None, "month": 7, "growth_stage": "旺盛生长期",
+        "lai_range": [3, 7], "cab_range": [40, 80], "lidfa_range": [40, 70],
+        "psoil_range": None, "confidence": 0.7, "reasoning": "依据明确的作物和影像月份，土壤信息未知。",
+        "source": "llm",
+    }]}}
+
     crop_type: str | None = None
     region: str | None = None
-    month: int | None = None
+    month: int | None = Field(default=None, ge=1, le=12)
     growth_stage: str | None = None
     lai_range: tuple[float, float] | None = None
     cab_range: tuple[float, float] | None = None
     lidfa_range: tuple[float, float] | None = None
     psoil_range: tuple[float, float] | None = None
-    confidence: float = 0.0
+    confidence: float = Field(default=0.0, ge=0, le=1)
     reasoning: str = ""
+    source: Literal["llm", "rule_based", "user_confirmed"] = "llm"
+
+    @field_validator("lai_range", "cab_range", "lidfa_range", "psoil_range")
+    @classmethod
+    def valid_range(cls, value, info):
+        import math
+        if value is not None:
+            upper = {"lai_range": 10, "cab_range": 100, "lidfa_range": 90, "psoil_range": 1}[info.field_name]
+            if not all(math.isfinite(v) for v in value) or not 0 <= value[0] <= value[1] <= upper:
+                raise ValueError(f"{info.field_name} must be an ordered finite range within [0, {upper}]")
+        return value
 
     def to_constraints(self) -> dict[str, list[float]]:
         """Convert non-None parameter ranges to LUT filtering constraints."""

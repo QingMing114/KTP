@@ -15,6 +15,7 @@ export interface LiveImageryCandidate {
   asset_fingerprint?: string
   selection_token?: string
   is_recommended: boolean
+  recommendation_reason?: string | null
 }
 export interface LaiAnalysisRequest { aoi: { geometry: object; source: 'drawn'; area_hectares: number }; imagery_item_id: string; imagery_snapshot?: LiveImageryCandidate; farm_id?: string; parameters?: { target_resolution_m?: number } }
 export interface CropAnalysisRequest { aoi: { geometry: object; source: 'drawn'; area_hectares: number }; imagery_item_id: string; imagery_snapshot: LiveImageryCandidate; farm_id?: string }
@@ -46,7 +47,8 @@ export interface AnalysisWorkflowStep {
   updated_at?: string | null
 }
 export interface AnalysisWorkflow {
-  data_mode?: 'live' | 'demo'
+  professional_mode?: boolean
+  data_mode?: 'live' | 'demo' | 'apsim_example'
   demo_crop?: 'wheat' | 'maize' | null
   workflow_id: string
   parameters?: { target_resolution_m: number; reflectance_bands: string[]; parameter_source: string }

@@ -31,6 +31,7 @@ function workflowCue(workflow: AnalysisWorkflow): Pick<AnalysisAttention, 'tone'
   if (workflow.status === 'failed') return { ...base, tone: 'error', message: '任务执行失败，请查看原因' }
   if (workflow.status === 'cancelled') return { ...base, tone: 'warning', message: '任务已取消，可查看任务记录' }
   if (workflow.status === 'blocked') {
+    if (workflow.steps.some((step) => step.status === 'blocked' && step.result.reason_code === 'professional_confirmation_required')) return { ...base, tone: 'warning', message: '参数已推荐，请在助手中编辑确认后继续' }
     const crop = workflow.steps.some((step) => step.status === 'blocked' && step.result.reason_code === 'crop_confirmation_required')
     const season = workflow.steps.some((step) => step.status === 'blocked' && step.result.reason_code === 'season_in_progress')
     return { ...base, tone: 'warning', message: crop ? '需要确认作物，请在这里继续' : season ? '尚未观测到季末，请查看估产说明' : '任务暂未就绪，请查看所需输入或说明' }

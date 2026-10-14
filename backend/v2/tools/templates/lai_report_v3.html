@@ -290,7 +290,7 @@ canvas.img-canvas { display:block; width:100%; cursor:crosshair; border-radius:6
       <div class="panel-head"><span class="title">LUT 参数采样分布（LAI 区间）</span></div>
       <div class="panel-body">
         <div class="chart-wrap"><canvas id="lutChart"></canvas></div>
-        <div style="font-size:11px;color:#aaa;margin-top:8px;">LUT 在 LAI 0.1–8 间均匀随机采样，各区间密度一致</div>
+        <div style="font-size:11px;color:#aaa;margin-top:8px;">当前实际参与匹配的 LUT 条目分布</div>
       </div>
     </div>
   </div>
@@ -303,23 +303,23 @@ canvas.img-canvas { display:block; width:100%; cursor:crosshair; border-radius:6
         <div class="step-num">1</div>
         <div>
           <div class="step-title">PROSAIL 正向建模，构建光谱查找表 (LUT)</div>
-          <div class="step-desc">联合 PROSPECT-5B（叶片光学模型）与 4SAIL（冠层辐射传输模型），在参数空间随机采样 10,000 组参数（LAI、叶绿素 Cab、叶肉结构 N、叶干物质 Cm、土壤亮度 psoil、叶倾角 LIDFa 等），正向模拟冠层反射率后与 Sentinel-2 光谱响应函数卷积，得到 10,000×9 的查找表。</div>
-          <span class="step-tag">LUT_test.txt · 10,000 行 × 9 波段</span>
+          <div class="step-desc" id="process-lut">读取本次实际使用的 PROSAIL 查找表及场景范围。</div>
+          <span class="step-tag" id="process-lut-tag">—</span>
         </div>
       </div>
       <div class="process-step">
         <div class="step-num">2</div>
         <div>
           <div class="step-title">影像读入与波段对齐</div>
-          <div class="step-desc">读入 testimgTIF.tif（Float32，值域 0–1，无需缩放），提取 B2/B3/B4/B7/B8 共 5 波段。影像分辨率 10m，坐标系 UTM-47N，原点 (611430, 4305560)，尺寸 1323×1130 像元。</div>
-          <span class="step-tag">5 波段 · Float32 · 0–1 反射率 · 1323×1130</span>
+          <div class="step-desc" id="process-image">读取当前影像的五波段有效反射率，无数据位置不参与反演。</div>
+          <span class="step-tag" id="process-image-tag">—</span>
         </div>
       </div>
       <div class="process-step">
         <div class="step-num">3</div>
         <div>
           <div class="step-title">逐像元 LUT 光谱匹配，反演 LAI</div>
-          <div class="step-desc">对每个有效像元，计算其 5 波段反射率向量与 LUT 全部 10,000 条记录间的均方根误差（RMSE）。取误差最小的前 1%（约 100 条）的 LAI 均值作为最终反演值，标准差作为不确定度。同时记录最优匹配的 RMSE 用于匹配质量评估。</div>
+          <div class="step-desc" id="process-match">以五波段均方误差选取 Top-1% 匹配条目，输出 LAI 均值与候选标准差，同时记录最优匹配 RMSE。</div>
           <span class="step-tag">Top-1% 均值策略 · 等权 5 波段 · 同步输出 LAIstd</span>
         </div>
       </div>
@@ -327,8 +327,8 @@ canvas.img-canvas { display:block; width:100%; cursor:crosshair; border-radius:6
         <div class="step-num">4</div>
         <div>
           <div class="step-title">降采样与 JSON 导出，驱动本报告</div>
-          <div class="step-desc">将全分辨率结果（1323×1130）块均值降采样至 200×170 缩略图，同步导出各波段缩略值、NDVI、场景参数估算值及匹配 RMSE，序列化为 lai_report_data.json 供本报告实时加载展示。</div>
-          <span class="step-tag">200×170 缩略 · JSON · HTML 点击查询</span>
+          <div class="step-desc" id="process-thumbnail">按影像实际尺寸生成缩略图，仅聚合有效观测；数据内联于当前报告，可点击查询。</div>
+          <span class="step-tag" id="process-thumbnail-tag">—</span>
         </div>
       </div>
     </div>
@@ -341,19 +341,19 @@ canvas.img-canvas { display:block; width:100%; cursor:crosshair; border-radius:6
       <table class="param-table">
         <thead><tr><th>参数</th><th>含义</th><th>采样范围</th><th>方式</th><th>对 LAI 反演的影响</th></tr></thead>
         <tbody>
-          <tr><td>LAI</td><td>叶面积指数</td><td>0.1–8.0 m²/m²<div class="range-bar"><div class="range-fill" style="width:100%;background:#1a9850;"></div></div></td><td>均匀随机</td><td>目标变量，直接决定 NIR 多重散射强度</td></tr>
-          <tr><td>Cab</td><td>叶绿素含量</td><td>10–80 μg/cm²<div class="range-bar"><div class="range-fill" style="width:70%;background:#3266ad;"></div></div></td><td>均匀随机</td><td>影响红光和红边吸收，与 LAI 存在协同不确定性</td></tr>
-          <tr><td>LIDFa</td><td>叶倾角参数</td><td>10°–75°<div class="range-bar"><div class="range-fill" style="width:65%;background:#8338ec;"></div></div></td><td>均匀随机</td><td>决定冠层各向异性，影响 NIR 热点散射强度</td></tr>
-          <tr><td>hspot</td><td>热点参数</td><td>0.01–0.6<div class="range-bar"><div class="range-fill" style="width:40%;background:#e67e22;"></div></div></td><td>均匀随机</td><td>影响后向散射峰宽，张掖玉米田热点效应显著</td></tr>
-          <tr><td>psoil</td><td>土壤亮度系数</td><td>0.0–1.0<div class="range-bar"><div class="range-fill" style="width:50%;background:#c0392b;"></div></div></td><td>均匀随机</td><td>低覆盖像元可见光对 psoil 极敏感</td></tr>
-          <tr><td>N</td><td>叶肉层厚度</td><td>1.2–2.2<div class="range-bar"><div class="range-fill" style="width:45%;background:#aaa;"></div></div></td><td>均匀随机</td><td>影响 NIR 散射幅度，与 LAI 存在部分耦合</td></tr>
+          <tr><td>LAI</td><td>叶面积指数</td><td id="range-lai">—</td><td>当前 LUT</td><td>目标变量，决定近红外多重散射强度</td></tr>
+          <tr><td>Cab</td><td>叶绿素含量</td><td id="range-cab">—</td><td>当前 LUT</td><td>影响红光和红边吸收</td></tr>
+          <tr><td>LIDFa</td><td>叶倾角参数</td><td id="range-lidfa">—</td><td>当前 LUT</td><td>影响冠层各向异性</td></tr>
+          <tr><td>hspot</td><td>热点参数</td><td>当前 LUT 未记录该列</td><td>未记录</td><td>影响后向散射峰宽</td></tr>
+          <tr><td>psoil</td><td>土壤亮度系数</td><td id="range-psoil">—</td><td>当前 LUT</td><td>影响低覆盖像元的土壤背景</td></tr>
+          <tr><td>N</td><td>叶肉层厚度</td><td id="range-n_leaf">—</td><td>当前 LUT</td><td>影响近红外散射幅度</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
   <div class="report-footer">
-    <span>PROSAIL-LUT LAI 反演报告 · 张掖玉米田 2024-07</span>
+    <span>PROSAIL-LUT LAI 反演报告</span>
     <span id="footer-gen">由 lai_report_data.json 驱动</span>
   </div>
 </div>
@@ -383,7 +383,7 @@ function drawLAI(canvas, laiArr) {
   canvas.width=W; canvas.height=H;
   const ctx=canvas.getContext('2d'), img=ctx.createImageData(W,H);
   for (let y=0;y<H;y++) for (let x=0;x<W;x++) {
-    const [r,g,b]=laiColor(laiArr[y][x]), i=(y*W+x)*4;
+    const [r,g,b]=Number.isFinite(laiArr[y][x])?laiColor(laiArr[y][x]):[226,229,234], i=(y*W+x)*4;
     img.data[i]=r; img.data[i+1]=g; img.data[i+2]=b; img.data[i+3]=255;
   }
   ctx.putImageData(img,0,0);
@@ -420,7 +420,7 @@ function getNdviDesc(ndvi) {
 }
 function getMatchLevel(rmse) {
   // rmse 是 MSE（非 RMSE），典型值 ~0.001-0.01
-  if (rmse===0||isNaN(rmse)) return [1,'极低'];
+  if (!Number.isFinite(rmse)||rmse<0) return [0,'无数据'];
   if (rmse>0.008)  return [1,'低'];
   if (rmse>0.004)  return [2,'一般'];
   if (rmse>0.002)  return [3,'良好'];
@@ -434,14 +434,14 @@ function getReasoning(lai, ndvi, b4, b7, b8, cab, lidfa, psoil, rmse, std) {
   else if (b8 > 0.25) parts.push(`近红外 B8（${b8.toFixed(3)}）中等，冠层有一定叶层厚度，估算 LAI ${lai.toFixed(2)} m²/m²。`);
   else parts.push(`近红外 B8（${b8.toFixed(3)}）偏低，植被覆盖稀疏，LAI 估计较低（${lai.toFixed(2)} m²/m²）。`);
   // Red explanation
-  if (b4 < 0.06) parts.push(`红光 B4（${b4.toFixed(3)}）极低，叶绿素强烈吸收红光，冠层致密，进一步支持高 LAI。`);
+  if (b4 < 0.06) parts.push(`红光 B4（${b4.toFixed(3)}）较低，需结合近红外和土壤背景判断吸收特征。`);
   else if (b4 < 0.14) parts.push(`红光 B4（${b4.toFixed(3)}）适中，叶绿素吸收正常，与中等 LAI 吻合。`);
   else parts.push(`红光 B4（${b4.toFixed(3)}）偏高，冠层叶片覆盖较稀，红光吸收弱，LAI 偏低。`);
   // Red-edge
   parts.push(`红边 B7（${b7.toFixed(3)}）对叶绿素含量敏感，LUT Top-1% 条目推算叶绿素 Cab ≈ ${cab.toFixed(0)} μg/cm²，叶倾角 LIDFa ≈ ${lidfa.toFixed(0)}°，土壤亮度 psoil ≈ ${psoil.toFixed(2)}。`);
   // Match quality
   const rmse_sq = Math.sqrt(rmse);
-  parts.push(`LUT 最优匹配 RMSE = ${rmse_sq.toFixed(4)}，Top-1% LAI 标准差 = ${std.toFixed(2)} m²/m²，反映反演不确定度${std < 0.5 ? '较低，结果可信' : std < 1.0 ? '适中' : '偏高，建议参考多个场景解释'}。`);
+  parts.push(`LUT 最优匹配 RMSE = ${rmse_sq.toFixed(4)}，Top-1% LAI 标准差 = ${std.toFixed(2)} m²/m²。标准差表示候选匹配的离散程度，不能单独证明反演精度。`);
   return parts.join(' ');
 }
 
@@ -515,6 +515,19 @@ function buildDemoData() {
 async function init() {
   G = await loadData();
   const meta = G.meta;
+  document.getElementById('footer-gen').textContent = `基于实际反演数据 · ${meta.width}×${meta.height} 像元`;
+  const lutRows=meta.lut_rows??G.constraint_application?.used_rows??G.lut_stats.lai_hist_counts.reduce((a,b)=>a+b,0);
+  const topK=meta.top_k??Math.max(1,Math.round(lutRows*.01));
+  document.getElementById('process-lut').textContent=`使用 ${meta.lut_file||'当前 LUT'}，实际参与匹配 ${lutRows.toLocaleString()} 条记录。表中参数范围来自本次使用的条目。`;
+  document.getElementById('process-lut-tag').textContent=`${lutRows.toLocaleString()} 行 · B2 / B3 / B4 / B7 / B8`;
+  document.getElementById('process-image').textContent=`输入 ${meta.source_file||'当前影像'}，尺寸 ${meta.width}×${meta.height} 像元；坐标系 ${meta.crs||'原报告未记录'}。仅使用有效的五波段反射率。`;
+  document.getElementById('process-image-tag').textContent=`${meta.width}×${meta.height} · 五波段反射率`;
+  document.getElementById('process-match').textContent=`对每个有效像元匹配 ${lutRows.toLocaleString()} 条 LUT 记录，取误差最小的 ${topK} 条（Top-1%）的 LAI 均值，同时记录候选标准差及最优匹配 RMSE。`;
+  document.getElementById('process-thumbnail-tag').textContent=`${meta.thumb_w}×${meta.thumb_h} 缩略 · 内联数据 · 点击查询`;
+  for (const [key,unit] of [['lai','m²/m²'],['cab','μg/cm²'],['lidfa','°'],['psoil',''],['n_leaf','']]) {
+    const range=meta.parameter_ranges?.[key];
+    document.getElementById('range-'+key).textContent=range?`${range[0].toFixed(3)}–${range[1].toFixed(3)} ${unit}`:'原报告未记录范围';
+  }
   document.getElementById('lo-msg').textContent = '渲染图像中…';
   await new Promise(r=>setTimeout(r,50));
 
@@ -556,12 +569,32 @@ async function init() {
     const ndvi = pd.ndvi[ty][tx];
     const b2=pd.b2[ty][tx], b3=pd.b3[ty][tx], b4=pd.b4[ty][tx], b7=pd.b7[ty][tx], b8=pd.b8[ty][tx];
     const cab=pd.cab[ty][tx], lidfa=pd.lidfa[ty][tx], psoil=pd.psoil[ty][tx], nleaf=pd.n_leaf[ty][tx];
-    const rmse=pd.match_rmse[ty][tx];
-    // UTM approx coords
-    const ox=611430, oy=4305560, ps=10;
+    const rmse=(pd.match_mse||pd.match_rmse)[ty][tx]; // legacy reports stored MSE under match_rmse
     const scale_x = G.meta.width/TW, scale_y = G.meta.height/TH;
-    const orig_x = Math.round(tx*scale_x), orig_y = Math.round(ty*scale_y);
-    const utm_x = ox + orig_x*ps, utm_y = oy - orig_y*ps;
+    const orig_x = Math.min(meta.width-1,Math.floor((tx+.5)*scale_x)), orig_y = Math.min(meta.height-1,Math.floor((ty+.5)*scale_y));
+    let coords=`缩略 (${tx},${ty}) → 原始参考位置 (${orig_x},${orig_y})`;
+    if (meta.transform) {
+      const [a,b,c,d,e,f]=meta.transform, x=orig_x+.5, y=orig_y+.5;
+      coords+=` · ${meta.crs} (${(a*x+b*y+c).toFixed(5)}, ${(d*x+e*y+f).toFixed(5)})`;
+    }
+    document.getElementById('pixel-info').style.display='block';
+    document.getElementById('pixel-coords').textContent=coords;
+    const valid=pd.valid?pd.valid[ty][tx]:[b2,b3,b4,b7,b8].every(v=>Number.isFinite(v)&&v>0);
+    if (!valid || ![lai,std,ndvi,cab,lidfa,psoil,nleaf,rmse].every(Number.isFinite)) {
+      document.getElementById('pixel-dot').style.background='#c3cad3';
+      document.getElementById('pixel-title').textContent='像元详情 — 无有效数据';
+      ['px-lai','px-std','px-ndvi'].forEach(id=>document.getElementById(id).textContent='—');
+      document.getElementById('px-ndvi-desc').textContent='无有效观测';
+      document.getElementById('px-type').textContent='无数据';
+      document.getElementById('px-type-desc').textContent='选区外或输入波段无效';
+      document.getElementById('px-match-label').textContent='未参与反演';
+      document.getElementById('mq-bar').innerHTML='';
+      document.getElementById('band-viz').textContent='B2 / B3 / B4 / B7 / B8：无有效观测';
+      document.getElementById('scene-params').textContent='Cab / LIDFa / psoil / N：未参与反演';
+      document.getElementById('reasoning-text').textContent='该位置没有有效的五波段反射率，不参与 LUT 匹配。缺失值不代表 LAI 为 0，也不能据此判断水体、裸土或匹配质量。';
+      document.getElementById('pixel-info').scrollIntoView({behavior:'smooth',block:'nearest'});
+      return;
+    }
     const [cat, catDesc] = getCategory(lai, ndvi);
     const [mqn, mqLabel] = getMatchLevel(rmse);
     const [cr,cg,cb] = laiColor(lai);
@@ -569,7 +602,6 @@ async function init() {
     document.getElementById('pixel-info').style.display='block';
     document.getElementById('pixel-dot').style.background=`rgb(${cr},${cg},${cb})`;
     document.getElementById('pixel-title').textContent=`像元详情 — ${cat}`;
-    document.getElementById('pixel-coords').textContent=`缩略 (${tx},${ty}) → 原始 (${orig_x},${orig_y}) · UTM (${utm_x}, ${utm_y})`;
     document.getElementById('px-lai').textContent=lai.toFixed(2);
     document.getElementById('px-std').textContent=std.toFixed(2);
     document.getElementById('px-ndvi').textContent=ndvi.toFixed(3);
@@ -627,7 +659,7 @@ async function init() {
     c.addEventListener('mousemove',e=>{
       const{tx,ty}=getPixel(c,e);
       const lai=G.pixel_data.lai[ty][tx], ndvi=G.pixel_data.ndvi[ty][tx];
-      c.title=`缩略 (${tx},${ty})  LAI=${lai.toFixed(2)}  NDVI=${ndvi.toFixed(3)}`;
+      c.title=Number.isFinite(lai)&&Number.isFinite(ndvi)?`缩略 (${tx},${ty})  LAI=${lai.toFixed(2)}  NDVI=${ndvi.toFixed(3)}`:`缩略 (${tx},${ty}) 无有效数据`;
     });
   });
 

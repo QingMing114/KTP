@@ -224,7 +224,7 @@ def test_workflow_shares_one_image_and_preserves_successful_step_on_retry(tmp_pa
         return {"predicted_class": {"class_id": 0, "name": "Corn", "name_zh": "玉米", "score": 0.7},
                 "model": {"name": "test", "sha256": "test"}}
 
-    def fake_lai(*, image_path, artifact_output_dir, progress_callback):
+    def fake_lai(*, image_path, artifact_output_dir, progress_callback, scene_constraints):
         assert Path(image_path) == reads[0]
         lai_attempts.append(image_path)
         if failed_task == "lai" and len(lai_attempts) == 1:

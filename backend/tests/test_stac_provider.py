@@ -43,14 +43,15 @@ def test_stac_provider_maps_and_recommends_lowest_cloud_candidate(monkeypatch) -
 
     candidates = provider.search(_request())
 
-    assert [candidate.item_id for candidate in candidates] == ["clear", "cloudy"]
+    assert [candidate.item_id for candidate in candidates] == ["cloudy", "clear"]
+    candidates = sorted(candidates, key=lambda item: item.cloud_cover)
     assert candidates[0].is_recommended is True
     assert candidates[0].thumbnail_url == "https://example.test/thumb.jpg"
     assert candidates[0].coverage_percent == 100.0
     assert candidates[0].selection_token
 
 
-def test_stac_provider_uses_and_enforces_a_top_five_limit(monkeypatch) -> None:
+def test_stac_provider_enforces_five_candidates_per_time_window(monkeypatch) -> None:
     footprint = {
         "type": "Polygon",
         "coordinates": [[[99.9, 37.9], [100.2, 37.9], [100.2, 38.2], [99.9, 38.2], [99.9, 37.9]]],
@@ -73,7 +74,51 @@ def test_stac_provider_uses_and_enforces_a_top_five_limit(monkeypatch) -> None:
 
     assert seen_payload["limit"] == 10
     assert len(candidates) == 5
-    assert candidates[0].item_id == "scene-0"
+    assert candidates[-1].item_id == "scene-0"
+    assert candidates[-1].is_recommended
+
+
+def test_stac_search_spreads_candidates_over_the_full_year(monkeypatch) -> None:
+    from datetime import date, timedelta
+
+    payloads = []
+    footprint = {"type": "Polygon", "coordinates": [[[99.9, 37.9], [100.2, 37.9], [100.2, 38.2], [99.9, 38.2], [99.9, 37.9]]]}
+
+    def fake_post(*args, **kwargs):
+        payload = kwargs["json"]
+        payloads.append(payload)
+        observed = payload["datetime"].split("/")[0]
+        return httpx.Response(200, request=httpx.Request("POST", "https://example.test/search"), json={"features": [
+            {"id": observed, "collection": "sentinel-2-l2a", "geometry": footprint,
+             "properties": {"datetime": observed, "eo:cloud_cover": 2.0}, "assets": {}}
+        ]})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    request = _request().model_copy(update={"start_date": "2024-06-01", "end_date": "2025-05-31"})
+    candidates = SentinelStacProvider(SentinelStacSettings(search_url="https://example.test/search")).search(request)
+
+    windows = sorted(payload["datetime"] for payload in payloads)
+    assert len(windows) == len(candidates) == 12
+    assert windows[0].startswith("2024-06-01T00:00:00Z/")
+    assert windows[-1].endswith("/2025-05-31T23:59:59Z")
+    for previous, following in zip(windows, windows[1:]):
+        assert date.fromisoformat(previous.split("/")[1][:10]) + timedelta(days=1) == date.fromisoformat(following[:10])
+    assert [item.acquired_at for item in candidates] == sorted((item.acquired_at for item in candidates), reverse=True)
+    assert sum(item.is_recommended for item in candidates) == 1
+    assert all(payload["sortby"][0]["field"] == "properties.eo:cloud_cover" for payload in payloads)
+
+
+def test_stac_search_deduplicates_items_across_time_windows(monkeypatch) -> None:
+    def fake_post(*args, **kwargs):
+        return httpx.Response(200, request=httpx.Request("POST", "https://example.test/search"), json={"features": [
+            {"id": "same-scene", "geometry": {"type": "Polygon", "coordinates": [[[99, 37], [101, 37], [101, 40], [99, 37]]]},
+             "properties": {"datetime": "2025-05-01T00:00:00Z", "eo:cloud_cover": 1}, "assets": {}}
+        ]})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    request = _request().model_copy(update={"start_date": "2024-06-01"})
+    candidates = SentinelStacProvider().search(request)
+    assert len(candidates) == 1
 
 
 def test_stac_provider_filters_low_coverage_and_rejects_tampered_snapshot(monkeypatch) -> None:

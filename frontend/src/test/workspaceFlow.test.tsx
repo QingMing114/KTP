@@ -1,5 +1,5 @@
 import { cloneElement } from 'react'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import WorkspaceAnalysisPanel from '../features/workspace-assistant/WorkspaceAnalysisPanel'
 import WorkspaceAssistantPanel from '../features/workspace-assistant/WorkspaceAssistantPanel'
@@ -29,7 +29,7 @@ describe('the current analysis card', () => {
     expect(screen.getByRole('tab', { name: '分析配置' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getAllByRole('tabpanel', { name: '分析配置' })).toHaveLength(1)
     expect(screen.getAllByRole('button', { name: '开始执行 1 项任务' })).toHaveLength(1)
-    expect(screen.queryByRole('button', { name: '搜索影像' })).toBeNull()
+    expect(screen.getByRole('button', { name: '搜索影像' })).not.toBeVisible()
     expect(screen.getByText('旧计划缺少影像')).not.toBeVisible()
     expect(screen.getByText('长势评估会自动包含 LAI 反演。')).toBeVisible()
     expect(screen.getByText(/2. LAI 反演/)).toBeInTheDocument()
@@ -39,5 +39,20 @@ describe('the current analysis card', () => {
     rerender(panels(cloneElement(panel, { timeline: [...panel.props.timeline, { eventId: 'new-message', kind: 'agent_message', runId: 'new-run', submissionId: 'new-sub', message: '最新回答', status: 'completed', timestamp: '2026-10-12T00:00:01Z' }] })))
     expect(screen.getByRole('tab', { name: '分析配置' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('最新回答')).toBeVisible()
+    const onDates = vi.fn()
+    const onSelect = vi.fn()
+    rerender(panels(cloneElement(panel, {
+      stage: 'candidates', selectedImage: '', selectedCandidate: undefined,
+      workspaceContext: { ...context, imagery_item_id: null },
+      imagerySearchStartDate: '2025-10-12', onImagerySearchDates: onDates, onSelectCandidate: onSelect,
+      timeline: [{ eventId: 'candidates', kind: 'imagery_candidates', timestamp: '2026-10-12T00:00:00Z', candidates: [
+        { id: 'autumn', date: '2026-10-07', cloud: '0%', recommended: true },
+        { id: 'summer', date: '2026-06-07', cloud: '3%', recommended: false },
+      ] }],
+    })))
+    fireEvent.change(screen.getByLabelText('影像开始日期'), { target: { value: '2026-04-01' } })
+    expect(onDates).toHaveBeenCalledWith('2026-04-01', '2026-10-12')
+    fireEvent.click(screen.getByRole('button', { name: /2026-06-07/ }))
+    expect(onSelect).toHaveBeenCalledWith('summer')
   })
 })

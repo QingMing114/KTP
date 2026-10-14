@@ -18,7 +18,8 @@ TASK_ORDER: tuple[TaskId, ...] = ("crop", "lai", "growth", "potential", "yield_s
 
 
 class CreateAnalysisWorkflowRequest(BaseModel):
-    data_mode: Literal["live", "demo"] = "live"
+    professional_mode: bool = False
+    data_mode: Literal["live", "demo", "apsim_example"] = "live"
     demo_crop: Literal["wheat", "maize"] | None = None
     aoi: AoiGeometry
     imagery_item_id: str = Field(min_length=1)
@@ -31,6 +32,7 @@ class CreateAnalysisWorkflowRequest(BaseModel):
     workspace_revision: int | None = None
     conversation_id: str | None = None
     run_id: str | None = None
+    lai_query: str = Field(default="", max_length=8000)
     yield_inputs: "YieldAgronomicInputs" = Field(default_factory=lambda: YieldAgronomicInputs())
 
     @model_validator(mode="after")
@@ -40,6 +42,8 @@ class CreateAnalysisWorkflowRequest(BaseModel):
                 raise ValueError("模拟演示仅支持小麦/玉米估产任务，请单独选择估产任务")
         elif self.demo_crop is not None:
             raise ValueError("demo_crop requires data_mode=demo")
+        if self.data_mode == "apsim_example" and "yield" not in self.requested_task_ids:
+            raise ValueError("APSIM 示例模拟必须包含 yield 任务")
         return self
 
     @field_validator("requested_task_ids")
@@ -62,7 +66,8 @@ class WorkflowStep(BaseModel):
 
 
 class AnalysisWorkflowSummary(BaseModel):
-    data_mode: Literal["live", "demo"] = "live"
+    professional_mode: bool = False
+    data_mode: Literal["live", "demo", "apsim_example"] = "live"
     demo_crop: Literal["wheat", "maize"] | None = None
     workflow_id: str
     owner_id: str
@@ -71,6 +76,7 @@ class AnalysisWorkflowSummary(BaseModel):
     workspace_revision: int | None = None
     conversation_id: str | None = None
     run_id: str | None = None
+    lai_query: str = ""
     parameters: dict[str, Any] = Field(default_factory=lambda: {
         "target_resolution_m": 20,
         "reflectance_bands": ["B02", "B03", "B04", "B07", "B08"],
@@ -151,12 +157,12 @@ class UpdateYieldInputsRequest(BaseModel):
     yield_inputs: YieldAgronomicInputs
 
 
-def planned_steps(requested: list[TaskId]) -> tuple[list[TaskId], list[WorkflowStep]]:
+def planned_steps(requested: list[TaskId], data_mode: str = "live") -> tuple[list[TaskId], list[WorkflowStep]]:
     effective = set(requested)
     if "yield_simple" in effective:
         effective.add("crop")
     if "yield" in effective:
-        effective.update(("crop", "lai"))
+        effective.update(("crop",) if data_mode == "apsim_example" else ("crop", "lai"))
     if "potential" in effective:
         effective.update(("crop", "lai"))
     if "growth" in effective:
@@ -168,5 +174,7 @@ def planned_steps(requested: list[TaskId]) -> tuple[list[TaskId], list[WorkflowS
             "crop": ["imagery"], "lai": ["imagery"],
             "growth": ["lai"], "potential": ["crop", "lai"], "yield_simple": ["crop"], "yield": ["crop", "lai"],
         }[task]
+        if task == "yield" and data_mode == "apsim_example":
+            dependencies = ["crop"]
         steps.append(WorkflowStep(step_id=task, depends_on=dependencies))
     return ordered, steps

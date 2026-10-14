@@ -1,0 +1,166 @@
+{
+  "source_hashes_verified": 6,
+  "health_ok": true,
+  "page_ok": true,
+  "login_ok": true,
+  "reports": [
+    {
+      "file": "lai_report_reflectance_1791890095.html",
+      "source": [
+        10,
+        27
+      ],
+      "thumbnail": [
+        10,
+        27
+      ],
+      "valid_cells": 182,
+      "original_urls_verified": 1,
+      "crs": "EPSG:32650"
+    },
+    {
+      "file": "lai_report_reflectance_1791892839.html",
+      "source": [
+        9,
+        26
+      ],
+      "thumbnail": [
+        9,
+        26
+      ],
+      "valid_cells": 160,
+      "original_urls_verified": 1,
+      "crs": "EPSG:32650"
+    },
+    {
+      "file": "lai_report_reflectance_1791902019.html",
+      "source": [
+        11,
+        27
+      ],
+      "thumbnail": [
+        11,
+        27
+      ],
+      "valid_cells": 179,
+      "original_urls_verified": 1,
+      "crs": "EPSG:32650"
+    },
+    {
+      "file": "lai_report_reflectance_1791902081.html",
+      "source": [
+        11,
+        27
+      ],
+      "thumbnail": [
+        11,
+        27
+      ],
+      "valid_cells": 179,
+      "original_urls_verified": 1,
+      "crs": "EPSG:32650"
+    },
+    {
+      "file": "lai_report_reflectance_1791947548.html",
+      "source": [
+        20,
+        14
+      ],
+      "thumbnail": [
+        20,
+        14
+      ],
+      "valid_cells": 260,
+      "original_urls_verified": 1,
+      "crs": "EPSG:32650"
+    },
+    {
+      "file": "lai_report_reflectance_1791963764.html",
+      "source": [
+        37,
+        17
+      ],
+      "thumbnail": [
+        37,
+        17
+      ],
+      "valid_cells": 523,
+      "original_urls_verified": 1,
+      "crs": "EPSG:32650"
+    },
+    {
+      "file": "lai_report_reflectance_1791970603.html",
+      "source": [
+        37,
+        17
+      ],
+      "thumbnail": [
+        37,
+        17
+      ],
+      "valid_cells": 525,
+      "original_urls_verified": 1,
+      "crs": "EPSG:32650"
+    },
+    {
+      "file": "lai_report_reflectance_1791974722.html",
+      "source": [
+        69,
+        44
+      ],
+      "thumbnail": [
+        69,
+        44
+      ],
+      "valid_cells": 2812,
+      "original_urls_verified": 1,
+      "crs": "EPSG:32650"
+    },
+    {
+      "file": "lai_report_reflectance_1791975427.html",
+      "source": [
+        51,
+        40
+      ],
+      "thumbnail": [
+        51,
+        40
+      ],
+      "valid_cells": 1336,
+      "original_urls_verified": 1,
+      "crs": "EPSG:32650"
+    },
+    {
+      "file": "lai_report_synthetic-deployment-probe_1791862786.html",
+      "source": [
+        12,
+        12
+      ],
+      "thumbnail": [
+        12,
+        12
+      ],
+      "valid_cells": 144,
+      "original_urls_verified": 0,
+      "crs": null
+    },
+    {
+      "file": "lai_report_synthetic-deployment-probe_1791862937.html",
+      "source": [
+        12,
+        12
+      ],
+      "thumbnail": [
+        12,
+        12
+      ],
+      "valid_cells": 144,
+      "original_urls_verified": 0,
+      "crs": null
+    }
+  ],
+  "reports_updated": 11,
+  "science_statistics_unchanged": true,
+  "old_urls_verified": 9,
+  "backup": "/home/D/zhanghuaxiang_D/apps/ktp/releases/lai-report-pixels-20261014-01"
+}

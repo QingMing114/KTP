@@ -5,11 +5,15 @@ export interface WorkspaceContext {
   workspace_id: string
   revision: number
   execution_mode: 'live' | 'demo'
+  auto_execute?: boolean
+  professional_mode?: boolean
+  imagery_search?: { start_date?: string; end_date?: string; max_cloud_cover?: number }
   farm_id?: string | null
   aoi: { geometry: object; source: 'drawn'; area_hectares: number } | null
   imagery_item_id: string | null
   imagery_snapshot: LiveImageryCandidate | null
   active_workflow_id: string | null
+  apsim_mode?: 'field' | 'example'
   draft_task_ids: WorkflowTaskId[]
 }
 
@@ -44,7 +48,10 @@ export interface ProductParameter {
 }
 
 export interface WorkspacePartData {
-  data_mode?: 'live' | 'demo'
+  review?: ProfessionalReview
+  auto_execute?: boolean
+  data_mode?: 'live' | 'demo' | 'apsim_example'
+  apsim_mode?: 'field' | 'example'
   demo_crop?: 'wheat' | 'maize' | null
   plan_id?: string
   workspace_id?: string
@@ -88,4 +95,45 @@ export async function syncWorkspaceContext(context: WorkspaceContext): Promise<W
 
 export async function getWorkspaceWorkflows(workspaceId: string): Promise<AnalysisWorkflow[]> {
   return canonicalJson(`/workspaces/${encodeURIComponent(workspaceId)}/workflows`)
+}
+
+export type LaiParameterRanges = Record<'lai_range' | 'cab_range' | 'lidfa_range' | 'psoil_range', [number, number] | null>
+export interface ProfessionalReview {
+  review_id: string
+  workspace_id: string
+  source_run_id: string
+  phase: 'search' | 'workflow' | 'lai'
+  status: 'pending' | 'processing' | 'confirmed' | 'cancelled' | 'failed'
+  title: string
+  rationale: string
+  detail: string
+  context: WorkspaceContext
+  intent: { task_ids: WorkflowTaskId[]; apsim_mode?: 'field' | 'example'; rationale: string; summary?: string }
+  search: { start_date: string; end_date: string; max_cloud_cover: number } | null
+  candidates: LiveImageryCandidate[]
+  selected_imagery_id: string | null
+  proposed_scene: (Partial<LaiParameterRanges> & {
+    source?: string; reasoning?: string; crop_type?: string | null; region?: string | null
+    month?: number | null; growth_stage?: string | null; confidence?: number
+    context?: { acquired_at?: string; imagery_item_id?: string; crop_prediction?: { name?: string; name_zh?: string } }
+  }) | null
+  workflow_id: string | null
+  created_at: string
+  confirmed_parameters?: Record<string, unknown> | null
+}
+export interface ProfessionalDecision {
+  decision: 'confirm' | 'cancel'
+  search?: { start_date: string; end_date: string; max_cloud_cover: number }
+  imagery_item_id?: string
+  task_ids?: WorkflowTaskId[]
+  apsim_mode?: 'field' | 'example'
+  scene?: LaiParameterRanges
+}
+export function getProfessionalReviews(workspaceId: string): Promise<ProfessionalReview[]> {
+  return canonicalJson(`/workspaces/${encodeURIComponent(workspaceId)}/professional-reviews`)
+}
+export function decideProfessionalReview(reviewId: string, context: WorkspaceContext, decision: ProfessionalDecision): Promise<{ review: ProfessionalReview; next_review: ProfessionalReview | null; workflow: AnalysisWorkflow | null }> {
+  return canonicalJson(`/professional-reviews/${encodeURIComponent(reviewId)}/decision`, {
+    method: 'POST', headers: { 'Idempotency-Key': `review-${reviewId}-${decision.decision}` }, body: JSON.stringify({ context, ...decision }),
+  })
 }

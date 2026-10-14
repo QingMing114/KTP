@@ -26,6 +26,22 @@ def test_model_prompt_preserves_enum_values_and_uses_workspace_example():
     assert 'prosail.simulation' not in prompt
 
 
+@pytest.mark.parametrize("via_card", [False, True])
+def test_apsim_example_mode_reaches_workflow_from_assistant_and_card(tmp_path, monkeypatch, via_card):
+    app, launches = make_app(tmp_path, monkeypatch, Planner("execute", tasks=["yield"]))
+    with TestClient(app) as client:
+        conversation, context = setup(client, apsim_mode="example", draft_task_ids=["yield"])
+        action = {"action_id": "example-launch", "task_ids": ["yield"]} if via_card else None
+        _, run = submit(client, conversation, context, "根据作物识别运行真实 APSIM 示例", action=action)
+        reference = next(part for part in run["assistant"]["parts"] if part["type"] == "workflow_reference")
+        item = client.get(f"/api/product/v1/analysis-workflows/{reference['data']['workflow_id']}").json()
+        assert item["data_mode"] == "apsim_example"
+        assert item["demo_crop"] is None
+        assert item["effective_task_ids"] == ["crop", "yield"]
+        assert item["steps"][-1]["depends_on"] == ["crop"]
+        assert len(launches) == 1
+
+
 class Provider:
     def get_item(self, item_id):
         return {"id": item_id}
@@ -35,6 +51,22 @@ class Provider:
         if snapshot.selection_token != "valid" or snapshot.item_id != item["id"]:
             raise ImagerySearchError("invalid selection")
         return snapshot
+
+
+class SearchProvider(Provider):
+    def __init__(self, items=None):
+        from schemas.spatial import ImageryCandidate
+        self.items = items if items is not None else [ImageryCandidate(**SNAPSHOT, cloud_cover=3, coverage_percent=100)]
+        self.searches = []
+        self.started = threading.Event()
+        self.release = threading.Event()
+        self.release.set()
+
+    def search(self, request):
+        self.searches.append(request)
+        self.started.set()
+        assert self.release.wait(5)
+        return self.items
 
 
 class Planner:
@@ -119,6 +151,7 @@ def test_explicit_instruction_starts_one_workflow_and_survives_event_replay(tmp_
         assert workflow["requested_task_ids"] == ["lai", "crop"]
         assert workflow["conversation_id"] == conversation
         assert workflow["parameters"]["target_resolution_m"] == 20
+        assert workflow["lai_query"] == "执行LAI和作物识别"
         assert launches == [workflow["workflow_id"]]
         events = client.get(f"/api/product/v1/submissions/{first['submission_id']}/events").text
         assert "assistant.part.updated" in events and "workflow.linked" in events
@@ -197,6 +230,26 @@ def test_unsupported_parameter_change_does_not_execute(tmp_path, monkeypatch):
         _, run = submit(client, conversation, context, "改为10m并执行LAI")
         assert "不支持修改" in run["assistant"]["summary"]
         assert launches == []
+
+
+@pytest.mark.parametrize("via_card", [False, True])
+def test_lai_launch_keeps_current_draft_description_for_automatic_parameters(tmp_path, monkeypatch, via_card):
+    planner = Planner("configure", tasks=["lai"])
+    app, launches = make_app(tmp_path, monkeypatch, planner)
+    with TestClient(app) as client:
+        conversation, context = setup(client, draft_task_ids=["lai"])
+        _, draft = submit(client, conversation, context, "这是山东小麦田，请自动配置LAI参数")
+        parameters = next(p for p in draft["assistant"]["parts"] if p["type"] == "parameter_set")
+        assert any(p["name"] == "LAI 场景参数" for p in parameters["data"]["parameters"])
+        assert launches == []
+        planner.intent = "execute"
+        action = {"action_id": "lai-auto-launch", "task_ids": ["lai"]} if via_card else None
+        _, run = submit(client, conversation, context, "开始执行", action=action)
+        reference = next(p for p in run["assistant"]["parts"] if p["type"] == "workflow_reference")
+        workflow = client.get(f"/api/product/v1/analysis-workflows/{reference['data']['workflow_id']}").json()
+        assert "山东小麦田" in workflow["lai_query"]
+        assert "开始执行" in workflow["lai_query"]
+        assert len(launches) == 1
 
 
 def test_durable_action_replay_and_revision_checks_are_transactional(tmp_path):
@@ -365,3 +418,142 @@ def test_competing_workspace_launches_register_only_one_task(tmp_path):
     assert len(first.list_for_workspace("ws", owner_id="owner")) == 1
     first.close()
     second.close()
+
+
+def test_automatic_search_selects_and_executes_multiple_tasks_once(tmp_path, monkeypatch):
+    from datetime import date
+    monkeypatch.setattr("runtime.workspace_assistant.imagery_today", lambda: date(2026, 10, 14))
+    from schemas.spatial import ImageryCandidate
+    app, launches = make_app(tmp_path, monkeypatch, Planner("execute", tasks=["crop", "growth"]))
+    provider = SearchProvider([
+        ImageryCandidate(**{**SNAPSHOT, "item_id": "cloudy"}, cloud_cover=15, coverage_percent=100),
+        ImageryCandidate(**SNAPSHOT, cloud_cover=3, coverage_percent=100),
+    ])
+    app.state.sentinel_stac_provider = provider
+    with TestClient(app) as client:
+        conversation, context = setup(client, auto_execute=True, imagery_item_id=None, imagery_snapshot=None,
+                                      imagery_search={"start_date": "2026-10-14", "end_date": "2026-10-14"})
+        first, run = submit(client, conversation, context, "帮我识别作物并分析长势", key="auto-1")
+        replay, replay_run = submit(client, conversation, context, "帮我识别作物并分析长势", key="auto-1")
+        assert first == replay and run == replay_run
+        assert run["status"] == "completed", run
+        ref = run["assistant"]["parts"][-1]["data"]
+        assert ref["auto_execute"] is True
+        workflow = client.get(f"/api/product/v1/analysis-workflows/{ref['workflow_id']}").json()
+        assert workflow["imagery_item_id"] == "S2-workspace"
+        assert workflow["requested_task_ids"] == ["crop", "growth"]
+        assert set(workflow["effective_task_ids"]) == {"crop", "lai", "growth"}
+        assert len(launches) == len(provider.searches) == 1
+        assert provider.searches[0].start_date == "2026-07-16"
+        assert provider.searches[0].end_date == "2026-10-14"
+        assert "已自动选择" in run["assistant"]["summary"]
+        assert "完成后" in run["assistant"]["summary"]
+        # Automatic selection never overwrites a user-editable workspace.
+        saved = app.state.analysis_workflow_store.get_workspace("workspace-1", owner_id="anonymous")
+        assert saved.imagery_item_id is None
+        events = client.get(f"/api/product/v1/submissions/{first['submission_id']}/events").text
+        payloads = [json.loads(line[6:]) for line in events.splitlines() if line.startswith("data: ")]
+        assert any("自动执行：正在搜索" in item.get("detail", "") for item in payloads)
+
+
+@pytest.mark.parametrize("intent,auto,overrides", [
+    ("execute", False, {}), ("advise", True, {}), ("configure", True, {}),
+    ("status", True, {}), ("explain", True, {}), ("execute", True, {"aoi": None}),
+    ("execute", True, {"execution_mode": "demo"}),
+])
+def test_auto_permission_does_not_authorize_unrelated_actions(tmp_path, monkeypatch, intent, auto, overrides):
+    app, launches = make_app(tmp_path, monkeypatch, Planner(intent))
+    provider = SearchProvider()
+    app.state.sentinel_stac_provider = provider
+    with TestClient(app) as client:
+        conversation, context = setup(client, auto_execute=auto, imagery_item_id=None, imagery_snapshot=None, **overrides)
+        _, run = submit(client, conversation, context)
+        assert run["status"] == "completed"
+        assert launches == provider.searches == []
+
+
+def test_automatic_request_reuses_verified_selection(tmp_path, monkeypatch):
+    app, launches = make_app(tmp_path, monkeypatch, Planner("execute"))
+    provider = SearchProvider()
+    app.state.sentinel_stac_provider = provider
+    with TestClient(app) as client:
+        conversation, context = setup(client, auto_execute=True)
+        _, run = submit(client, conversation, context, "帮我分析")
+        assert run["status"] == "completed"
+        assert len(launches) == 1 and not provider.searches
+
+
+@pytest.mark.parametrize("change", ["revoke", "aoi", "cancel"])
+def test_changes_during_automatic_search_prevent_launch(tmp_path, monkeypatch, change):
+    app, launches = make_app(tmp_path, monkeypatch, Planner("execute"))
+    provider = SearchProvider()
+    provider.release.clear()
+    app.state.sentinel_stac_provider = provider
+    with TestClient(app) as client:
+        conversation, context = setup(client, auto_execute=True, imagery_item_id=None, imagery_snapshot=None,
+                                      imagery_search={"end_date": "2026-10-14"})
+        response = client.post(f"/api/product/v1/conversations/{conversation}/submissions", json={"input": {"message": "分析长势"}, "context": {"workspace": context}})
+        assert provider.started.wait(3)
+        submission_id = response.json()["submission_id"]
+        if change == "cancel":
+            assert client.post(f"/api/product/v1/submissions/{submission_id}/cancel").status_code == 200
+        else:
+            updates = {"auto_execute": False} if change == "revoke" else {"aoi": None}
+            assert client.put("/api/product/v1/workspaces/workspace-1/context", json={**context, "revision": 2, **updates}).status_code == 200
+        provider.release.set()
+        for _ in range(150):
+            current = client.get(f"/api/product/v1/submissions/{submission_id}").json()
+            if current["status"] in {"failed", "cancelled"}:
+                break
+            time.sleep(0.02)
+        assert current["status"] in {"failed", "cancelled"}
+        assert launches == []
+
+
+@pytest.mark.parametrize("items", [[], [{**SNAPSHOT, "cloud_cover": 99}], [{**SNAPSHOT, "cloud_cover": 0, "coverage_percent": 50}], [{**SNAPSHOT, "cloud_cover": 0, "selection_token": None}]])
+def test_no_suitable_automatic_imagery_never_starts(tmp_path, monkeypatch, items):
+    from schemas.spatial import ImageryCandidate
+    app, launches = make_app(tmp_path, monkeypatch, Planner("execute"))
+    app.state.sentinel_stac_provider = SearchProvider([ImageryCandidate(**item) for item in items])
+    with TestClient(app) as client:
+        conversation, context = setup(client, auto_execute=True, imagery_item_id=None, imagery_snapshot=None,
+                                      imagery_search={"end_date": "2026-10-14"})
+        _, run = submit(client, conversation, context)
+        assert run["status"] == "failed"
+        assert "未找到符合" in run["assistant"]["summary"]
+        assert not launches
+
+
+def test_explicit_imagery_window_overrides_existing_selection(tmp_path, monkeypatch):
+    from schemas.spatial import ImageryCandidate
+    from schemas.workspace import WorkspaceImagerySearch
+    planner = Planner("execute", tasks=["lai"])
+    original = planner.generate_structured
+
+    def plan(**kwargs):
+        return original(**kwargs).model_copy(update={"imagery_search": WorkspaceImagerySearch(start_date="2026-06-01", end_date="2026-06-30", max_cloud_cover=10)})
+
+    planner.generate_structured = plan
+    app, launches = make_app(tmp_path, monkeypatch, planner)
+    provider = SearchProvider([
+        ImageryCandidate(**SNAPSHOT, cloud_cover=0),
+        ImageryCandidate(**{**SNAPSHOT, "item_id": "summer", "acquired_at": "2026-06-15T00:00:00Z"}, cloud_cover=5),
+    ])
+    app.state.sentinel_stac_provider = provider
+    with TestClient(app) as client:
+        conversation, context = setup(client, auto_execute=True)
+        _, run = submit(client, conversation, context, "分析六月的LAI")
+        assert run["status"] == "completed"
+        workflow = client.get(f"/api/product/v1/analysis-workflows/{launches[0]}").json()
+        assert workflow["imagery_item_id"] == "summer"
+        assert provider.searches[0].max_cloud_cover == 10
+
+
+def test_partial_automatic_filter_preserves_workspace_dates():
+    from runtime.workspace_assistant import automatic_imagery_request
+    from schemas.workspace import WorkspaceImagerySearch
+    context = WorkspaceContext(workspace_id="ws", revision=1, aoi=AOI,
+                               imagery_search={"start_date": "2026-06-01", "end_date": "2026-06-30"})
+    intent = WorkspaceIntent(intent="execute", summary="分析", imagery_search=WorkspaceImagerySearch(max_cloud_cover=5))
+    search = automatic_imagery_request(context, intent)
+    assert (search.start_date, search.end_date, search.max_cloud_cover) == ("2026-06-01", "2026-06-30", 5)

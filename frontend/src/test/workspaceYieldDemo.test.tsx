@@ -6,6 +6,18 @@ import type { AnalysisWorkflow } from '../services/spatialClient'
 vi.mock('../services/spatialClient', async (original) => ({ ...await original<typeof import('../services/spatialClient')>(), loadHtmlReportObjectUrl: vi.fn(async () => 'blob:demo-report') }))
 
 afterEach(cleanup)
+it('shows real example results without claiming LAI constraints or field totals', async () => {
+  const flow: AnalysisWorkflow = { data_mode: 'apsim_example', workflow_id: 'example', status: 'completed', detail: '大豆示例完成',
+    aoi: { geometry: {}, source: 'drawn', area_hectares: 8 }, imagery_item_id: 'scene', imagery_snapshot: { item_id: 'scene', collection: 'sentinel-2-l2a', acquired_at: '2026-09-10', is_recommended: false },
+    requested_task_ids: ['yield'], effective_task_ids: ['crop', 'yield'], created_at: '', updated_at: '',
+    yield_inputs: { confirmed_crop_class_id: null, cultivar: null, sowing_date: null, field_dataset_id: null },
+    steps: [{ step_id: 'yield', depends_on: ['crop'], status: 'completed', progress_percent: 100, detail: '真实运行完成', result: { crop_label: '大豆', example_yield_t_ha: 2.35207, apsim_executed: true, report_uri: '/api/product/v1/artifacts/example/render', uncertainty_note: '示例参数，不代表当前地块实际产量' } }] }
+  render(<WorkflowCard workflow={flow} onRetry={vi.fn()} onUpdateYieldInputs={vi.fn()} onReset={vi.fn()} />)
+  expect(screen.getByText(/大豆示例期间最高模拟单产：2.35/)).toBeInTheDocument()
+  expect(await screen.findByRole('link', { name: '查看真实 APSIM 示例模拟报告' })).toBeInTheDocument()
+  expect(screen.queryByText(/APSIM \+ LAI 情景估产/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/示例总产量/)).not.toBeInTheDocument()
+})
 it('starts a crop-specific demo without calling the real execution button', () => {
   const start = vi.fn(), demo = vi.fn()
   render(<ProfessionalTaskCard initialTaskIds={['yield_simple']} executionMode="live" onDraftTasks={vi.fn()} onStartTasks={start} onStartYieldDemo={demo} />)

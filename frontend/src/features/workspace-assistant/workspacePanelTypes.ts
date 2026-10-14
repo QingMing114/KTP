@@ -1,6 +1,6 @@
 import type { AnalysisWorkflow, CropAnalysis, LaiPixelProgress, WorkflowTaskId, YieldAgronomicInputs } from '../../services/spatialClient'
 import type { WorkspaceCandidateCardItem, WorkspaceTimelineItem } from './workspaceTimeline'
-import type { WorkspaceContext } from '../../services/canonical/workspaceClient'
+import type { WorkspaceContext, ProfessionalReview, ProfessionalDecision } from '../../services/canonical/workspaceClient'
 
 export type AnalysisStage = 'idle' | 'candidates' | 'ready' | 'running' | 'done'
 
@@ -8,7 +8,15 @@ export interface WorkspacePanelProps {
   farm: { name: string; locationLabel: string; areaLabel: string }
   aoiReady: boolean
   aoiAreaLabel: string
+  onApsimMode?: (mode: 'field' | 'example') => void
+  onAutoExecute?: (enabled: boolean) => void
+  onProfessionalMode?: (enabled: boolean) => void
+  professionalReviews?: ProfessionalReview[]
+  onProfessionalDecision?: (id: string, decision: ProfessionalDecision) => Promise<void>
+  professionalReviewBusy?: boolean
   imagerySearchEndDate: string
+  imagerySearchStartDate?: string
+  onImagerySearchDates?: (start: string, end: string) => void
   stage: AnalysisStage
   timeline: WorkspaceTimelineItem[]
   selectedImage: string

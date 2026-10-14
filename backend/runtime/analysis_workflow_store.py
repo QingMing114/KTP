@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from runtime.db import open_db
 from schemas.workspace import WorkspaceContext
+from schemas.workspace import ProfessionalReview
 from schemas.analysis_workflow import (
     AnalysisWorkflowEvent, AnalysisWorkflowSummary, CreateAnalysisWorkflowRequest,
     StepId, WorkflowStatus, YieldAgronomicInputs, planned_steps,
@@ -34,6 +35,7 @@ class AnalysisWorkflowStore:
             "PRIMARY KEY (workflow_id, sequence))"
         )
         self._db.commit()
+
         self._db.execute("CREATE TABLE IF NOT EXISTS product_workspace_contexts "
                          "(owner_id TEXT NOT NULL, workspace_id TEXT NOT NULL, revision INTEGER NOT NULL, "
                          "payload_json TEXT NOT NULL, PRIMARY KEY(owner_id, workspace_id))")
@@ -42,6 +44,16 @@ class AnalysisWorkflowStore:
                          "workflow_id TEXT NOT NULL, PRIMARY KEY(owner_id, action_id))")
         self._db.commit()
         self._recover_interrupted()
+        self._db.execute("CREATE TABLE IF NOT EXISTS product_professional_reviews "
+                         "(review_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, workspace_id TEXT NOT NULL, payload_json TEXT NOT NULL)")
+        self._db.commit()
+        # An interrupted accepted operation must not be silently repeated.
+        for row in self._db.execute("SELECT review_id, payload_json FROM product_professional_reviews").fetchall():
+            review = ProfessionalReview.model_validate_json(row["payload_json"])
+            if review.status == "processing":
+                recovered = review.model_copy(update={"status": "failed", "detail": "服务重启中断了本次确认，请查看任务记录后重新生成配置"})
+                self._db.execute("UPDATE product_professional_reviews SET payload_json=? WHERE review_id=?", (recovered.model_dump_json(), review.review_id))
+        self._db.commit()
 
     def sync_workspace(self, context: WorkspaceContext, *, owner_id: str) -> None:
         with self._lock:
@@ -137,14 +149,16 @@ class AnalysisWorkflowStore:
         if body.imagery_snapshot is None:
             raise ValueError("verified imagery_snapshot is required")
         timestamp = _now()
-        effective, steps = planned_steps(body.requested_task_ids)
+        effective, steps = planned_steps(body.requested_task_ids, body.data_mode)
         item = AnalysisWorkflowSummary(
+            professional_mode=body.professional_mode,
             data_mode=body.data_mode, demo_crop=body.demo_crop,
             workflow_id=str(uuid4()), owner_id=owner_id, aoi=body.aoi,
             action_id=body.action_id, workspace_id=body.workspace_id,
             workspace_revision=body.workspace_revision, conversation_id=body.conversation_id, run_id=body.run_id,
             imagery_item_id=body.imagery_item_id, imagery_snapshot=body.imagery_snapshot,
             farm_id=body.farm_id, yield_inputs=body.yield_inputs,
+            lai_query=body.lai_query,
             requested_task_ids=body.requested_task_ids,
             effective_task_ids=effective, steps=steps,
             created_at=timestamp, updated_at=timestamp,
@@ -321,3 +335,61 @@ class AnalysisWorkflowStore:
 
     def close(self) -> None:
         self._db.close()
+
+    def save_review(self, review: ProfessionalReview, *, owner_id: str) -> None:
+        with self._lock:
+            self._db.execute("INSERT INTO product_professional_reviews VALUES (?, ?, ?, ?)",
+                             (review.review_id, owner_id, review.workspace_id, review.model_dump_json()))
+            self._db.commit()
+
+    def get_review(self, review_id: str, *, owner_id: str) -> ProfessionalReview | None:
+        with self._lock:
+            row = self._db.execute("SELECT payload_json FROM product_professional_reviews WHERE review_id=? AND owner_id=?",
+                                   (review_id, owner_id)).fetchone()
+            return ProfessionalReview.model_validate_json(row["payload_json"]) if row else None
+
+    def list_reviews(self, workspace_id: str, *, owner_id: str) -> list[ProfessionalReview]:
+        with self._lock:
+            rows = self._db.execute("SELECT payload_json FROM product_professional_reviews WHERE workspace_id=? AND owner_id=? ORDER BY rowid",
+                                    (workspace_id, owner_id)).fetchall()
+            return [ProfessionalReview.model_validate_json(row["payload_json"]) for row in rows]
+
+    def claim_review(self, review_id: str, context: WorkspaceContext, *, owner_id: str, parameters: dict, cancelling: bool = False) -> ProfessionalReview:
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                self._check_workspace(context, owner_id)
+                review = self.get_review(review_id, owner_id=owner_id)
+                if review is None or review.status != "pending":
+                    raise ValueError("确认卡片已处理，请刷新查看当前状态")
+                if not cancelling and (not context.professional_mode or context.execution_mode != "live"):
+                    raise ValueError("请保持专业模式开启后确认")
+                if review.phase != "lai" and not cancelling:
+                    if review.context.model_dump(exclude={"revision"}) != context.model_dump(exclude={"revision"}):
+                        raise ValueError("区域、影像、参数或模式已变化，请重新生成确认卡片")
+                elif review.phase == "lai":
+                    flow = self.get(review.workflow_id, owner_id=owner_id)
+                    step = next((s for s in flow.steps if s.step_id == "lai"), None) if flow else None
+                    if (flow is None or flow.status != "blocked" or not step or step.updated_at != review.step_version
+                            or step.result.get("review_id") != review.review_id
+                            or not cancelling and (context.workspace_id != flow.workspace_id or context.aoi != flow.aoi
+                            or context.imagery_item_id != flow.imagery_item_id or context.farm_id != flow.farm_id)):
+                        raise ValueError("任务输入或步骤已变化，请查看对应任务后重新确认")
+                updated = review.model_copy(update={"status": "processing", "confirmed_parameters": parameters})
+                self._db.execute("UPDATE product_professional_reviews SET payload_json=? WHERE review_id=?", (updated.model_dump_json(), review_id))
+                self._db.commit()
+                return updated
+            except Exception:
+                self._db.rollback()
+                raise
+
+    def finish_review(self, review_id: str, *, owner_id: str, **updates) -> ProfessionalReview:
+        with self._lock:
+            review = self.get_review(review_id, owner_id=owner_id)
+            if review is None:
+                raise KeyError(review_id)
+            updated = ProfessionalReview.model_validate({**review.model_dump(), **updates})
+            self._db.execute("UPDATE product_professional_reviews SET payload_json=? WHERE review_id=? AND owner_id=?",
+                             (updated.model_dump_json(), review_id, owner_id))
+            self._db.commit()
+            return updated

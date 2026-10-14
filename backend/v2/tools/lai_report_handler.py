@@ -22,6 +22,7 @@ import numpy as np
 
 from shared.config.paths import get_lai_report_dir
 from v2.shared.schemas import ObservationV2, PackArtifactView
+from v2.tools.lai_report_data import prepare_report_data
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +82,8 @@ def _block_nanmean_2d(arr: np.ndarray, out_h: int, out_w: int) -> np.ndarray:
         for c in range(out_w):
             c0, c1 = int(c * bw), min(w, int((c + 1) * bw))
             v = arr[r0:r1, c0:c1]
-            v = v[~np.isnan(v)]
-            out[r, c] = float(np.mean(v)) if len(v) > 0 else 0.0
+            v = v[np.isfinite(v)]
+            out[r, c] = float(np.mean(v)) if len(v) > 0 else np.nan
     return out
 
 
@@ -96,7 +97,7 @@ def _stretch(arr: np.ndarray, p_low: float = 2.0, p_high: float = 98.0) -> np.nd
 
 
 def _arr2list(a: np.ndarray, decimals: int = 3) -> list:
-    return [[round(float(v), decimals) for v in row] for row in a]
+    return [[round(float(v), decimals) if np.isfinite(v) else None for v in row] for row in a]
 
 
 def _hex_rgb(value: str) -> np.ndarray:
@@ -129,11 +130,14 @@ def _lai_rgba(lai_map: np.ndarray, valid_mask: np.ndarray) -> np.ndarray:
 
 def _build_html(report_data: dict, source_file: str, lut_file: str) -> str:
     """Return a fully self-contained HTML string with report_data inlined."""
+    report_data = prepare_report_data(report_data)
     meta = report_data["meta"]
     subtitle = (
         f"{source_file} · LUT: {lut_file} · "
-        f"{meta['width']}×{meta['height']} px · 10m 分辨率"
+        f"{meta['width']}×{meta['height']} px · {meta.get('crs', '坐标系未记录')}"
     )
+    if meta.get("resolution") and meta.get("coordinate_unit"):
+        subtitle += f" · {meta['resolution'][0]:g} × {meta['resolution'][1]:g} {meta['coordinate_unit']} 分辨率"
     inline_json = json.dumps(report_data, separators=(",", ":"), ensure_ascii=False)
 
     configured_template = os.environ.get("LAI_REPORT_TEMPLATE_PATH")
@@ -196,6 +200,7 @@ def run_lai_html_report(
     artifact_output_dir: str | None = None,
     query: str | None = None,
     scene_constraints: "dict | None" = None,
+    strict_scene_constraints: bool = False,
     progress_callback: "Callable[[int, int], None] | None" = None,
     **_unused: object,
 ) -> tuple[ObservationV2, list[PackArtifactView]]:
@@ -264,7 +269,23 @@ def run_lai_html_report(
         lut_params = lut_all[:, 9:13]                  # Cab LIDFa psoil N
 
         # ── LUT filtering by scene constraints (Step 2) ──
-        lut_mask = _build_lut_mask(lut_lai, lut_params, scene_constraints)
+        from schemas.runtime import SceneParameters
+        constraints = SceneParameters.model_validate(scene_constraints or {}).to_constraints()
+        lut_mask = _build_lut_mask(lut_lai, lut_params, constraints)
+        matched_rows = int(lut_mask.sum()) if lut_mask is not None else len(lut_lai)
+        applied = bool(constraints) and matched_rows >= 10
+        if strict_scene_constraints and constraints and not applied:
+            raise ValueError("已确认的参数范围在当前 LUT 中不足10条，反演未执行；请调整参数后重试。")
+        constraint_application = {
+            "status": "applied" if applied else "fallback" if constraints else "unconstrained",
+            "requested": constraints,
+            "effective": constraints if applied else {},
+            "total_rows": len(lut_lai), "matched_rows": matched_rows,
+            "used_rows": matched_rows if applied else len(lut_lai),
+            "reason": "场景范围匹配不足10条，已使用完整 LUT。" if constraints and not applied else "",
+        }
+        if not applied:
+            lut_mask = None
         if lut_mask is not None:
             n_before = len(lut_lai)
             lut_lai    = lut_lai[lut_mask]
@@ -274,13 +295,6 @@ def run_lai_html_report(
                 "LUT filtered by scene constraints: %d → %d rows (%.1f%%)",
                 n_before, len(lut_lai), 100.0 * len(lut_lai) / n_before,
             )
-            if len(lut_lai) < 10:
-                logger.warning("LUT after filtering has < 10 rows, ignoring constraints")
-                # Revert to full LUT to avoid degenerate inversion
-                lut_all    = np.loadtxt(str(resolved_lut))
-                lut_lai    = lut_all[:, 0]
-                lut_refl   = lut_all[:, [1, 2, 3, 6, 7]]
-                lut_params = lut_all[:, 9:13]
 
         lut_n = lut_refl.shape[0]
         topk  = max(1, int(round(lut_n * TOP_FRAC)))
@@ -295,7 +309,7 @@ def run_lai_html_report(
         # ---- Step 2: Load image ----
         logger.info("lai_html_report | loading image | %s", img_path)
         with rasterio.open(str(img_path)) as src:
-            img = src.read().astype(np.float32)
+            img = src.read(masked=True).astype(np.float32).filled(np.nan)
             source_profile = src.profile.copy()
             source_bounds = src.bounds
             source_crs = src.crs
@@ -313,7 +327,8 @@ def run_lai_html_report(
             )
 
         # Normalise to 0-1 if stored as DN (e.g. 0-10000)
-        if img.max() > 2.0:
+        finite_values = img[np.isfinite(img)]
+        if finite_values.size and finite_values.max() > 2.0:
             img = img / 10000.0
 
         band2, band3, band4, band7, band8 = img[0], img[1], img[2], img[3], img[4]
@@ -349,7 +364,7 @@ def run_lai_html_report(
 
         # Flatten image to (H*W, 5) and identify valid (all-positive) pixels
         pixels = np.stack([band2, band3, band4, band7, band8], axis=-1).reshape(-1, 5)
-        valid_mask_flat = np.all(pixels > 0, axis=1)
+        valid_mask_flat = np.all(np.isfinite(pixels) & (pixels > 0), axis=1)
         valid_pixels    = pixels[valid_mask_flat].astype(np.float32)    # (V, 5)
 
         n_valid  = len(valid_pixels)
@@ -474,27 +489,21 @@ def run_lai_html_report(
         #     return lai_map, laistd_map, mse_map, param_maps
 
         # ---- Step 5: Thumbnails ----
-        th_w, th_h = THUMB_W, THUMB_H
-        tb2    = _block_mean_2d(band2,              th_h, th_w)
-        tb3    = _block_mean_2d(band3,              th_h, th_w)
-        tb4    = _block_mean_2d(band4,              th_h, th_w)
-        tb7    = _block_mean_2d(band7,              th_h, th_w)
-        tb8    = _block_mean_2d(band8,              th_h, th_w)
-        t_lai  = _block_mean_2d(lai_map,            th_h, th_w)
-        t_std  = _block_mean_2d(laistd_map,         th_h, th_w)
+        th_w, th_h = min(THUMB_W, w_full), min(THUMB_H, h_full)
+        def thumbnail(values):
+            return _block_nanmean_2d(np.where(valid_geo_mask, values, np.nan), th_h, th_w)
+        tb2, tb3, tb4, tb7, tb8 = [thumbnail(b) for b in (band2, band3, band4, band7, band8)]
+        t_lai, t_std = thumbnail(lai_map), thumbnail(laistd_map)
         t_mse  = _block_nanmean_2d(mse_map,         th_h, th_w)
-        t_cab  = _block_mean_2d(param_maps[:, :, 0], th_h, th_w)
-        t_lidf = _block_mean_2d(param_maps[:, :, 1], th_h, th_w)
-        t_ps   = _block_mean_2d(param_maps[:, :, 2], th_h, th_w)
-        t_nl   = _block_mean_2d(param_maps[:, :, 3], th_h, th_w)
+        t_cab, t_lidf, t_ps, t_nl = [thumbnail(param_maps[:, :, i]) for i in range(4)]
 
         with np.errstate(invalid="ignore", divide="ignore"):
             ndvi_full = (band8 - band4) / (band8 + band4 + 1e-6)
             ndvi_full[band8 + band4 <= 0] = 0.0
-        t_ndvi = _block_mean_2d(ndvi_full, th_h, th_w, invalid_val=-999)
+        t_ndvi = thumbnail(ndvi_full)
 
         thumb_rgb = (
-            np.stack([_stretch(tb8), _stretch(tb4), _stretch(tb3)], axis=2) * 255
+            np.nan_to_num(np.stack([_stretch(tb8), _stretch(tb4), _stretch(tb3)], axis=2)) * 255
         ).astype(np.uint8)
 
         # ---- Step 6: Statistics ----
@@ -518,14 +527,14 @@ def run_lai_html_report(
 
         total_px_f = float(total_px)
         scene_pct = {
-            "water":  round(int((lai_map < 0.5).sum())  / total_px_f * 100, 1),
+            "water":  round(int(((lai_map < 0.5) & valid_geo_mask).sum()) / total_px_f * 100, 1),
             "sparse": round(int(((lai_map >= 0.5) & (lai_map < 1.5)).sum()) / total_px_f * 100, 1),
             "mid":    round(int(((lai_map >= 1.5) & (lai_map < 3.5)).sum()) / total_px_f * 100, 1),
             "dense":  round(int((lai_map >= 3.5).sum()) / total_px_f * 100, 1),
         }
 
         def _safe_mean(arr: np.ndarray) -> float:
-            m = arr[arr > 0]
+            m = arr[valid_geo_mask & np.isfinite(arr)]
             return round(float(np.mean(m)), 5) if len(m) > 0 else 0.0
 
         img_band_mean = {
@@ -546,17 +555,31 @@ def run_lai_html_report(
         ]
 
         report_data = {
+            "constraint_application": constraint_application,
             "meta": {
                 "width": w_full, "height": h_full,
                 "thumb_w": th_w, "thumb_h": th_h,
+                "transform": list(source_profile["transform"])[:6],
+                "crs": source_crs.to_string(),
+                "resolution": [float(v) for v in (abs(source_profile["transform"].a), abs(source_profile["transform"].e))],
+                "coordinate_unit": "m" if source_crs.is_projected and source_crs.linear_units == "metre" else "°" if source_crs.is_geographic else None,
                 "lai_min": lai_min, "lai_max": lai_max,
                 "lai_mean": lai_mean, "lai_median": lai_median,
                 "lai_std": round(float(np.nanstd(valid_lai)), 3) if len(valid_lai) > 0 else 0.0,
                 "veg_ratio": round(valid_px / total_px_f * 100, 1),
+                "valid_pixel_count": n_valid,
+                "nodata_pixel_count": total_px - n_valid,
                 "scene_pct": scene_pct,
                 "img_band_mean": img_band_mean,
                 "source_file": img_path.name,
                 "lut_file": resolved_lut.name,
+                "lut_rows": lut_n, "top_k": topk,
+                "parameter_ranges": {
+                    key: [float(np.min(values)), float(np.max(values))]
+                    for key, values in (("lai", lut_lai), ("cab", lut_params[:, 0]),
+                                        ("lidfa", lut_params[:, 1]), ("psoil", lut_params[:, 2]),
+                                        ("n_leaf", lut_params[:, 3]))
+                },
             },
             "thumb_lai": _arr2list(t_lai, 3),
             "thumb_rgb": rgb_list,
@@ -574,6 +597,7 @@ def run_lai_html_report(
                 "band_p90":  lut_band_p90,
             },
             "pixel_data": {
+                "valid":      np.isfinite(t_lai).tolist(),
                 "lai":        _arr2list(t_lai,  3),
                 "std":        _arr2list(t_std,  3),
                 "ndvi":       _arr2list(t_ndvi, 3),
@@ -586,7 +610,8 @@ def run_lai_html_report(
                 "lidfa":      _arr2list(t_lidf, 1),
                 "psoil":      _arr2list(t_ps,   3),
                 "n_leaf":     _arr2list(t_nl,   2),
-                "match_rmse": _arr2list(t_mse,  5),
+                "match_mse":  _arr2list(t_mse,  8),
+                "match_rmse": _arr2list(np.sqrt(t_mse),  6),
             },
         }
 
@@ -617,6 +642,7 @@ def run_lai_html_report(
                     f"植被覆盖={round(valid_px / total_px_f * 100, 1):.1f}%"
                 ),
                 payload={
+                    "constraint_application": constraint_application,
                     "lai_mean": lai_mean,
                     "lai_median": lai_median,
                     "lai_min": lai_min,
@@ -709,4 +735,4 @@ def _build_lut_mask(
     _apply(lut_params[:, 1], "lidfa_range")
     _apply(lut_params[:, 2], "psoil_range")
 
-    return mask if mask.any() else None  # None = filter empty, caller falls back
+    return mask

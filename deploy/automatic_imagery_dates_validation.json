@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-14",
+  "target": "gpu208",
+  "release": "/home/D/zhanghuaxiang_D/apps/ktp/releases/automatic-imagery-dates-20261014-212011",
+  "backup": "/home/D/zhanghuaxiang_D/apps/ktp/releases/automatic-imagery-dates-20261014-212011/backup",
+  "installed_files": 32,
+  "backend_related_tests": 66,
+  "frontend_tests": 141,
+  "server_related_tests": 66,
+  "frontend_lint": "passed",
+  "frontend_build": "passed",
+  "browser": {"manual_default": ["2025-10-14", "2026-10-14"], "manual_single_day_did_not_constrain_automatic_search": true, "card_dates_not_sent": true, "manual_edit_did_not_change_automatic_revision": true, "automatic_search": ["2026-07-16", "2026-10-14"]},
+  "live": {"health_200": true, "workspace_200": true, "authenticated_manifest_200": true, "real_planner": true, "manual_single_day_ignored": true, "default_lookback_days": 90, "tools_invoked_by_live_planning_smoke": false},
+  "services": {"ktp-backend": "active", "ktp-frontend": "active"},
+  "notes": "Explicit user periods and single-day requests remain unchanged. Professional confirmation retains manual filters. Only source and built assets were overlaid; private configuration, databases, models and analysis artifacts were retained."
+}

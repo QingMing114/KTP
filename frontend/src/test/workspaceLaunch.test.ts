@@ -28,6 +28,32 @@ function event(event: string, data: Record<string, unknown> = {}) { return { eve
 const reference = { type: 'workflow_reference', part_id: 'ref', data: { workflow_id: 'workflow', workspace_id: 'ws', revision: 1 } }
 
 describe('one task launch lifecycle', () => {
+  it('sends automatic permission and search dates, then adopts only one workflow without another submission', async () => {
+    const link = vi.fn(async () => {})
+    const automatic: WorkspaceContext = { ...context, auto_execute: true, imagery_item_id: null, imagery_search: { start_date: '2026-06-01', end_date: '2026-06-30' } }
+    const { result } = renderHook(() => useWorkspaceConversation(vi.fn(), { context: automatic, onWorkflowLinked: link, onDraftTasks: vi.fn(), onDemoStart: vi.fn() }))
+    let pending!: Promise<void>
+    act(() => { pending = result.current.sendMessage('分析这里的长势') })
+    await waitFor(() => expect(mock.subscribe).toHaveBeenCalledOnce())
+    expect(mock.create.mock.calls[0][1].context.workspace).toEqual(automatic)
+    expect(mock.create.mock.calls[0][1].workspace_action).toBeUndefined()
+    await act(async () => { emit(event('workflow.linked', { part: reference })); emit(event('workflow.linked', { part: reference })); emit(event('run.completed')); await pending })
+    expect(link).toHaveBeenCalledExactlyOnceWith('workflow', true)
+    expect(mock.create).toHaveBeenCalledOnce()
+  })
+
+  it('does not adopt late automatic results after permission was revoked', async () => {
+    const link = vi.fn(async () => {})
+    const automatic = { ...context, auto_execute: true }
+    const { result, rerender } = renderHook(({ current }) => useWorkspaceConversation(vi.fn(), { context: current, onWorkflowLinked: link, onDraftTasks: vi.fn(), onDemoStart: vi.fn() }), { initialProps: { current: automatic } })
+    let pending!: Promise<void>
+    act(() => { pending = result.current.sendMessage('分析长势') })
+    await waitFor(() => expect(mock.subscribe).toHaveBeenCalledOnce())
+    rerender({ current: { ...automatic, revision: 2, auto_execute: false } })
+    await act(async () => { emit(event('workflow.linked', { part: reference })); emit(event('run.completed')); await pending })
+    expect(link).toHaveBeenCalledWith('workflow', false)
+  })
+
   it('carries the explicit demo crop through the same idempotent submission lifecycle', async () => {
     const demoContext: WorkspaceContext = { ...context, draft_task_ids: ['yield_simple'] }
     const { result } = renderHook(() => useWorkspaceConversation(vi.fn(), { context: demoContext, onWorkflowLinked: vi.fn(), onDraftTasks: vi.fn(), onDemoStart: vi.fn() }))
