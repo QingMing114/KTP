@@ -36,6 +36,7 @@ def test_default_composition_declares_expected_capabilities():
     assert spec.tools.default == "model"
     assert spec.tools.disabled == []
     assert spec.tools.endpoint_only == []
+    assert spec.middlewares == ["permission", "policy-guard"]
 
 
 def test_validation_returns_warnings_for_unmentioned_tools():
@@ -74,6 +75,20 @@ def test_unknown_capability_fails_loud():
     spec = CompositionSpec(optional_capabilities=["telepathy"])
 
     with pytest.raises(CompositionError, match="unknown capabilities"):
+        validate_composition(spec, seams=_seams_with_tools(), tool_names=_tool_names())
+
+
+def test_unknown_middleware_fails_loud():
+    spec = CompositionSpec(middlewares=["permission", "telepathy"])
+
+    with pytest.raises(CompositionError, match="unknown middlewares"):
+        validate_composition(spec, seams=_seams_with_tools(), tool_names=_tool_names())
+
+
+def test_duplicate_middleware_fails_loud():
+    spec = CompositionSpec(middlewares=["permission", "permission"])
+
+    with pytest.raises(CompositionError, match="duplicate middlewares"):
         validate_composition(spec, seams=_seams_with_tools(), tool_names=_tool_names())
 
 

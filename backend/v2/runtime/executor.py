@@ -21,12 +21,13 @@ from v2.adapters.python_services.ktp_services import (
     KtpExecutionContext,
     KtpServiceError,
 )
+from v2.middleware import ToolCallState, build_default_tool_pipeline
 from v2.packs.registry import DomainPackRegistry
 from v2.policies.guard import PolicyGuard, PolicyGuardError
 from v2.runtime.cancellation import RuntimeCancellationError, raise_if_cancelled
+from v2.runtime.run_parts import append_assistant_part
 from schemas.runtime import (
     AssistantMessagePartV2,
-    AssistantMessageV2,
     ExecutorActionV2,
     ObservationV2,
     PackArtifactView,
@@ -50,13 +51,6 @@ logger = logging.getLogger(__name__)
 
 
 # ── Free helpers (extracted from engine static methods) ──
-
-
-def append_assistant_part(run: RunDetail, part: AssistantMessagePartV2) -> None:
-    """Append a part to the run's assistant message."""
-    if run.assistant_message is None:
-        run.assistant_message = AssistantMessageV2(parts=[])
-    run.assistant_message.parts.append(part)
 
 
 def build_pack_step_input(*, context: KtpExecutionContext, step_name: str) -> dict[str, object]:
@@ -141,6 +135,7 @@ class ToolExecutor:
         self._tool_registry = tool_registry
         self._guard = policy_guard
         self._pack_registry = pack_registry
+        self._pipeline = build_default_tool_pipeline(self._guard)
 
     # ── Single tool call ──
 
@@ -164,6 +159,42 @@ class ToolExecutor:
 
         Mirrors ``BoundedRuntimeEngine._execute_single_tool_call`` exactly.
         """
+        state = self._build_state(
+            run=run,
+            request_context=request_context,
+            tool_call=tool_call,
+            policy=policy,
+            visible_tools=visible_tools,
+            visible_agents=visible_agents,
+            event_emitter=event_emitter,
+            cancellation_event=cancellation_event,
+            user_id=user_id,
+            granted_permissions=granted_permissions,
+        )
+        early = self._pipeline.run(
+            state,
+            dispatch=self._dispatch_tool_call,
+            finalize=self._finalize_tool_call,
+        )
+        if early is not None:
+            return early
+        return self._result_payload(state)
+
+    def _build_state(
+        self,
+        *,
+        run: RunDetail,
+        request_context,
+        tool_call,
+        policy,
+        visible_tools,
+        visible_agents,
+        event_emitter,
+        cancellation_event: Event | None,
+        user_id: str | None,
+        granted_permissions: set[str] | frozenset[str] | None,
+    ) -> ToolCallState:
+        """Create the call state: identity, invocation, and the started event."""
         raise_if_cancelled(cancellation_event)
         spec = self._tool_registry.get_definition(tool_call.tool_name).spec
         invocation = ToolInvocationView(
@@ -188,99 +219,33 @@ class ToolExecutor:
             detail=f"Starting tool {tool_call.tool_name}.",
             tool_invocation=invocation,
         )
-
-        # ── Phase A.2: permission-first check ──
-        perm_result = self._guard.check_permission(
-            tool_spec=spec,
+        return ToolCallState(
+            run=run,
+            request_context=request_context,
+            tool_call=tool_call,
+            spec=spec,
             policy=policy,
+            visible_tools=visible_tools,
+            visible_agents=visible_agents,
+            event_emitter=event_emitter,
+            cancellation_event=cancellation_event,
+            user_id=user_id,
+            granted_permissions=granted_permissions,
+            invocation=invocation,
         )
-        if self._guard.should_block(perm_result, policy=policy):
-            # Hard block: dangerous tools, or approval-required in auto_approve mode
-            blocked_invocation = invocation.model_copy(
-                update={
-                    "status": "blocked",
-                    "output_summary": "blocked" if perm_result == PermissionResult.BLOCKED else "approval_required",
-                    "result_preview": "blocked" if perm_result == PermissionResult.BLOCKED else "approval_required",
-                }
-            )
-            run.tool_invocations.append(blocked_invocation)
-            event_label = "tool.blocked" if perm_result == PermissionResult.BLOCKED else "approval_required"
-            run.trace.append(
-                TraceEventV2(
-                    node="policy_guard",
-                    event=event_label,
-                    detail=f"Tool {tool_call.tool_name} blocked by policy: {perm_result.value}.",
-                )
-            )
-            observation = ObservationV2(
-                source=tool_call.tool_name,
-                status="error",
-                summary=perm_result.value,
-                payload={"tool_name": tool_call.tool_name, "tool_input": tool_call.tool_input},
-            )
-            append_assistant_part(
-                run,
-                AssistantMessagePartV2(
-                    type="tool_result",
-                    tool_invocation=blocked_invocation,
-                    text=perm_result.value,
-                    status="blocked",
-                ),
-            )
-            event_emitter.emit(
-                event="tool.blocked",
-                detail=f"Tool {tool_call.tool_name} blocked by policy: {perm_result.value}.",
-                observation=observation,
-                tool_invocation=blocked_invocation,
-            )
-            return {
-                "blocked": True,
-                "observation": observation,
-                "final_message": f"Tool {tool_call.tool_name} blocked by policy: {perm_result.value}.",
-                "history_item": {
-                    "tool_name": tool_call.tool_name,
-                    "status": "blocked",
-                    "summary": perm_result.value,
-                },
-            }
 
-        if perm_result == PermissionResult.NEEDS_APPROVAL:
-            # require_approval mode — emit event and return awaiting state
-            awaiting_invocation = invocation.model_copy(
-                update={
-                    "status": "approval_required",
-                    "output_summary": "awaiting_approval",
-                    "result_preview": "awaiting_approval",
-                }
-            )
-            run.tool_invocations.append(awaiting_invocation)
-            run.trace.append(
-                TraceEventV2(
-                    node="policy_guard",
-                    event="approval_required",
-                    detail=f"Tool {tool_call.tool_name} requires approval before execution.",
-                )
-            )
-            append_assistant_part(
-                run,
-                AssistantMessagePartV2(
-                    type="tool_result",
-                    tool_invocation=awaiting_invocation,
-                    text="awaiting_approval",
-                    status="awaiting_approval",
-                ),
-            )
-            return {
-                "blocked": False,
-                "approval_required": True,
-                "observation": None,
-                "final_message": f"Tool {tool_call.tool_name} is awaiting user approval.",
-                "history_item": {
-                    "tool_name": tool_call.tool_name,
-                    "status": "awaiting_approval",
-                    "summary": "awaiting_approval",
-                },
-            }
+    def _dispatch_tool_call(self, state: ToolCallState) -> None:
+        """Choose and run the concrete execution path for one tool call."""
+        run = state.run
+        request_context = state.request_context
+        tool_call = state.tool_call
+        spec = state.spec
+        visible_agents = state.visible_agents
+        event_emitter = state.event_emitter
+        cancellation_event = state.cancellation_event
+        invocation = state.invocation
+        user_id = state.user_id
+        granted_permissions = state.granted_permissions
 
         action = ExecutorActionV2(
             action_type=(
@@ -295,18 +260,6 @@ class ToolExecutor:
         )
         macro_invocation_index: int | None = None
         try:
-            self._guard.validate_action(
-                action=ExecutorActionV2(
-                    action_type="invoke_tool",
-                    tool_name=tool_call.tool_name,
-                    tool_input=tool_call.tool_input,
-                ),
-                policy=policy,
-                visible_tools=visible_tools,
-                visible_agents=visible_agents,
-                replan_count=0,
-                delegation_count=0,
-            )
             if action.action_type == "run_pack_flow":
                 macro_invocation_index = len(run.tool_invocations)
                 run.tool_invocations.append(invocation)
@@ -314,7 +267,7 @@ class ToolExecutor:
                     run=run,
                     request_context=request_context,
                     action=action,
-                    policy=policy,
+                    policy=state.policy,
                     visible_tools=self._tool_registry.list_tools(),
                     visible_agents=visible_agents,
                     replan_count=0,
@@ -424,6 +377,20 @@ class ToolExecutor:
             artifacts = []
             final_message = str(exc)
 
+        state.observation = observation
+        state.artifacts = artifacts
+        state.final_message = final_message
+        state.macro_invocation_index = macro_invocation_index
+
+    def _finalize_tool_call(self, state: ToolCallState) -> None:
+        """Settle the invocation, assistant parts, trace, events, and artifacts."""
+        run = state.run
+        tool_call = state.tool_call
+        invocation = state.invocation
+        observation = state.observation
+        artifacts = state.artifacts
+        event_emitter = state.event_emitter
+
         completed_invocation = invocation.model_copy(
             update={
                 "status": "success" if observation.status == "success" else "error",
@@ -431,8 +398,8 @@ class ToolExecutor:
                 "result_preview": observation.summary,
             }
         )
-        if macro_invocation_index is not None:
-            run.tool_invocations[macro_invocation_index] = completed_invocation
+        if state.macro_invocation_index is not None:
+            run.tool_invocations[state.macro_invocation_index] = completed_invocation
         else:
             run.tool_invocations.append(completed_invocation)
         append_assistant_part(
@@ -471,16 +438,18 @@ class ToolExecutor:
                 artifact=artifact,
             )
 
+    def _result_payload(self, state: ToolCallState) -> dict[str, object]:
+        """Return the executor result dict for a completed call."""
         return {
             "blocked": False,
             "approval_required": False,
-            "observation": observation,
-            "final_message": final_message,
+            "observation": state.observation,
+            "final_message": state.final_message,
             "history_item": {
-                "tool_name": tool_call.tool_name,
-                "status": observation.status,
-                "summary": observation.summary,
-                "artifacts": [a.title for a in artifacts],
+                "tool_name": state.tool_call.tool_name,
+                "status": state.observation.status,
+                "summary": state.observation.summary,
+                "artifacts": [a.title for a in state.artifacts],
             },
         }
 

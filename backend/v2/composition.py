@@ -15,6 +15,7 @@ from typing import Iterable, Literal
 
 from pydantic import BaseModel, Field
 
+from v2.middleware import KNOWN_MIDDLEWARE_NAMES
 from v2.seams.registry import CAPABILITY_PROTOCOLS, SeamError, SeamRegistry
 
 
@@ -39,6 +40,9 @@ class CompositionSpec(BaseModel):
         default_factory=lambda: ["llm", "datasets", "artifacts", "memory"]
     )
     tools: ToolExposure = Field(default_factory=ToolExposure)
+    middlewares: list[str] = Field(
+        default_factory=lambda: ["permission", "policy-guard"]
+    )
 
 
 def build_default_composition() -> CompositionSpec:
@@ -73,6 +77,23 @@ def validate_composition(
         raise CompositionError(
             f"composition {spec.name!r} requires capabilities without providers "
             f"{missing}; registered: {seams.capabilities()}"
+        )
+
+    unknown_middlewares = [
+        name for name in spec.middlewares if name not in KNOWN_MIDDLEWARE_NAMES
+    ]
+    if unknown_middlewares:
+        raise CompositionError(
+            f"composition {spec.name!r} declares unknown middlewares "
+            f"{unknown_middlewares}; known: {sorted(KNOWN_MIDDLEWARE_NAMES)}"
+        )
+    duplicated_middlewares = sorted(
+        {name for name in spec.middlewares if spec.middlewares.count(name) > 1}
+    )
+    if duplicated_middlewares:
+        raise CompositionError(
+            f"composition {spec.name!r} declares duplicate middlewares "
+            f"{duplicated_middlewares}"
         )
 
     registered = set(tool_names)

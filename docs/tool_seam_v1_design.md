@@ -128,3 +128,12 @@ class ToolPresentation(BaseModel):
 - **风险 2：装配清单与真实注册表漂移** → 用测试锁定“清单里每个名字都存在”，并要求新增工具时同步登记。
 - **后续 S2**：把 `ToolExecutor` 改造成 `pre → guard → execute → post → result` 链，中间件注册进 composition。
 - **后续 S3**：统一步骤事件（带 `seq` 与 SSE），替换 `created/step_updated/status_updated`。
+
+## 11. S2 实施记录（2026-10-26）
+
+- `ToolExecutor.execute_tool_call` 拆为 `_build_state → pipeline.run → _result_payload`；`_dispatch_tool_call` / `_finalize_tool_call` 承接原有分发与收尾逻辑，逐段迁移、行为不变。
+- 新增 `v2/middleware/tool_pipeline.py`（`ToolCallState` / `ToolMiddleware` / `ToolPipeline`）与 `builtin.py`（`PermissionMiddleware`、`PolicyGuardMiddleware`、`build_default_tool_pipeline`）。
+- 权限与策略校验从 executor 搬到中间件；`PolicyGuardError` 拒绝改为 `skip_dispatch + error observation`，与原先内联 try 的语义一致。
+- `append_assistant_part` 移到 `v2/runtime/run_parts.py`，executor 保留模块级导入作为再导出，避免中间件与 executor 循环导入。
+- 装配清单新增 `middlewares` 字段，校验未知名称与重复名称。
+- 验证：`backend/tests` 306 passed / 3 skipped；`backend/v2/tests` 96 passed（新增 10 项管线测试）。
