@@ -9,11 +9,12 @@ from types import SimpleNamespace
 from typing import Any, Callable
 
 from infra.imagery.aoi_band_reader import AoiBandReadError, read_prosail_reflectance_aoi
-from infra.imagery.crop_spatial import CropInferenceError, run_crop_spatial_analysis
+from infra.imagery.crop_spatial import CropInferenceError
 from runtime.analysis_workflow_store import AnalysisWorkflowStore
 from runtime.artifact_store import ArtifactStore
 from runtime.crop_analysis_store import CropAnalysisStore
-from runtime.crop_decision import decide_crop, resolve_crop_class
+from runtime.crop_classification import CropImagerySource, classify_crop
+from runtime.crop_decision import resolve_crop_class
 from runtime.lai_analysis_store import LaiAnalysisStore
 from runtime.yield_input_assessment import assess_yield_inputs
 from runtime.apsim_field_runner import ApsimFieldError, run_field_yield
@@ -180,28 +181,24 @@ def _run_crop(
             workflows.update_step(workflow_id, "crop", owner_id=owner_id,
                                   status="running", progress_percent=step_progress, detail=detail)
 
-        result = run_crop_spatial_analysis(
-            reflectance_path=reflectance, output_dir=root / "crop", progress_callback=progress,
-        )
-        # Keep the raw model scores as evidence and add the explicit judgement.
-        progress("正在结合地点与时序先验判定作物", 97)
-        decision = decide_crop(
-            llm_provider, model_result=result,
+        outcome = classify_crop(
+            source=CropImagerySource(reflectance_path=reflectance),
+            geometry=workflow.aoi.geometry.model_dump(mode="json"),
             observed_at=workflow.imagery_snapshot.acquired_at,
             farm_id=workflow.farm_id,
-            geometry=workflow.aoi.geometry.model_dump(mode="json"),
             area_hectares=workflow.aoi.area_hectares,
-        )
-        if decision is not None:
-            result["crop_decision"] = decision
-        result["imagery_provenance"] = _provenance(workflow)
-        result["shared_imagery_workflow_id"] = workflow_id
-        result.update(register_crop_report(
-            artifacts, run_id=workflow_id, output_dir=root / "crop",
+            output_dir=root / "crop",
+            run_id=workflow_id,
+            artifact_store=artifacts,
             imagery_item_id=workflow.imagery_item_id,
-            observed_at=workflow.imagery_snapshot.acquired_at,
-            area_hectares=workflow.aoi.area_hectares, result=result,
-        ))
+            provenance=_provenance(workflow),
+            llm_provider=llm_provider,
+            progress_callback=progress,
+            decision_progress=("正在结合地点与时序先验判定作物", 97),
+            extra_result_fields={"shared_imagery_workflow_id": workflow_id},
+        )
+        result = outcome.result
+        decision = outcome.decision
         crops.update(child.analysis_id, status="completed", stage="completed",
                      progress_percent=100, detail="作物识别已完成", result=result, completed_at=_now())
         updated = workflows.update_step(workflow_id, "crop", owner_id=owner_id,

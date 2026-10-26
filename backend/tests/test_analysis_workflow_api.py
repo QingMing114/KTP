@@ -109,7 +109,7 @@ def test_standalone_crop_report_is_rendered_from_real_result(tmp_path, monkeypat
     import api.canonical.router as router
 
     monkeypatch.setattr(router, "verify_crop_model", lambda: tmp_path / "model.h5")
-    monkeypatch.setattr(router, "run_crop_spatial_analysis", lambda **_kwargs: {
+    monkeypatch.setattr("runtime.crop_classification.run_crop_spatial_analysis", lambda **_kwargs: {
         "predicted_class": {"class_id": 0, "name_zh": "玉米", "score": 0.8},
         "class_scores": [{"class_id": 0, "name_zh": "玉米", "score": 0.8}],
         "model": {"name": "test model", "sha256": "test digest"},
@@ -162,7 +162,7 @@ def test_simple_yield_runs_without_apsim_or_manual_dates_and_persists_report(tmp
                 'season': {'start': '2025-04-20', 'end': '2025-09-01', 'observations': 10},
                 'uncertainty_note': '未用本地实收数据校准，范围不是置信区间'}
     monkeypatch.setattr(runner, 'read_prosail_reflectance_aoi', image)
-    monkeypatch.setattr(runner, 'run_crop_spatial_analysis', lambda **kwargs: {'predicted_class': {'class_id': 0, 'name_zh': '玉米', 'score': 0.5}})
+    monkeypatch.setattr("runtime.crop_classification.run_crop_spatial_analysis", lambda **kwargs: {'predicted_class': {'class_id': 0, 'name_zh': '玉米', 'score': 0.5}})
     monkeypatch.setattr(runner, 'run_simple_yield', simple)
     monkeypatch.setattr(runner, 'run_lai_html_report', lambda **kwargs: pytest.fail('simple yield must not require LAI inversion'))
     monkeypatch.setattr(runner, 'run_field_yield', lambda *args: pytest.fail('simple yield must not start APSIM'))
@@ -252,7 +252,7 @@ def test_workflow_shares_one_image_and_preserves_successful_step_on_retry(tmp_pa
         return SimpleNamespace(status="success", summary="LAI complete", payload=payload), artifacts
 
     monkeypatch.setattr(runner, "read_prosail_reflectance_aoi", fake_read)
-    monkeypatch.setattr(runner, "run_crop_spatial_analysis", fake_crop)
+    monkeypatch.setattr("runtime.crop_classification.run_crop_spatial_analysis", fake_crop)
     monkeypatch.setattr(runner, "run_lai_html_report", fake_lai)
     app = _app(tmp_path / "execution.sqlite3")
     app.state.product_artifact_root = tmp_path / "artifacts"
@@ -332,7 +332,7 @@ def test_imagery_failure_can_retry_without_creating_a_child_before_data_exists(t
         return {"predicted_class": {"class_id": 0, "name": "Corn", "name_zh": "玉米", "score": 0.8}}
 
     monkeypatch.setattr(runner, "read_prosail_reflectance_aoi", fake_read)
-    monkeypatch.setattr(runner, "run_crop_spatial_analysis", fake_crop)
+    monkeypatch.setattr("runtime.crop_classification.run_crop_spatial_analysis", fake_crop)
     app = _app(tmp_path / "image-retry.sqlite3")
     app.state.product_artifact_root = tmp_path / "artifacts"
     with TestClient(app) as client:

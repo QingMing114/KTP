@@ -37,6 +37,7 @@ from runtime.idempotency_store import IdempotencyStore
 from runtime.submission_store import SubmissionStore
 from runtime.lai_analysis_store import LaiAnalysisStore
 from runtime.crop_analysis_store import CropAnalysisStore
+from runtime.crop_classification import CropImagerySource, classify_crop
 from runtime.analysis_workflow_store import AnalysisWorkflowStore
 from runtime.analysis_workflow_runner import ensure_workflow_reports, run_analysis_workflow
 from runtime.workspace_assistant import (plan_workspace, workspace_parts, can_rebase_preview, TASK_LABELS,
@@ -84,7 +85,7 @@ from schemas.analysis_workflow import (
 )
 from shared.config.paths import get_lai_report_dir
 from v2.tools.lai_report_handler import run_lai_html_report
-from infra.imagery.crop_spatial import CropInferenceError, run_crop_spatial_analysis, verify_crop_model
+from infra.imagery.crop_spatial import CropInferenceError, verify_crop_model
 from v2.tools.apsim_report_handler import get_apsim_demo_db_path, run_apsim_yield_report
 from v2.runtime.engine import BoundedRuntimeEngine
 from v2.runtime.store import RuntimeStore
@@ -1296,31 +1297,25 @@ def build_canonical_router() -> APIRouter:
                                     stage="inference" if percent >= 90 else "preparing" if percent >= 85 else "imagery",
                                     progress_percent=min(95, 5 + round(percent * 0.9)), detail=detail)
 
-                result = run_crop_spatial_analysis(
-                    item=item, geometry=body.aoi.geometry.model_dump(mode="json"),
-                    output_dir=artifact_root / "crop" / analysis.analysis_id, progress_callback=progress,
-                )
-                from runtime.crop_decision import decide_crop
-                decision = decide_crop(
-                    getattr(getattr(request.app.state, "runtime_engine", None), "llm_provider", None),
-                    model_result=result, observed_at=snapshot.acquired_at, farm_id=body.farm_id,
+                outcome = classify_crop(
+                    source=CropImagerySource(item=item),
                     geometry=body.aoi.geometry.model_dump(mode="json"),
-                    area_hectares=body.aoi.area_hectares,
-                )
-                if decision is not None:
-                    result["crop_decision"] = decision
-                result["imagery_provenance"] = {
-                    "item_id": snapshot.item_id, "collection": snapshot.collection,
-                    "acquired_at": snapshot.acquired_at, "cloud_cover": snapshot.cloud_cover,
-                    "asset_fingerprint": snapshot.asset_fingerprint,
-                }
-                result.update(register_crop_report(
-                    _artifact_store(request), run_id=analysis.analysis_id,
-                    output_dir=artifact_root / "crop" / analysis.analysis_id,
-                    imagery_item_id=body.imagery_item_id,
                     observed_at=snapshot.acquired_at,
-                    area_hectares=body.aoi.area_hectares, result=result,
-                ))
+                    farm_id=body.farm_id,
+                    area_hectares=body.aoi.area_hectares,
+                    output_dir=artifact_root / "crop" / analysis.analysis_id,
+                    run_id=analysis.analysis_id,
+                    artifact_store=_artifact_store(request),
+                    imagery_item_id=body.imagery_item_id,
+                    provenance={
+                        "item_id": snapshot.item_id, "collection": snapshot.collection,
+                        "acquired_at": snapshot.acquired_at, "cloud_cover": snapshot.cloud_cover,
+                        "asset_fingerprint": snapshot.asset_fingerprint,
+                    },
+                    llm_provider=getattr(getattr(request.app.state, "runtime_engine", None), "llm_provider", None),
+                    progress_callback=progress,
+                )
+                result = outcome.result
                 analyses.update(analysis.analysis_id, status="completed", stage="completed",
                                 progress_percent=100, detail="作物识别已完成", result=result,
                                 completed_at=datetime.now(timezone.utc).isoformat())

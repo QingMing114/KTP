@@ -49,7 +49,7 @@ def setup_app(tmp_path, monkeypatch, provider):
     monkeypatch.setenv("LAI_LUT_PATH", str(lut_path))
     monkeypatch.setenv("LAI_REPORT_OUTPUT_DIR", str(tmp_path / "reports"))
     monkeypatch.setattr(runner, "read_prosail_reflectance_aoi", read_image)
-    monkeypatch.setattr(runner, "run_crop_spatial_analysis", lambda **kwargs: {
+    monkeypatch.setattr("runtime.crop_classification.run_crop_spatial_analysis", lambda **kwargs: {
         "predicted_class": {"class_id": 0, "name_zh": "玉米", "score": .8},
     })
     app = _app(tmp_path / "test.sqlite3")
