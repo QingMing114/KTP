@@ -43,6 +43,7 @@ from schemas.runtime import (
     SessionStateV2,
     SessionSummary,
     ToolInvocationView,
+    ToolPresentation,
     ToolSpecV2,
     TraceEventV2,
     UpdateSessionRequest,
@@ -58,7 +59,7 @@ DEPRECATED_ALIASES = frozenset({
     "ReplayComparisonV2", "ReplayResponseV2", "RequestContextV2", "RunDetail", "RunEventV2",
     "RunStateV2", "RunSummary", "RuntimeArtifactKind", "RuntimeEventKind", "RuntimeRunStatus",
     "SceneParameters", "SendMessageRequest", "SessionDetail", "SessionMessage", "SessionStateV2",
-    "SessionSummary", "ToolInvocationView", "ToolSpecV2", "TraceEventV2", "UpdateSessionRequest",
+    "SessionSummary", "ToolInvocationView", "ToolPresentation", "ToolSpecV2", "TraceEventV2", "UpdateSessionRequest",
     "UserRecord",
 })
 

@@ -13,7 +13,7 @@ from v2.adapters.python_services.ktp_rag import (
     KtpKnowledgeAdapter,
     build_default_ktp_knowledge_adapter,
 )
-from v2.shared.schemas import ObservationV2, PackArtifactView, ToolSpecV2
+from v2.shared.schemas import ObservationV2, PackArtifactView, ToolPresentation, ToolSpecV2
 from v2.tools.apsim_adapter import run_apsim_crop_simulation
 from v2.tools.apsim_report_handler import run_apsim_yield_report
 from v2.tools.handlers import (
@@ -518,6 +518,12 @@ def build_default_tool_registry(
                     capabilities=["report_generation", "operator_summary"],
                     requires_context=["region", "crop_type", "task_type", "query"],
                     produces_artifacts=["report_card"],
+                    presentation=ToolPresentation(
+                        card_kind="report",
+                        summary_fields=["report_title", "artifact_id"],
+                        progress_phases=["生成报告", "登记产物"],
+                        result_renderer="report_card",
+                    ),
                 ),
                 handler=build_ktp_build_report_handler(bundle=resolved_ktp_service_bundle),
             ),
@@ -719,6 +725,13 @@ def build_default_tool_registry(
                         "geospatial_processing",
                     ],
                     produces_artifacts=["lai_html_report"],
+                    presentation=ToolPresentation(
+                        card_kind="report",
+                        summary_fields=["mean_lai", "valid_pixel_ratio", "report_uri"],
+                        progress_phases=["准备影像", "加载 LUT", "逐像元反演", "生成报告"],
+                        result_renderer="lai_report",
+                        expandable=True,
+                    ),
                 ),
                 handler=run_lai_html_report,
             ),

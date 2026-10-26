@@ -214,6 +214,21 @@ class AgentProfile(BaseModel):
     description: str
 
 
+class ToolPresentation(BaseModel):
+    """UI presentation declaration for one tool.
+
+    Consumers resolve a renderer by ``result_renderer`` (falling back to
+    ``card_kind`` and finally to a generic card). The declaration is optional so
+    existing tools keep their current behavior.
+    """
+
+    card_kind: str = "generic"
+    summary_fields: list[str] = Field(default_factory=list)
+    progress_phases: list[str] = Field(default_factory=list)
+    result_renderer: str | None = None
+    expandable: bool = True
+
+
 class ToolSpecV2(BaseModel):
     name: str
     display_name: str | None = None
@@ -238,6 +253,7 @@ class ToolSpecV2(BaseModel):
     capabilities: list[str] = Field(default_factory=list)
     requires_context: list[str] = Field(default_factory=list)
     produces_artifacts: list[str] = Field(default_factory=list)
+    presentation: ToolPresentation | None = None
 
 
 class PermissionPolicy(BaseModel):
