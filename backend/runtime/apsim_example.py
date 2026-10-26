@@ -21,21 +21,25 @@ class ApsimExampleError(RuntimeError):
 
 
 def select_example(workflow):
+    from runtime.crop_decision import class_label, needs_score_gate, resolve_crop_class
+
     step = next((step for step in workflow.steps if step.step_id == "crop"), None)
     if step is None or step.status != "completed":
         raise ApsimExampleError("请先完成农作物识别，再自动选择 APSIM 示例。")
-    prediction = step.result.get("predicted_class") or {}
-    class_id = prediction.get("class_id")
+    class_id, decision = resolve_crop_class(step.result)
     if type(class_id) is not int or class_id not in EXAMPLES:
-        raise ApsimExampleError("识别作物没有对应的小麦、玉米或大豆示例，无法自动模拟。")
-    score = prediction.get("score")
-    if not isinstance(score, (int, float)) or not math.isfinite(score) or score < 0.60:
-        raise ApsimExampleError("作物识别分数不足 0.60，请更换生长期影像后重新识别。")
-    scores = sorted((item["score"] for item in step.result.get("class_scores", [])
-                     if isinstance(item, dict) and isinstance(item.get("score"), (int, float))
-                     and math.isfinite(item["score"])), reverse=True)
-    if len(scores) >= 2 and scores[0] - scores[1] < 0.15:
-        raise ApsimExampleError("作物识别前两类分差不足 0.15，请更换生长期影像后重新识别。")
+        raise ApsimExampleError(
+            f"判定为{class_label(class_id)}，没有对应的小麦、玉米或大豆示例，无法自动模拟。")
+    prediction = step.result.get("predicted_class") or {}
+    if needs_score_gate(decision):
+        score = prediction.get("score")
+        if not isinstance(score, (int, float)) or not math.isfinite(score) or score < 0.60:
+            raise ApsimExampleError("作物识别分数不足 0.60，请更换生长期影像后重新识别。")
+        scores = sorted((item["score"] for item in step.result.get("class_scores", [])
+                         if isinstance(item, dict) and isinstance(item.get("score"), (int, float))
+                         and math.isfinite(item["score"])), reverse=True)
+        if len(scores) >= 2 and scores[0] - scores[1] < 0.15:
+            raise ApsimExampleError("作物识别前两类分差不足 0.15，请更换生长期影像后重新识别。")
     return EXAMPLES[class_id], prediction
 
 

@@ -7,6 +7,7 @@ export type WorkspacePhase = 'draw' | 'search' | 'choose' | 'configure' | 'ready
 
 export function simpleYieldBlockedLabel(reason: unknown): string {
   if (reason === 'crop_confirmation_required') return '待确认作物'
+  if (reason === 'crop_class_unsupported') return '作物暂不支持估产'
   if (reason === 'season_in_progress') return '等待季末观测'
   if (typeof reason === 'string' && reason.startsWith('weather_')) return '气象数据未就绪'
   return '时序数据不足'

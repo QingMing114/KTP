@@ -32,15 +32,45 @@ def register_crop_report(
 ) -> dict[str, str]:
     model = result.get("model") or {}
     prediction = result.get("predicted_class") or {}
+    decision = result.get("crop_decision") or {}
     classes = sorted(result.get("class_scores") or [], key=lambda item: item.get("score", 0), reverse=True)
     valid_pixels = (result.get("input") or {}).get("valid_pixels")
+    source_label = {"llm": "大模型结合地点与时序判定", "user_confirmed": "用户确认",
+                    "model_fallback": "大模型不可用，回退模型最高分"}.get(decision.get("source"), "未进行判定")
+    rationale = str(decision.get("rationale") or "").strip()
+    location = decision.get("location") or {}
+    location_source = {"farm_preset+admin_boundary": "农场范围 + 行政区反查", "farm_preset": "农场范围",
+                       "admin_boundary": "AOI 行政区反查", "coordinates_only": "仅经纬度"}.get(location.get("source"), "未记录")
+    decision_notes = [
+        "最终判定综合了大模型的区域物候先验与模型分数，未经实地验证，不代表识别精度。",
+        "模型分数未经校准，也不能替代逐像元作物分类。",
+    ]
+    if location.get("farm_mismatch"):
+        decision_notes.append(f"所选农场“{location.get('farm_label') or '未记录'}”与 AOI 位置不一致，地点按坐标反查为{location.get('province') or '未知行政区'}。")
+    decision_rows = [[
+        ["最终判定", decision.get("final_name_zh") or "未判定"],
+        ["判定来源", source_label],
+        ["判定依据", rationale or "—"],
+        ["地点与时间", " · ".join(str(value) for value in (
+            location.get("label") or location.get("province") or location.get("admin_hint"),
+            str(decision.get("observed_at") or result.get("observation_at") or "")[:10],
+        ) if value) or "—"],
+        ["地点依据", location_source],
+        ["物候判断", decision.get("phenology") or "—"],
+    ]]
+    if decision.get("source") == "model_fallback":
+        detail = decision.get("fallback_detail") or {}
+        decision_rows[0].append(["回退原因", decision.get("fallback_reason") or "—"])
+        decision_rows[0].append(["失败阶段", detail.get("stage") or "—"])
+        decision_rows[0].append(["错误信息", detail.get("message") or "—"])
     return register_map_report(
         artifacts, run_id=run_id, output_dir=output_dir,
         kind="crop_classification_report", title="农作物识别分析报告",
         context={"分析 ID": run_id, "影像 ID": imagery_item_id,
                  "观测日期": observed_at[:10], "选区面积": f"{_number(area_hectares, 2)} ha",
                  "模型": model.get("name"), "权重 SHA-256": model.get("sha256")},
-        highlights=[{"label": "识别最高类别", "value": prediction.get("name_zh") or "未知"},
+        highlights=[{"label": "最终判定", "value": decision.get("final_name_zh") or "未判定"},
+                    {"label": "识别最高类别", "value": prediction.get("name_zh") or "未知"},
                     {"label": "最高模型分数", "value": _fraction(prediction.get("score"))},
                     {"label": "参与比较类别", "value": str(len(classes))},
                     {"label": "有效影像像元", "value": str(valid_pixels) if valid_pixels is not None else "—"}],
@@ -48,7 +78,8 @@ def register_crop_report(
                   "items": [{"label": item.get("name_zh") or item.get("name") or "未知",
                              "value": item.get("score", 0), "display": _fraction(item.get("score"))}
                             for item in classes]}],
-        sections=[{"title": "结果说明",
+        sections=[{"title": "判定依据", "rows": decision_rows[0], "notes": decision_notes},
+                  {"title": "结果说明",
                    "rows": [["识别范围", "整个选区的一种作物类别"],
                             ["影像输入", "Sentinel-2 L2A RGB"],
                             ["模型输入", "224 × 224 RGB 图像"]],

@@ -116,7 +116,7 @@ class ProfessionalReview(BaseModel):
     workspace_id: str
     source_run_id: str
     conversation_id: str | None = None
-    phase: Literal["search", "workflow", "lai"]
+    phase: Literal["search", "workflow", "lai", "crop"]
     status: Literal["pending", "processing", "confirmed", "cancelled", "failed"] = "pending"
     title: str
     rationale: str = ""
@@ -126,6 +126,7 @@ class ProfessionalReview(BaseModel):
     candidates: list[ImageryCandidate] = Field(default_factory=list)
     selected_imagery_id: str | None = None
     proposed_scene: dict | None = None
+    proposed_crop: dict | None = None
     workflow_id: str | None = None
     step_version: str | None = None
     next_review_id: str | None = None
@@ -143,3 +144,4 @@ class ConfirmProfessionalReviewRequest(BaseModel):
     task_ids: list[TaskId] | None = Field(default=None, min_length=1)
     apsim_mode: Literal["field", "example"] | None = None
     scene: LaiParameterRanges | None = None
+    crop_class_id: int | None = Field(default=None, ge=0, le=5)

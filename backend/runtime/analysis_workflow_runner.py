@@ -13,6 +13,7 @@ from infra.imagery.crop_spatial import CropInferenceError, run_crop_spatial_anal
 from runtime.analysis_workflow_store import AnalysisWorkflowStore
 from runtime.artifact_store import ArtifactStore
 from runtime.crop_analysis_store import CropAnalysisStore
+from runtime.crop_decision import decide_crop, resolve_crop_class
 from runtime.lai_analysis_store import LaiAnalysisStore
 from runtime.yield_input_assessment import assess_yield_inputs
 from runtime.apsim_field_runner import ApsimFieldError, run_field_yield
@@ -128,7 +129,9 @@ def run_analysis_workflow(
         return
 
     if "crop" in run_task_ids:
-        _run_crop(workflow, reflectance, root, workflows, crops, artifacts, owner_id)
+        if _run_crop(workflow, reflectance, root, workflows, crops, artifacts, owner_id, llm_provider):
+            # Professional mode pauses before every dependent step.
+            return
     if "lai" in run_task_ids:
         workflow = workflows.get(workflow_id, owner_id=owner_id) or workflow
         if workflow.professional_mode:
@@ -156,8 +159,9 @@ def run_analysis_workflow(
 def _run_crop(
     workflow: AnalysisWorkflowSummary, reflectance: Path, root: Path,
     workflows: AnalysisWorkflowStore, crops: CropAnalysisStore,
-    artifacts: ArtifactStore, owner_id: str,
-) -> None:
+    artifacts: ArtifactStore, owner_id: str, llm_provider: Any = None,
+) -> bool:
+    """Run the crop step; return True when professional mode paused for a decision."""
     workflow_id = workflow.workflow_id
     child = crops.create(CreateCropAnalysisRequest(
         aoi=workflow.aoi, imagery_item_id=workflow.imagery_item_id,
@@ -179,6 +183,17 @@ def _run_crop(
         result = run_crop_spatial_analysis(
             reflectance_path=reflectance, output_dir=root / "crop", progress_callback=progress,
         )
+        # Keep the raw model scores as evidence and add the explicit judgement.
+        progress("正在结合地点与时序先验判定作物", 97)
+        decision = decide_crop(
+            llm_provider, model_result=result,
+            observed_at=workflow.imagery_snapshot.acquired_at,
+            farm_id=workflow.farm_id,
+            geometry=workflow.aoi.geometry.model_dump(mode="json"),
+            area_hectares=workflow.aoi.area_hectares,
+        )
+        if decision is not None:
+            result["crop_decision"] = decision
         result["imagery_provenance"] = _provenance(workflow)
         result["shared_imagery_workflow_id"] = workflow_id
         result.update(register_crop_report(
@@ -189,9 +204,32 @@ def _run_crop(
         ))
         crops.update(child.analysis_id, status="completed", stage="completed",
                      progress_percent=100, detail="作物识别已完成", result=result, completed_at=_now())
-        workflows.update_step(workflow_id, "crop", owner_id=owner_id,
-                              status="completed", progress_percent=100,
-                              detail="作物识别已完成", result=result)
+        updated = workflows.update_step(workflow_id, "crop", owner_id=owner_id,
+                                        status="completed", progress_percent=100,
+                                        detail=_crop_step_detail(decision), result=result)
+        if not workflow.professional_mode or decision is None:
+            return False
+        context = workflows.get_workspace(workflow.workspace_id, owner_id=owner_id)
+        if context is None:
+            raise ValueError("专业模式缺少工作台输入快照")
+        review = create_review(
+            workflows, owner_id=owner_id, context=context,
+            intent=WorkspaceIntent(intent="execute", task_ids=workflow.requested_task_ids,
+                                   summary="确认农作物识别结果"),
+            run_id=workflow.run_id or workflow_id, conversation_id=workflow.conversation_id,
+            phase="crop", workflow=workflow, crop=decision,
+        )
+        updated = workflows.update_step(workflow_id, "crop", owner_id=owner_id,
+                                        result={**result, "review_id": review.review_id})
+        step = next(step for step in updated.steps if step.step_id == "crop")
+        workflows.finish_review(review.review_id, owner_id=owner_id, step_version=step.updated_at)
+        for dependent in ("lai", "growth", "potential", "yield_simple", "yield"):
+            if any(candidate.step_id == dependent for candidate in updated.steps):
+                workflows.update_step(workflow_id, dependent, owner_id=owner_id,
+                                      status="blocked", detail="等待确认农作物识别结果")
+        workflows.update_status(workflow_id, owner_id=owner_id, status="blocked",
+                                detail="专业模式：请确认农作物识别结果后继续")
+        return True
     except CropInferenceError as exc:
         detail = str(exc)
         logger.warning("analysis_workflow_crop_failed | workflow_id=%s", workflow_id)
@@ -199,6 +237,7 @@ def _run_crop(
                      result={"error": detail}, completed_at=_now())
         workflows.update_step(workflow_id, "crop", owner_id=owner_id,
                               status="failed", detail=detail, result={"error": detail})
+        return False
     except Exception:
         logger.exception("analysis_workflow_crop_failed | workflow_id=%s", workflow_id)
         detail = "作物识别执行失败，请稍后重试。"
@@ -206,6 +245,16 @@ def _run_crop(
                      result={"error": detail}, completed_at=_now())
         workflows.update_step(workflow_id, "crop", owner_id=owner_id,
                               status="failed", detail=detail, result={"error": detail})
+        return False
+
+
+def _crop_step_detail(decision: dict[str, Any] | None) -> str:
+    if not decision:
+        return "作物识别已完成"
+    label = decision.get("final_name_zh") or "未知"
+    if decision.get("source") == "model_fallback":
+        return f"作物识别已完成：模型最高分 {label}（大模型判定不可用，已回退）"
+    return f"作物识别已完成：判定为{label}"
 
 
 def _run_lai(
@@ -505,6 +554,12 @@ def _write_workflow_summary_report(
         rows = [["状态", step.status], ["说明", step.detail]]
         if step.step_id == "crop":
             prediction = result.get("predicted_class") or {}
+            decision = result.get("crop_decision") or {}
+            if decision:
+                rows += [["最终判定", decision.get("final_name_zh")],
+                         ["判定来源", {"llm": "大模型结合地点与时序判定", "user_confirmed": "用户确认",
+                                       "model_fallback": "大模型不可用，回退模型最高分"}.get(decision.get("source"), "—")],
+                         ["判定依据", decision.get("rationale")]]
             rows += [["最高类别", prediction.get("name_zh")], ["模型分数", prediction.get("score")]]
         elif step.step_id == "lai":
             rows += [["LAI 均值", result.get("lai_mean")],
@@ -531,7 +586,9 @@ def _write_workflow_summary_report(
                      ["本地实收校准", "尚未校准"]]
         notes = []
         if step.step_id == "crop":
-            notes = result.get("warnings") or []
+            notes = list(result.get("warnings") or [])
+            if result.get("crop_decision"):
+                notes.append("最终判定含大模型先验，未经实地验证；模型分数未经校准。")
         if step.step_id in {"growth", "potential", "yield_simple", "yield"}:
             notes = [str(result[key]) for key in ("warning", "uncertainty_note") if result.get(key)]
         assessment = result.get("input_assessment") or {}

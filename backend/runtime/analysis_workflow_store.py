@@ -364,12 +364,12 @@ class AnalysisWorkflowStore:
                     raise ValueError("确认卡片已处理，请刷新查看当前状态")
                 if not cancelling and (not context.professional_mode or context.execution_mode != "live"):
                     raise ValueError("请保持专业模式开启后确认")
-                if review.phase != "lai" and not cancelling:
+                if review.phase not in {"lai", "crop"} and not cancelling:
                     if review.context.model_dump(exclude={"revision"}) != context.model_dump(exclude={"revision"}):
                         raise ValueError("区域、影像、参数或模式已变化，请重新生成确认卡片")
-                elif review.phase == "lai":
+                elif review.phase in {"lai", "crop"}:
                     flow = self.get(review.workflow_id, owner_id=owner_id)
-                    step = next((s for s in flow.steps if s.step_id == "lai"), None) if flow else None
+                    step = next((s for s in flow.steps if s.step_id == review.phase), None) if flow else None
                     if (flow is None or flow.status != "blocked" or not step or step.updated_at != review.step_version
                             or step.result.get("review_id") != review.review_id
                             or not cancelling and (context.workspace_id != flow.workspace_id or context.aoi != flow.aoi

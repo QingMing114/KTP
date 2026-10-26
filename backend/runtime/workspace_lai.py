@@ -25,16 +25,21 @@ def workspace_lai_query(message, context, recent_runs) -> str:
 def configure_workspace_lai(workflow: AnalysisWorkflowSummary, reflectance, llm_provider):
     from shapely.geometry import shape
 
+    from runtime.crop_decision import resolve_crop_class
+
     geometry = shape(workflow.aoi.geometry.model_dump(mode="json"))
     crop_step = next((s for s in workflow.steps if s.step_id == "crop" and s.status == "completed"), None)
     prediction = crop_step.result.get("predicted_class") if crop_step else None
-    crop = (prediction.get("name_zh") or prediction.get("name")) if prediction else None
+    _, decision = resolve_crop_class(crop_step.result if crop_step else None)
+    crop = ((decision or {}).get("final_name_zh")
+            or (prediction or {}).get("name_zh") or (prediction or {}).get("name")) if prediction or decision else None
     scene_context = {
         "acquired_at": workflow.imagery_snapshot.acquired_at,
         "imagery_item_id": workflow.imagery_item_id,
         "aoi_bounds_wgs84": list(geometry.bounds),
         "area_hectares": workflow.aoi.area_hectares,
         "crop_prediction": prediction,
+        "crop_decision": decision,
     }
     scene = extract_scene_parameters(
         llm_provider=llm_provider, query=workflow.lai_query or "为当前地图选区配置 LAI 反演参数",

@@ -141,7 +141,7 @@ class YieldInputAssessment(BaseModel):
     contract_version: Literal["yield-input-v1"] = "yield-input-v1"
     status: Literal["blocked", "ready"] = "blocked"
     resolved_crop: str | None = None
-    crop_source: Literal["model", "user_confirmed", "unresolved"] = "unresolved"
+    crop_source: Literal["model", "user_confirmed", "llm", "unresolved"] = "unresolved"
     crop_model_score: float | None = None
     crop_score_margin: float | None = None
     imagery_acquired_at: str | None = None

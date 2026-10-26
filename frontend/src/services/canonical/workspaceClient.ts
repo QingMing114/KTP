@@ -102,7 +102,7 @@ export interface ProfessionalReview {
   review_id: string
   workspace_id: string
   source_run_id: string
-  phase: 'search' | 'workflow' | 'lai'
+  phase: 'search' | 'workflow' | 'lai' | 'crop'
   status: 'pending' | 'processing' | 'confirmed' | 'cancelled' | 'failed'
   title: string
   rationale: string
@@ -117,6 +117,26 @@ export interface ProfessionalReview {
     month?: number | null; growth_stage?: string | null; confidence?: number
     context?: { acquired_at?: string; imagery_item_id?: string; crop_prediction?: { name?: string; name_zh?: string } }
   }) | null
+  proposed_crop?: {
+    final_class_id?: number
+    final_name_zh?: string
+    source?: string
+    confidence?: string
+    rationale?: string
+    phenology?: string
+    location?: {
+      label?: string | null; admin_hint?: string | null; lat?: number | null; lon?: number | null
+      province?: string | null; city?: string | null; source?: string
+      farm_label?: string | null; farm_name?: string | null; farm_mismatch?: boolean
+    } | null
+    observed_at?: string
+    model_prediction?: { class_id?: number; name_zh?: string; score?: number } | null
+    fallback_reason?: string | null
+    fallback_detail?: {
+      stage?: string; error_type?: string; category?: string | null; status_code?: number | null
+      provider?: string; message?: string; upstream_excerpt?: string | null; attempts?: number
+    } | null
+  } | null
   workflow_id: string | null
   created_at: string
   confirmed_parameters?: Record<string, unknown> | null
@@ -128,6 +148,7 @@ export interface ProfessionalDecision {
   task_ids?: WorkflowTaskId[]
   apsim_mode?: 'field' | 'example'
   scene?: LaiParameterRanges
+  crop_class_id?: number
 }
 export function getProfessionalReviews(workspaceId: string): Promise<ProfessionalReview[]> {
   return canonicalJson(`/workspaces/${encodeURIComponent(workspaceId)}/professional-reviews`)

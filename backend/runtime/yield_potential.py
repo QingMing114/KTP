@@ -83,6 +83,7 @@ def estimate_yield_potential(workflow: AnalysisWorkflowSummary, reflectance_path
         "lai_valid_pixels": valid_lai,
         "observed_at": observed_at,
         "crop_prediction": prediction,
+        "crop_decision": crop.result.get("crop_decision"),
         "imagery_item_id": workflow.imagery_item_id,
         "lai_analysis_id": lai.analysis_id,
         "crop_analysis_id": crop.analysis_id,

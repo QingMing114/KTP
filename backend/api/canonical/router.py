@@ -951,6 +951,20 @@ def build_canonical_router() -> APIRouter:
                 selected = next((item for item in review.candidates if item.item_id == (body.imagery_item_id or review.selected_imagery_id)), None)
                 if selected is None or not tasks or len(set(tasks)) != len(tasks):
                     raise HTTPException(400, "请选择卡片中的有效影像及不重复的分析任务")
+            elif review.phase == "crop":
+                proposed = review.proposed_crop or {}
+                class_id = body.crop_class_id if body.crop_class_id is not None else proposed.get("final_class_id")
+                if type(class_id) is not int or not 0 <= class_id <= 5:
+                    raise HTTPException(400, "请选择有效的农作物类别")
+                flow = workflows.get(review.workflow_id, owner_id=owner_id) if review.workflow_id else None
+                if flow is None:
+                    raise HTTPException(404, "工作流不存在")
+                try:
+                    selected_item = await asyncio.to_thread(_imagery_provider(request).get_item, flow.imagery_item_id)
+                    _imagery_provider(request).validate_selection(
+                        flow.imagery_snapshot, selected_item, flow.aoi.geometry.model_dump(mode="json"))
+                except ImagerySearchError as exc:
+                    raise HTTPException(400, "影像信息已失效，请重新搜索和确认") from exc
             else:
                 if body.scene is None:
                     raise HTTPException(400, "请提交完整的 LAI 参数范围配置")
@@ -973,8 +987,10 @@ def build_canonical_router() -> APIRouter:
         try:
             if body.decision == "cancel":
                 review = workflows.finish_review(review_id, owner_id=owner_id, status="cancelled", detail="用户已取消本次操作")
-                if review.phase == "lai":
-                    workflows.update_status(review.workflow_id, owner_id=owner_id, status="cancelled", detail="用户取消了后续 LAI 分析，已完成步骤保留")
+                if review.phase in {"lai", "crop"}:
+                    cancelled_detail = ("用户取消了后续 LAI 分析，已完成步骤保留" if review.phase == "lai"
+                                        else "用户取消了后续分析，已完成步骤保留")
+                    workflows.update_status(review.workflow_id, owner_id=owner_id, status="cancelled", detail=cancelled_detail)
             elif review.phase == "search":
                 try:
                     candidates = await asyncio.to_thread(_imagery_provider(request).search, search)
@@ -1004,6 +1020,39 @@ def build_canonical_router() -> APIRouter:
                 ), request, workspace=body.context)
                 review = workflows.finish_review(review_id, owner_id=owner_id, status="confirmed", workflow_id=created.workflow_id,
                                                   detail="已按确认的影像与任务启动工作流")
+            elif review.phase == "crop":
+                from runtime.crop_decision import class_label
+                proposed = dict(review.proposed_crop or {})
+                class_id = body.crop_class_id if body.crop_class_id is not None else proposed.get("final_class_id")
+                flow = workflows.get(review.workflow_id, owner_id=owner_id)
+                if flow is None:
+                    raise HTTPException(404, "工作流不存在")
+                crop_step = next((step for step in flow.steps if step.step_id == "crop"), None)
+                confirmed_decision = {**proposed,
+                                      "final_class_id": class_id,
+                                      "final_name_zh": class_label(class_id),
+                                      "source": "user_confirmed",
+                                      "rationale": proposed.get("rationale") or "用户确认了农作物识别结果。",
+                                      "confirmed_by": "user"}
+                workflows.update_step(review.workflow_id, "crop", owner_id=owner_id,
+                                      result={**(crop_step.result if crop_step else {}),
+                                              "crop_decision": confirmed_decision,
+                                              "review_id": review_id})
+                workflows.update_yield_inputs(
+                    review.workflow_id, owner_id=owner_id,
+                    inputs=flow.yield_inputs.model_copy(update={"confirmed_crop_class_id": class_id}))
+                refreshed = workflows.get(review.workflow_id, owner_id=owner_id)
+                assert refreshed is not None
+                for step in refreshed.steps:
+                    if step.step_id != "crop" and step.status == "blocked":
+                        workflows.update_step(review.workflow_id, step.step_id, owner_id=owner_id,
+                                              status="planned", progress_percent=0, detail="等待继续执行")
+                remaining = set(refreshed.effective_task_ids) - {"crop"}
+                flow = workflows.update_status(review.workflow_id, owner_id=owner_id, status="planned",
+                                               detail="正在使用用户确认的作物结果继续执行")
+                review = workflows.finish_review(review_id, owner_id=owner_id, status="confirmed",
+                                                 detail="已按用户确认的农作物识别结果继续")
+                created = _launch_analysis_workflow(request, flow, selected_item, remaining & {"crop", "lai"})
             else:
                 scene = SceneParameters.model_validate({**review.proposed_scene, **body.scene.model_dump(), "source": "user_confirmed"}).model_dump(mode="json")
                 scene.update(context=review.proposed_scene.get("context"), recommendation=review.proposed_scene, confirmation_review_id=review_id)
@@ -1251,6 +1300,15 @@ def build_canonical_router() -> APIRouter:
                     item=item, geometry=body.aoi.geometry.model_dump(mode="json"),
                     output_dir=artifact_root / "crop" / analysis.analysis_id, progress_callback=progress,
                 )
+                from runtime.crop_decision import decide_crop
+                decision = decide_crop(
+                    getattr(getattr(request.app.state, "runtime_engine", None), "llm_provider", None),
+                    model_result=result, observed_at=snapshot.acquired_at, farm_id=body.farm_id,
+                    geometry=body.aoi.geometry.model_dump(mode="json"),
+                    area_hectares=body.aoi.area_hectares,
+                )
+                if decision is not None:
+                    result["crop_decision"] = decision
                 result["imagery_provenance"] = {
                     "item_id": snapshot.item_id, "collection": snapshot.collection,
                     "acquired_at": snapshot.acquired_at, "cloud_cover": snapshot.cloud_cover,

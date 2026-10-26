@@ -11,6 +11,9 @@ import os
 from datetime import date
 
 from runtime.apsim_field_dataset import FieldDatasetError, load_field_dataset
+from runtime.crop_decision import (
+    MIN_SCORE_MARGIN, MIN_TOP_SCORE, needs_score_gate, resolve_crop_class,
+)
 
 from schemas.analysis_workflow import AnalysisWorkflowSummary, YieldInputAssessment, YieldInputIssue
 
@@ -19,8 +22,6 @@ CLASS_TO_APSIM = {
     0: "maize", 1: None, 2: "soybean", 3: "wheat", 4: "wheat", 5: None,
 }
 CLASS_LABELS = ("玉米", "棉花", "大豆", "春小麦", "冬小麦", "大麦")
-MIN_TOP_SCORE = 0.60
-MIN_SCORE_MARGIN = 0.15
 MIN_LAI_VALID_FRACTION = 0.50
 MIN_LAI_VALID_PIXELS = 16
 
@@ -43,9 +44,19 @@ def assess_yield_inputs(workflow: AnalysisWorkflowSummary) -> YieldInputAssessme
                             and math.isfinite(item["score"])), reverse=True)
     margin = round(sorted_scores[0] - sorted_scores[1], 6) if len(sorted_scores) >= 2 else None
     predicted_id = predicted.get("class_id") if isinstance(predicted, dict) else None
+    decided_id, decision = (resolve_crop_class(crop_step.result)
+                            if crop_step and crop_step.status == "completed" else (None, None))
     confirmed_id = workflow.yield_inputs.confirmed_crop_class_id
-    selected_id = confirmed_id if confirmed_id is not None else predicted_id
-    crop_source = "user_confirmed" if confirmed_id is not None else "model" if predicted_id is not None else "unresolved"
+    selected_id = confirmed_id if confirmed_id is not None else decided_id
+    decision_source = (decision or {}).get("source")
+    if confirmed_id is not None:
+        crop_source = "user_confirmed"
+    elif decision_source == "llm":
+        crop_source = "llm"
+    elif decided_id is not None:
+        crop_source = "model"
+    else:
+        crop_source = "unresolved"
     resolved_crop = CLASS_TO_APSIM.get(selected_id) if type(selected_id) is int else None
 
     if crop_step is None or crop_step.status != "completed":
@@ -54,7 +65,7 @@ def assess_yield_inputs(workflow: AnalysisWorkflowSummary) -> YieldInputAssessme
         missing("crop_unknown", "crop", "作物类别无法确定，请确认作物。")
     elif resolved_crop is None:
         missing("crop_model_unsupported", "crop", f"{CLASS_LABELS[selected_id]}尚无已验证的 APSIM 地块估产模板。")
-    if crop_step and crop_step.status == "completed" and confirmed_id is None:
+    if crop_step and crop_step.status == "completed" and confirmed_id is None and needs_score_gate(decision):
         if score is None or margin is None or score < MIN_TOP_SCORE or margin < MIN_SCORE_MARGIN:
             missing("crop_confirmation_required", "confirmed_crop_class_id",
                     "作物模型分数低于 0.60 或前两类分差低于 0.15，请人工确认地块作物。")

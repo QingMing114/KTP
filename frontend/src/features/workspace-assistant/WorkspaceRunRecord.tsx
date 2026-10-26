@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react'
 import type { CanonicalAssistantPart } from '../../services/canonical/workspaceClient'
 import type { AnalysisWorkflow } from '../../services/spatialClient'
 import AnalysisDetails from './AnalysisDetails'
+import CropDecisionCard from './CropDecisionCard'
 import LaiSceneParameters from './LaiSceneParameters'
 import { workflowTitle, workflowStatusLabel } from './workspaceFlow'
 import { useRunRecordExpansion } from './useRunRecordExpansion'
@@ -38,6 +39,7 @@ export default function WorkspaceRunRecord({ runId, round, automaticallyExpanded
             <p className="whitespace-pre-wrap text-slate-400">{step.detail}</p>
           </li>)}</ol>
         </div>
+        {flow.steps.filter((step) => step.step_id === 'crop').map((step) => <CropDecisionCard key={step.step_id} result={step.result} compact />)}
         {flow.parameters && <div><h4 className="font-medium text-emerald-100">实际算法配置</h4><p className="mt-1">分辨率：{flow.parameters.target_resolution_m} m</p><p>共享波段：{flow.parameters.reflectance_bands.join(' / ')}</p></div>}
         {flow.steps.filter((step) => step.step_id === 'lai').map((step) => <LaiSceneParameters key={step.step_id} step={step} showRequested />)}
         {flow.requested_task_ids.includes('yield') && <div><h4 className="font-medium text-emerald-100">APSIM 输入记录</h4><p className="mt-1">地块资料：{flow.yield_inputs.field_dataset_id ?? '未提供'}</p><p>播种日期：{flow.yield_inputs.sowing_date ?? '未提供'}</p><p>品种：{flow.yield_inputs.cultivar ?? '未提供'}</p></div>}

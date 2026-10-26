@@ -7,7 +7,7 @@ from runtime.workspace_assistant import automatic_imagery_request
 
 
 def create_review(workflows, *, owner_id, context, intent, run_id, conversation_id,
-                  phase=None, candidates=None, search=None, workflow=None, scene=None):
+                  phase=None, candidates=None, search=None, workflow=None, scene=None, crop=None):
     if phase is None:
         phase = "search" if not context.imagery_snapshot or intent.imagery_search else "workflow"
     if phase == "search":
@@ -17,10 +17,11 @@ def create_review(workflows, *, owner_id, context, intent, run_id, conversation_
     review = ProfessionalReview(
         review_id=str(uuid4()), workspace_id=context.workspace_id, source_run_id=run_id,
         conversation_id=conversation_id, context=context, intent=intent,
-        phase=phase, title={"search": "确认影像搜索参数", "workflow": "确认影像与分析任务", "lai": "确认 LAI 反演参数"}[phase],
-        rationale=(scene or {}).get("reasoning") or intent.rationale,
+        phase=phase, title={"search": "确认影像搜索参数", "workflow": "确认影像与分析任务",
+                            "lai": "确认 LAI 反演参数", "crop": "确认农作物识别结果"}[phase],
+        rationale=(scene or {}).get("reasoning") or (crop or {}).get("rationale") or intent.rationale,
         search=search, candidates=candidates, selected_imagery_id=selected.item_id if selected else None,
-        proposed_scene=scene, workflow_id=workflow.workflow_id if workflow else None,
+        proposed_scene=scene, proposed_crop=crop, workflow_id=workflow.workflow_id if workflow else None,
         created_at=datetime.now(timezone.utc).isoformat(),
     )
     workflows.save_review(review, owner_id=owner_id)

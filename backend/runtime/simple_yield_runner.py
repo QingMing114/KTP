@@ -8,6 +8,9 @@ from pathlib import Path
 from infra.imagery.power_weather import fetch_power_weather
 from infra.imagery.season_series import read_ndvi_observation, search_season_items
 from infra.imagery.stac_provider import SentinelStacProvider
+from runtime.crop_decision import (
+    MIN_SCORE_MARGIN, MIN_TOP_SCORE, class_label, needs_score_gate, resolve_crop_class,
+)
 from runtime.simple_yield import SimpleYieldError, estimate_observed_season
 
 CROP_CLASSES = {0: "maize", 3: "spring_wheat", 4: "winter_wheat"}
@@ -18,13 +21,18 @@ def resolve_simple_yield_crop(workflow) -> str:
     if crop_step is None or crop_step.status != "completed":
         raise SimpleYieldError("crop_incomplete", "作物识别尚未完成。")
     confirmed = workflow.yield_inputs.confirmed_crop_class_id
-    prediction = crop_step.result.get("predicted_class") or {}
-    selected = confirmed if confirmed is not None else prediction.get("class_id")
+    decided_id, decision = resolve_crop_class(crop_step.result)
+    selected = confirmed if confirmed is not None else decided_id
     if selected not in CROP_CLASSES:
+        if decision is not None and decision.get("source") != "model_fallback":
+            raise SimpleYieldError(
+                "crop_class_unsupported",
+                f"判定为{class_label(selected)}，简化估产暂支持玉米、春小麦和冬小麦；可在任务卡片中改选作物。",
+            )
         raise SimpleYieldError("crop_confirmation_required", "简化估产首期只支持玉米和小麦，请确认本季地块作物。")
-    if confirmed is None:
+    if confirmed is None and needs_score_gate(decision):
         scores = sorted((row.get("score", 0) for row in crop_step.result.get("class_scores", [])), reverse=True)
-        if len(scores) < 2 or scores[0] < 0.60 or scores[0] - scores[1] < 0.15:
+        if len(scores) < 2 or scores[0] < MIN_TOP_SCORE or scores[0] - scores[1] < MIN_SCORE_MARGIN:
             raise SimpleYieldError("crop_confirmation_required", "当前作物识别不够明确，请选择本季地块作物；无需填写播种或收获日期。")
     return CROP_CLASSES[selected]
 

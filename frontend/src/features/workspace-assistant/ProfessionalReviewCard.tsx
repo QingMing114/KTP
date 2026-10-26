@@ -9,10 +9,12 @@ const RANGES = [
   ['lidfa_range', '叶倾角', '°', 90], ['psoil_range', '土壤参数', '', 1],
 ] as const
 
+const CROP_CLASSES = ['玉米', '棉花', '大豆', '春小麦', '冬小麦', '大麦']
+
 export function isProfessionalReviewCurrent(review: ProfessionalReview, current: WorkspaceContext): boolean {
   const original = review.context
   if (!current.professional_mode || current.execution_mode !== 'live' || current.workspace_id !== review.workspace_id || current.farm_id !== original.farm_id || JSON.stringify(current.aoi?.geometry) !== JSON.stringify(original.aoi?.geometry)) return false
-  if (review.phase === 'lai') return current.imagery_item_id === review.selected_imagery_id && current.active_workflow_id === review.workflow_id
+  if (review.phase === 'lai' || review.phase === 'crop') return current.imagery_item_id === review.selected_imagery_id && current.active_workflow_id === review.workflow_id
   return current.imagery_item_id === original.imagery_item_id && (current.apsim_mode ?? 'field') === (original.apsim_mode ?? 'field')
     && JSON.stringify(current.draft_task_ids) === JSON.stringify(original.draft_task_ids)
     && (current.imagery_search?.start_date ?? null) === (original.imagery_search?.start_date ?? null)
@@ -33,6 +35,7 @@ export default function ProfessionalReviewCard({ review, context, busy = false, 
   const [tasks, setTasks] = useState<WorkflowTaskId[]>(review.intent.task_ids.length ? review.intent.task_ids : review.context.draft_task_ids)
   const [mode, setMode] = useState<'field' | 'example'>(review.intent.apsim_mode ?? review.context.apsim_mode ?? 'field')
   const [ranges, setRanges] = useState<LaiParameterRanges>(() => Object.fromEntries(RANGES.map(([key]) => [key, review.proposed_scene?.[key] ?? null])) as LaiParameterRanges)
+  const [cropClass, setCropClass] = useState(review.proposed_crop?.final_class_id == null ? '' : String(review.proposed_crop.final_class_id))
   const [error, setError] = useState('')
   const current = isProfessionalReviewCurrent(review, context)
   const disabled = busy || !current || review.status !== 'pending'
@@ -47,6 +50,9 @@ export default function ProfessionalReviewCard({ review, context, busy = false, 
       } else if (review.phase === 'workflow') {
         if (!image || !tasks.length) { setError('请至少选择一景影像和一项任务'); return }
         params = { decision, imagery_item_id: image, task_ids: tasks, apsim_mode: mode }
+      } else if (review.phase === 'crop') {
+        if (cropClass === '') { setError('请选择地块作物类别'); return }
+        params = { decision, crop_class_id: Number(cropClass) }
       } else {
         if (RANGES.some(([key, , , upper]) => ranges[key] && (!ranges[key]!.every(Number.isFinite) || ranges[key]![0] < 0 || ranges[key]![0] > ranges[key]![1] || ranges[key]![1] > upper))) { setError('参数范围需要从小到大，且在标注的允许范围内'); return }
         params = { decision, scene: ranges }
@@ -76,6 +82,18 @@ export default function ProfessionalReviewCard({ review, context, busy = false, 
       <fieldset disabled={disabled}><legend>分析任务</legend><div className="mt-1 grid grid-cols-2 gap-2">{WORKSPACE_TASKS.filter((task) => task.id !== 'forecast' && task.available).map((task) => <label key={task.id} className="flex items-start gap-1"><input type="checkbox" checked={tasks.includes(task.id as WorkflowTaskId)} onChange={(event) => setTasks((values) => event.target.checked ? [...values, task.id as WorkflowTaskId] : values.filter((id) => id !== task.id))} />{task.title}</label>)}</div></fieldset>
       {tasks.includes('yield') && <label className="block">APSIM 方式<select aria-label="确认 APSIM 方式" value={mode} onChange={(event) => setMode(event.target.value as 'field' | 'example')} disabled={disabled} className="workspace-review-input"><option value="field">地块估产 · 需核验资料</option><option value="example">真实示例模拟 · 非当前地块产量</option></select></label>}
       <p className="text-[10px] text-slate-400">固定配置：20 m · B02/B03/B04/B07/B08。依赖步骤自动加入；LAI 场景参数在影像准备后另行确认。</p>
+    </div>}
+    {review.phase === 'crop' && <div className="mt-3 space-y-3">
+      <div className="rounded-md bg-black/15 px-2 py-1.5 text-[10px] leading-4 text-slate-300">
+        <p>判定结果：<span className="font-medium text-white">{review.proposed_crop?.final_name_zh ?? '未判定'}</span><span className="ml-2 text-slate-400">{review.proposed_crop?.source === 'model_fallback' ? '（大模型不可用，回退模型最高分）' : '（大模型结合地点与时序判定）'}</span></p>
+        {(review.proposed_crop?.location?.label || review.proposed_crop?.observed_at) && <p className="mt-1 text-slate-400">地点与时间：{review.proposed_crop?.location?.label ?? '未记录'}{review.proposed_crop?.observed_at ? ` · ${review.proposed_crop.observed_at.slice(0, 10)}` : ''}</p>}
+        {review.proposed_crop?.phenology && <p className="text-slate-400">物候判断：{review.proposed_crop.phenology}</p>}
+        {review.proposed_crop?.rationale && <p className="mt-1 whitespace-pre-wrap">{review.proposed_crop.rationale}</p>}
+        {review.proposed_crop?.fallback_reason && <p className="mt-1 text-amber-200/80">回退原因：{review.proposed_crop.fallback_reason}</p>}
+        {review.proposed_crop?.fallback_detail?.message && <p className="mt-1 break-words text-amber-200/70">错误信息：{review.proposed_crop.fallback_detail.message}</p>}
+      </div>
+      <label className="block">地块作物<select aria-label="确认地块作物类别" value={cropClass} onChange={(event) => setCropClass(event.target.value)} disabled={disabled} className="workspace-review-input">{CROP_CLASSES.map((name, id) => <option key={id} value={id}>{name}</option>)}</select></label>
+      <p className="text-[10px] text-slate-400">卡片已填入最终判定结果，可改选后继续；后续估产按此作物执行。</p>
     </div>}
     {review.phase === 'lai' && <div className="mt-3 space-y-3">
       <p className="text-[10px] text-slate-400">推荐来源：{review.proposed_scene?.source === 'llm' ? '大模型' : '规则回退（模型不可用或置信度不足）'}。可编辑的范围将直接用于反演。</p>

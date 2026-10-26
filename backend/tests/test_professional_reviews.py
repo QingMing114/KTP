@@ -123,16 +123,30 @@ def test_real_lai_pauses_after_crop_and_uses_edited_confirmed_range(tmp_path, mo
         assert paused["status"] == "blocked"
         assert next(s for s in paused["steps"] if s["step_id"] == "crop")["status"] == "completed"
         lai_step = next(s for s in paused["steps"] if s["step_id"] == "lai")
-        assert lai_step["analysis_id"] is None and not calls
-        assert len(provider.prompts) == 1
+        assert lai_step["status"] == "blocked" and lai_step["analysis_id"] is None and not calls
+        assert provider.prompts == []
+        # The crop judgement falls back to the model result when the model cannot answer.
+        crop_step = next(s for s in paused["steps"] if s["step_id"] == "crop")["result"]
+        assert crop_step["crop_decision"]["source"] == "model_fallback"
+        assert crop_step["crop_decision"]["final_name_zh"] == "玉米"
         reviews = client.get("/api/product/v1/workspaces/workspace-1/professional-reviews").json()
-        pending = next(review for review in reviews if review["phase"] == "lai")
-        assert pending["proposed_scene"]["lai_range"] == [4, 5]
-        assert pending["proposed_scene"]["context"]["crop_prediction"]["name_zh"] == "玉米"
+        crop_review = next(review for review in reviews if review["phase"] == "crop" and review["status"] == "pending")
+        assert crop_review["proposed_crop"]["final_class_id"] == 0
         # Retry cannot bypass a pending professional gate.
         assert client.post(f"/api/product/v1/analysis-workflows/{workflow_id}/retry", json={"step_id": "lai"}).status_code == 409
         ctx = {**ctx, "revision": 2, "active_workflow_id": workflow_id, "draft_task_ids": ["crop", "lai"]}
         assert client.put("/api/product/v1/workspaces/workspace-1/context", json=ctx).status_code == 200
+        confirmed_crop = decision(client, crop_review, ctx, crop_class_id=0)
+        assert confirmed_crop.status_code == 200, confirmed_crop.text
+        assert decision(client, crop_review, ctx, crop_class_id=0).json() == confirmed_crop.json()
+        after_crop = _wait_for_terminal(client, workflow_id)
+        assert after_crop["status"] == "blocked"
+        reviews = client.get("/api/product/v1/workspaces/workspace-1/professional-reviews").json()
+        pending = next(review for review in reviews if review["phase"] == "lai" and review["status"] == "pending")
+        assert pending["proposed_scene"]["lai_range"] == [4, 5]
+        assert pending["proposed_scene"]["context"]["crop_prediction"]["name_zh"] == "玉米"
+        assert pending["proposed_scene"]["context"]["crop_decision"]["final_name_zh"] == "玉米"
+        assert len(provider.prompts) == 1
         invalid = {"lai_range": [9, 10], "cab_range": None, "lidfa_range": None, "psoil_range": None}
         rejected = decision(client, pending, ctx, scene=invalid)
         assert rejected.status_code == 400 and "不足" in rejected.text
