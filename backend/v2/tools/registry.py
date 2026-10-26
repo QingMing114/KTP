@@ -91,6 +91,7 @@ class ToolRegistryV2:
         *,
         tool_name: str,
         tool_input: dict[str, object],
+        progress_callback: Callable[[str, int], None] | None = None,
     ) -> tuple[ObservationV2, list[PackArtifactView]]:
         if not self.has_tool(tool_name):
             raise ToolNotFoundError(
@@ -106,6 +107,8 @@ class ToolRegistryV2:
 
             validate_contract_input(definition.spec.input_schema, tool_input)
             raise RuntimeError("algorithm tools require runtime-injected execution context")
+        if progress_callback is not None:
+            return definition.handler(**tool_input, progress_callback=progress_callback)
         return definition.handler(**tool_input)
 
     def invoke_algorithm(

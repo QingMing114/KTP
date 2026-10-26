@@ -137,3 +137,15 @@ class ToolPresentation(BaseModel):
 - `append_assistant_part` 移到 `v2/runtime/run_parts.py`，executor 保留模块级导入作为再导出，避免中间件与 executor 循环导入。
 - 装配清单新增 `middlewares` 字段，校验未知名称与重复名称。
 - 验证：`backend/tests` 306 passed / 3 skipped；`backend/v2/tests` 96 passed（新增 10 项管线测试）。
+
+## 12. A 阶段实施记录：作物识别接入（2026-10-26）
+
+| 步骤 | 内容 | 提交 |
+|---|---|---|
+| A1 | 抽出单一实现 `runtime/crop_classification.py`：空间推理 → 判定 → provenance → 报告登记；支持 STAC item 与已准备 reflectance 两种输入；端点与工作流都改调它 | `e574615` |
+| A2 | 新增 `v2/tools/crop_tool.py`：`CropToolInput`（`additionalProperties: false`）、`ToolSpecV2`（`category=remote_sensing`、`permissions=[dataset:read, artifact:write]`、`presentation`）、handler 委托 `classify_crop` | 本次 |
+| A3 | 在 `install_canonical_product_api` 中装配：复用 host 的 `tool_registry`（裸应用则建一个 canonical registry），注册时绑定 `ArtifactStore`、产物根目录与**惰性** LLM provider 解析器；未配置时注册 `unavailable` 版本 | 本次 |
+| A4 | `POST /crop-analyses` 改为 `registry.invoke(CROP_TOOL_NAME, ..., progress_callback=...)`；工作流仍调用 `classify_crop(reflectance_path=...)`，因为共享影像已准备好，强行走工具会退化为重新下载 | 本次 |
+| A5 | 模型可见性是显式开关：默认 `surface_visibility="debug"`（planner 不可见）；设置 `KTP_CROP_TOOL_MODEL_VISIBLE=true` 切到 `all`。打开前需先解决"模型无法提供 host-resolved item"与确认语义 | 本次 |
+
+已知边界（后续处理）：工具 handler 目前返回空 artifacts 列表，报告引用在 observation payload 里；若希望 `artifact.available` 事件与 run.artifacts 也覆盖报告，需要在 handler 里把报告引用转换成 `PackArtifactView`。

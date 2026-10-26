@@ -13,7 +13,7 @@ from infra.imagery.crop_spatial import CropInferenceError
 from runtime.analysis_workflow_store import AnalysisWorkflowStore
 from runtime.artifact_store import ArtifactStore
 from runtime.crop_analysis_store import CropAnalysisStore
-from runtime.crop_classification import CropImagerySource, classify_crop
+from runtime.crop_classification import CropImagerySource, classify_crop, crop_step_detail
 from runtime.crop_decision import resolve_crop_class
 from runtime.lai_analysis_store import LaiAnalysisStore
 from runtime.yield_input_assessment import assess_yield_inputs
@@ -203,7 +203,7 @@ def _run_crop(
                      progress_percent=100, detail="作物识别已完成", result=result, completed_at=_now())
         updated = workflows.update_step(workflow_id, "crop", owner_id=owner_id,
                                         status="completed", progress_percent=100,
-                                        detail=_crop_step_detail(decision), result=result)
+                                        detail=crop_step_detail(decision), result=result)
         if not workflow.professional_mode or decision is None:
             return False
         context = workflows.get_workspace(workflow.workspace_id, owner_id=owner_id)
@@ -243,15 +243,6 @@ def _run_crop(
         workflows.update_step(workflow_id, "crop", owner_id=owner_id,
                               status="failed", detail=detail, result={"error": detail})
         return False
-
-
-def _crop_step_detail(decision: dict[str, Any] | None) -> str:
-    if not decision:
-        return "作物识别已完成"
-    label = decision.get("final_name_zh") or "未知"
-    if decision.get("source") == "model_fallback":
-        return f"作物识别已完成：模型最高分 {label}（大模型判定不可用，已回退）"
-    return f"作物识别已完成：判定为{label}"
 
 
 def _run_lai(

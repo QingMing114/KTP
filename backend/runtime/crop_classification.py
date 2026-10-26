@@ -105,3 +105,13 @@ def classify_crop(
         decision=decision,
         report_references=report_references,
     )
+
+
+def crop_step_detail(decision: dict[str, Any] | None) -> str:
+    """Human-readable step summary shown in workflow and tool results."""
+    if not decision:
+        return "作物识别已完成"
+    label = decision.get("final_name_zh") or "未知"
+    if decision.get("source") == "model_fallback":
+        return f"作物识别已完成：模型最高分 {label}（大模型判定不可用，已回退）"
+    return f"作物识别已完成：判定为{label}"

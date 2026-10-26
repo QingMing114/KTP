@@ -37,7 +37,7 @@ from runtime.idempotency_store import IdempotencyStore
 from runtime.submission_store import SubmissionStore
 from runtime.lai_analysis_store import LaiAnalysisStore
 from runtime.crop_analysis_store import CropAnalysisStore
-from runtime.crop_classification import CropImagerySource, classify_crop
+from v2.tools.crop_tool import CROP_TOOL_NAME
 from runtime.analysis_workflow_store import AnalysisWorkflowStore
 from runtime.analysis_workflow_runner import ensure_workflow_reports, run_analysis_workflow
 from runtime.workspace_assistant import (plan_workspace, workspace_parts, can_rebase_preview, TASK_LABELS,
@@ -100,6 +100,35 @@ from schemas.runtime import (
 logger = logging.getLogger(__name__)
 
 _PRODUCT_ARTIFACT_ROOT = (Path(__file__).resolve().parents[2] / "var" / "artifacts").resolve()
+
+
+def _ensure_tool_registry_with_crop_tool(app: FastAPI) -> None:
+    """Install the crop tool on the host registry.
+
+    Production installs the runtime host first, so this registers on the engine's
+    registry. A bare app (tests, embedded use) gets one canonical registry so the
+    endpoint still has exactly one execution path.
+    """
+    from v2.tools.crop_tool import configure_crop_tool
+    from v2.tools.registry import build_default_tool_registry
+
+    registry = getattr(app.state, "tool_registry", None)
+    if registry is None:
+        registry = build_default_tool_registry()
+        app.state.tool_registry = registry
+    artifact_root = Path(
+        getattr(app.state, "product_artifact_root", _PRODUCT_ARTIFACT_ROOT)
+    ).resolve()
+    configure_crop_tool(
+        registry,
+        artifact_store=app.state.product_artifact_store,
+        artifact_root=artifact_root,
+        llm_provider_resolver=lambda: getattr(
+            getattr(app.state, "runtime_engine", None), "llm_provider", None
+        ),
+        model_visible=os.getenv("KTP_CROP_TOOL_MODEL_VISIBLE", "false").strip().lower()
+        in {"1", "true", "yes", "on"},
+    )
 _CANONICAL_ALGORITHM_PERMISSIONS = frozenset({"dataset:read", "artifact:write"})
 
 
@@ -1297,25 +1326,22 @@ def build_canonical_router() -> APIRouter:
                                     stage="inference" if percent >= 90 else "preparing" if percent >= 85 else "imagery",
                                     progress_percent=min(95, 5 + round(percent * 0.9)), detail=detail)
 
-                outcome = classify_crop(
-                    source=CropImagerySource(item=item),
-                    geometry=body.aoi.geometry.model_dump(mode="json"),
-                    observed_at=snapshot.acquired_at,
-                    farm_id=body.farm_id,
-                    area_hectares=body.aoi.area_hectares,
-                    output_dir=artifact_root / "crop" / analysis.analysis_id,
-                    run_id=analysis.analysis_id,
-                    artifact_store=_artifact_store(request),
-                    imagery_item_id=body.imagery_item_id,
-                    provenance={
-                        "item_id": snapshot.item_id, "collection": snapshot.collection,
-                        "acquired_at": snapshot.acquired_at, "cloud_cover": snapshot.cloud_cover,
-                        "asset_fingerprint": snapshot.asset_fingerprint,
+                observation, _artifacts = request.app.state.tool_registry.invoke(
+                    tool_name=CROP_TOOL_NAME,
+                    tool_input={
+                        "item": item,
+                        "run_id": analysis.analysis_id,
+                        "imagery_item_id": body.imagery_item_id,
+                        "imagery_snapshot": snapshot.model_dump(mode="json"),
+                        "aoi_geometry": body.aoi.geometry.model_dump(mode="json"),
+                        "area_hectares": body.aoi.area_hectares,
+                        "farm_id": body.farm_id,
+                        "observed_at": snapshot.acquired_at,
+                        "output_dir": str(artifact_root / "crop" / analysis.analysis_id),
                     },
-                    llm_provider=getattr(getattr(request.app.state, "runtime_engine", None), "llm_provider", None),
                     progress_callback=progress,
                 )
-                result = outcome.result
+                result = dict(observation.payload)
                 analyses.update(analysis.analysis_id, status="completed", stage="completed",
                                 progress_percent=100, detail="作物识别已完成", result=result,
                                 completed_at=datetime.now(timezone.utc).isoformat())
@@ -2745,6 +2771,7 @@ def install_canonical_product_api(
     app.state.lai_analysis_store = LaiAnalysisStore(db_path=db_path)
     app.state.crop_analysis_store = CropAnalysisStore(db_path=db_path)
     app.state.analysis_workflow_store = AnalysisWorkflowStore(db_path=db_path)
+    _ensure_tool_registry_with_crop_tool(app)
     if auth_required is None:
         auth_required = os.getenv("APP_AUTH_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
     app.state.product_auth_required = auth_required
