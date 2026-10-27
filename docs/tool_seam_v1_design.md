@@ -149,3 +149,5 @@ class ToolPresentation(BaseModel):
 | A5 | 模型可见性是显式开关：默认 `surface_visibility="debug"`（planner 不可见）；设置 `KTP_CROP_TOOL_MODEL_VISIBLE=true` 切到 `all`。打开前需先解决"模型无法提供 host-resolved item"与确认语义 | 本次 |
 
 已知边界（后续处理）：工具 handler 目前返回空 artifacts 列表，报告引用在 observation payload 里；若希望 `artifact.available` 事件与 run.artifacts 也覆盖报告，需要在 handler 里把报告引用转换成 `PackArtifactView`。
+
+流程沉淀：把 S1/S2 与 A 阶段的作业顺序整理成了 [tool_integration_guide.md](tool_integration_guide.md)（三种工具形态、五阶段交付、spec 清单、装配与打桩规则、检查清单）。
