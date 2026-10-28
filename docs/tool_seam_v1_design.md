@@ -150,4 +150,4 @@ class ToolPresentation(BaseModel):
 
 已知边界（后续处理）：工具 handler 目前返回空 artifacts 列表，报告引用在 observation payload 里；若希望 `artifact.available` 事件与 run.artifacts 也覆盖报告，需要在 handler 里把报告引用转换成 `PackArtifactView`。
 
-流程沉淀：把 S1/S2 与 A 阶段的作业顺序整理成了 [tool_integration_guide.md](tool_integration_guide.md)（三种工具形态、五阶段交付、spec 清单、装配与打桩规则、检查清单）。
+流程沉淀：把 S1/S2 与 A 阶段的作业顺序整理成了 [工具接入手册.md](工具接入手册.md)（三种工具形态、五阶段交付、spec 清单、装配与打桩规则、检查清单）。
