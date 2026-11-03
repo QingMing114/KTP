@@ -175,3 +175,15 @@ class ToolPresentation(BaseModel):
 | P5 | 默认 `debug`；打开前需要下载预算、取消与用户确认策略 |
 
 验证：`backend/tests` 340 passed / 3 skipped；`backend/v2/tests` 96 passed。
+
+## 15. 报告生成接入记录（P1–P5，2026-11-03）
+
+| 阶段 | 内容 |
+|---|---|
+| P1 | `runtime/workflow_report.py`：`generate_workflow_report` 渲染 + 登记，`write_workflow_report` 读工作流并回写 `report_uri` |
+| P2 | `v2/tools/workflow_report_tool.py`：输入模型、`permissions=["artifact:write"]`、`produces_artifacts`、`presentation` |
+| P3 | canonical 装配新增该工具；工作流存储用惰性解析（安装顺序无关）；可见性开关 `KTP_WORKFLOW_REPORT_TOOL_MODEL_VISIBLE` |
+| P4 | `_finish` 与演示路径经 `registry.invoke`；无注册表的测试/嵌入式调用走同一服务（文档化适配器）；`ensure_workflow_reports` 回填直接复用服务 |
+| P5 | 默认 `debug`；打开前需要报告版本与覆盖策略 |
+
+验证：`backend/tests` 349 passed / 3 skipped；`backend/v2/tests` 96 passed。

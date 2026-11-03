@@ -119,6 +119,7 @@ def _ensure_tool_registry_with_professional_tools(app: FastAPI) -> None:
     from v2.tools.imagery_preparation_tool import configure_imagery_preparation_tool
     from v2.tools.imagery_search_tool import configure_imagery_search_tool
     from v2.tools.registry import build_default_tool_registry
+    from v2.tools.workflow_report_tool import configure_workflow_report_tool
 
     registry = getattr(app.state, "tool_registry", None)
     if registry is None:
@@ -146,6 +147,13 @@ def _ensure_tool_registry_with_professional_tools(app: FastAPI) -> None:
         artifact_store=app.state.product_artifact_store,
         artifact_root=artifact_root,
         model_visible=_tool_flag("KTP_IMAGERY_PREPARATION_TOOL_MODEL_VISIBLE"),
+    )
+    configure_workflow_report_tool(
+        registry,
+        workflow_store_resolver=lambda: getattr(app.state, "analysis_workflow_store", None),
+        artifact_store=app.state.product_artifact_store,
+        artifact_root=artifact_root,
+        model_visible=_tool_flag("KTP_WORKFLOW_REPORT_TOOL_MODEL_VISIBLE"),
     )
 
 

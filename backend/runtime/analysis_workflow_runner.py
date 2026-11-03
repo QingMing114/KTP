@@ -26,9 +26,10 @@ from runtime.yield_demo import run_yield_demo, register_yield_demo_report
 from runtime.lai_quality import assess_lai_raster_quality
 from runtime.workspace_lai import configure_workspace_lai
 from runtime.professional_review import create_review
+from runtime.workflow_report import WORKFLOW_REPORT_TOOL_NAME, write_workflow_report
 from schemas.runtime import SceneParameters
 from runtime.workflow_reports import (
-    REPORT_VERSION, register_crop_report, register_growth_report, register_map_report,
+    REPORT_VERSION, register_crop_report, register_growth_report,
     register_potential_report, register_result_json, register_yield_report, register_simple_yield_report,
 )
 from schemas.analysis_workflow import AnalysisWorkflowSummary
@@ -78,7 +79,8 @@ def run_analysis_workflow(
         raise KeyError(workflow_id)
     if workflow.data_mode == "demo":
         run_yield_demo(workflow, workflows=workflows, artifacts=artifacts, artifact_root=artifact_root)
-        _write_workflow_summary_report(workflows, workflow_id, owner_id, artifact_root, artifacts, status="completed")
+        _write_summary_report(tool_registry, workflows, workflow_id, owner_id,
+                              artifact_root, artifacts, status="completed")
         workflows.update_status(workflow_id, owner_id=owner_id, status="completed", detail="估产模拟演示已完成，结果及 APSIM 模板报告可查看")
         return
     root = artifact_root / "workflows" / workflow_id
@@ -119,7 +121,8 @@ def run_analysis_workflow(
         for task in run_task_ids & {"crop", "lai"}:
             workflows.update_step(workflow_id, task, owner_id=owner_id,
                                   status="blocked", detail="共享影像准备失败，任务未启动")
-        _finish(workflows, workflow_id, owner_id, artifact_root=artifact_root, artifacts=artifacts)
+        _finish(workflows, workflow_id, owner_id, artifact_root=artifact_root, artifacts=artifacts,
+                tool_registry=tool_registry)
         return
     except Exception:
         logger.exception("analysis_workflow_imagery_failed | workflow_id=%s", workflow_id)
@@ -128,7 +131,8 @@ def run_analysis_workflow(
         for task in run_task_ids & {"crop", "lai"}:
             workflows.update_step(workflow_id, task, owner_id=owner_id,
                                   status="blocked", detail="共享影像准备失败，任务未启动")
-        _finish(workflows, workflow_id, owner_id, artifact_root=artifact_root, artifacts=artifacts)
+        _finish(workflows, workflow_id, owner_id, artifact_root=artifact_root, artifacts=artifacts,
+                tool_registry=tool_registry)
         return
 
     if "crop" in run_task_ids:
@@ -156,7 +160,8 @@ def run_analysis_workflow(
                 workflows.update_status(workflow_id, owner_id=owner_id, status="blocked", detail="专业模式：请编辑并确认 LAI 参数后继续")
                 return
         _run_lai(workflow, reflectance, root, workflows, lais, artifacts, make_lai_result, owner_id, llm_provider)
-    _finish(workflows, workflow_id, owner_id, artifact_root=artifact_root, artifacts=artifacts)
+    _finish(workflows, workflow_id, owner_id, artifact_root=artifact_root, artifacts=artifacts,
+            tool_registry=tool_registry)
 
 
 def _run_crop(
@@ -352,6 +357,7 @@ def _run_lai(
 def _finish(
     workflows: AnalysisWorkflowStore, workflow_id: str, owner_id: str,
     *, artifact_root: Path | None = None, artifacts: ArtifactStore | None = None,
+    tool_registry: Any | None = None,
 ) -> None:
     workflow = workflows.get(workflow_id, owner_id=owner_id)
     if workflow is None:
@@ -516,94 +522,31 @@ def _finish(
     else:
         final_status, final_detail = "completed", "所选影像分析任务已完成"
     if artifact_root is not None and artifacts is not None:
-        _write_workflow_summary_report(workflows, workflow_id, owner_id, artifact_root, artifacts,
-                                       status=final_status)
+        _write_summary_report(tool_registry, workflows, workflow_id, owner_id,
+                              artifact_root, artifacts, status=final_status)
     workflows.update_status(workflow_id, owner_id=owner_id, status=final_status, detail=final_detail)
 
 
-def _write_workflow_summary_report(
+def _write_summary_report(
+    tool_registry: Any | None,
     workflows: AnalysisWorkflowStore, workflow_id: str, owner_id: str,
     artifact_root: Path, artifacts: ArtifactStore, *, status: str | None = None,
 ) -> None:
-    workflow = workflows.get(workflow_id, owner_id=owner_id)
-    if workflow is None:
-        return
-    labels = {"imagery": "影像准备", "crop": "农作物识别", "lai": "PROSAIL/LAI",
-              "growth": "长势观测", "potential": "遥感冠层指数", "yield_simple": "自动简化估产（试验）", "yield": "APSIM 估产"}
-    sections = []
-    if workflow.data_mode == "demo":
-        sections.append({"title": "模拟数据 · 仅用于功能演示", "rows": [["数据来源", "构造的生长曲线与产量示例"]],
-                         "notes": ["未运行 APSIM，未读取地块影像、气象或土壤，不代表实际产量。"]})
-    sections.append({"title": "实际生效参数", "rows": [
-        ["影像准备分辨率 m", workflow.parameters["target_resolution_m"]],
-        ["共享反射率波段", " / ".join(workflow.parameters["reflectance_bands"])],
-        ["影像准备参数来源", "算法固定配置"],
-    ]})
-    for step in workflow.steps:
-        result = step.result or {}
-        rows = [["状态", step.status], ["说明", step.detail]]
-        if step.step_id == "crop":
-            prediction = result.get("predicted_class") or {}
-            decision = result.get("crop_decision") or {}
-            if decision:
-                rows += [["最终判定", decision.get("final_name_zh")],
-                         ["判定来源", {"llm": "大模型结合地点与时序判定", "user_confirmed": "用户确认",
-                                       "model_fallback": "大模型不可用，回退模型最高分"}.get(decision.get("source"), "—")],
-                         ["判定依据", decision.get("rationale")]]
-            rows += [["最高类别", prediction.get("name_zh")], ["模型分数", prediction.get("score")]]
-        elif step.step_id == "lai":
-            rows += [["LAI 均值", result.get("lai_mean")],
-                     ["有效覆盖率", (result.get("quality") or {}).get("valid_pixel_fraction")]]
-            scene = result.get("scene_parameters") or {}
-            application = result.get("constraint_application") or {}
-            if scene:
-                rows += [["场景参数来源", "用户编辑并确认" if scene.get("source") == "user_confirmed" else "大模型自动配置" if scene.get("source") == "llm" else "规则回退"],
-                         ["配置依据", scene.get("reasoning")],
-                         ["范围生效状态", {"applied": "已生效", "fallback": "回退完整 LUT", "unconstrained": "完整 LUT"}.get(application.get("status"), "待核验")]]
-                for key, label in (("lai_range", "LAI"), ("cab_range", "Cab"), ("lidfa_range", "叶倾角"), ("psoil_range", "土壤参数")):
-                    rows.append([f"{label} 生效范围", str(application.get("effective", {}).get(key, "完整 LUT"))])
-                if application.get("reason"):
-                    rows.append(["回退原因", application["reason"]])
-        elif step.step_id == "growth":
-            rows += [["植被比例", result.get("vegetation_ratio")]]
-        elif step.step_id == "potential":
-            rows += [["冠层指数（未校准）", result.get("canopy_index")]]
-        elif step.step_id == "yield":
-            rows += ([["APSIM 示例模拟单产 t/ha", result.get("example_yield_t_ha")], ["示例模板", (result.get("input_provenance") or {}).get("template")], ["配套气象", (result.get("input_provenance") or {}).get("weather")]] if workflow.data_mode == "apsim_example" else [["APSIM LAI 约束产量 t/ha", result.get("constrained_yield_t_ha")]])
-        elif step.step_id == "yield_simple":
-            rows += [["粮食干重试验估计 t/ha", result.get("estimated_yield_t_ha")],
-                     ["遥感有效生长期", f"{(result.get('season') or {}).get('start', '—')} 至 {(result.get('season') or {}).get('end', '—')}"],
-                     ["本地实收校准", "尚未校准"]]
-        notes = []
-        if step.step_id == "crop":
-            notes = list(result.get("warnings") or [])
-            if result.get("crop_decision"):
-                notes.append("最终判定含大模型先验，未经实地验证；模型分数未经校准。")
-        if step.step_id in {"growth", "potential", "yield_simple", "yield"}:
-            notes = [str(result[key]) for key in ("warning", "uncertainty_note") if result.get(key)]
-        assessment = result.get("input_assessment") or {}
-        notes += [issue.get("message", "") for issue in assessment.get("issues", [])]
-        sections.append({"title": labels[step.step_id],
-                         "rows": [[label, value if value is not None else "—"] for label, value in rows],
-                         "notes": notes})
-    references = register_map_report(
-        artifacts, run_id=workflow_id,
-        output_dir=artifact_root / "workflows" / workflow_id / "summary",
-        kind="workflow_summary_report", title="估产模拟演示工作流总报告" if workflow.data_mode == "demo" else "地块影像分析工作流总报告",
-        context={"工作流 ID": workflow_id, "状态": status or workflow.status,
-                 "选区面积": f"{workflow.aoi.area_hectares:.2f} ha",
-                 "影像 ID": workflow.imagery_item_id,
-                 "观测日期": workflow.imagery_snapshot.acquired_at[:10],
-                 "用户选择任务": "、".join(workflow.requested_task_ids)},
-        sections=sections,
-        highlights=[{"label": "已完成任务", "value": str(sum(step.status == "completed" for step in workflow.steps if step.step_id != "imagery"))},
-                    {"label": "待补充任务", "value": str(sum(step.status == "blocked" for step in workflow.steps))},
-                    {"label": "失败任务", "value": str(sum(step.status == "failed" for step in workflow.steps))},
-                    {"label": "用户选择任务", "value": str(len(workflow.requested_task_ids))}],
-        visuals=[{"type": "statuses", "title": "各任务执行状态",
-                  "items": [{"label": labels[step.step_id], "state": step.status} for step in workflow.steps]}],
-    )
-    workflows.set_report(workflow_id, owner_id=owner_id, references=references)
+    """Generate the summary report through the tool when a registry is available.
+
+    The tool is the product path; the direct service call keeps unit tests and
+    embedded callers (no registry) on the same implementation.
+    """
+    if tool_registry is not None:
+        tool_registry.invoke(
+            tool_name=WORKFLOW_REPORT_TOOL_NAME,
+            tool_input={"run_id": workflow_id, "owner_id": owner_id, "status": status},
+        )
+    else:
+        write_workflow_report(
+            workflows=workflows, workflow_id=workflow_id, owner_id=owner_id,
+            artifact_root=artifact_root, artifacts=artifacts, status=status,
+        )
 
 
 def ensure_workflow_reports(
@@ -674,5 +617,5 @@ def ensure_workflow_reports(
             workflows.update_step(workflow_id, step.step_id, owner_id=owner_id, result=result)
             changed = True
     if changed or not workflow.report_uri or workflow.report_version != REPORT_VERSION or force_summary:
-        _write_workflow_summary_report(workflows, workflow_id, owner_id, artifact_root, artifacts,
-                                       status=workflow.status)
+        _write_summary_report(None, workflows, workflow_id, owner_id, artifact_root, artifacts,
+                              status=workflow.status)
