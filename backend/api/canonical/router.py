@@ -116,6 +116,7 @@ def _ensure_tool_registry_with_professional_tools(app: FastAPI) -> None:
     endpoints still have exactly one execution path.
     """
     from v2.tools.crop_tool import configure_crop_tool
+    from v2.tools.imagery_preparation_tool import configure_imagery_preparation_tool
     from v2.tools.imagery_search_tool import configure_imagery_search_tool
     from v2.tools.registry import build_default_tool_registry
 
@@ -139,6 +140,12 @@ def _ensure_tool_registry_with_professional_tools(app: FastAPI) -> None:
         registry,
         provider_resolver=lambda: getattr(app.state, "sentinel_stac_provider", None),
         model_visible=_tool_flag("KTP_IMAGERY_SEARCH_TOOL_MODEL_VISIBLE"),
+    )
+    configure_imagery_preparation_tool(
+        registry,
+        artifact_store=app.state.product_artifact_store,
+        artifact_root=artifact_root,
+        model_visible=_tool_flag("KTP_IMAGERY_PREPARATION_TOOL_MODEL_VISIBLE"),
     )
 
 
@@ -865,6 +872,7 @@ def build_canonical_router() -> APIRouter:
                     crops=_crop_analysis_store(request), lais=_lai_analysis_store(request),
                     artifacts=_artifact_store(request), make_lai_result=_lai_product_result,
                     run_task_ids=run_task_ids,
+                    tool_registry=request.app.state.tool_registry,
                     llm_provider=getattr(getattr(request.app.state, "runtime_engine", None), "llm_provider", None),
                 )
             except Exception:

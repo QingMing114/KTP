@@ -297,7 +297,7 @@ def test_auto_mode_applies_llm_decision_without_pausing(tmp_path, monkeypatch):
     def fake_crop(**_kwargs):
         return {**MODEL_RESULT}
 
-    monkeypatch.setattr(runner, "read_prosail_reflectance_aoi", fake_read)
+    monkeypatch.setattr("runtime.imagery_preparation.read_prosail_reflectance_aoi", fake_read)
     monkeypatch.setattr("runtime.crop_classification.run_crop_spatial_analysis", fake_crop)
     app = _app(tmp_path / "auto-crop.sqlite3")
     app.state.product_artifact_root = tmp_path / "artifacts"

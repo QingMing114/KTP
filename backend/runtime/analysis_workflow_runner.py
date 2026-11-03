@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Callable
 
-from infra.imagery.aoi_band_reader import AoiBandReadError, read_prosail_reflectance_aoi
+from infra.imagery.aoi_band_reader import AoiBandReadError
 from infra.imagery.crop_spatial import CropInferenceError
+from runtime.imagery_preparation import IMAGERY_PREPARATION_TOOL_NAME
 from runtime.analysis_workflow_store import AnalysisWorkflowStore
 from runtime.artifact_store import ArtifactStore
 from runtime.crop_analysis_store import CropAnalysisStore
@@ -69,6 +69,7 @@ def run_analysis_workflow(
     artifacts: ArtifactStore,
     make_lai_result: Callable[..., dict],
     run_task_ids: set[str],
+    tool_registry: Any,
     llm_provider: Any = None,
 ) -> None:
     """Keep independent task failures while sharing one image download."""
@@ -93,22 +94,23 @@ def run_analysis_workflow(
                 workflows.update_step(workflow_id, "imagery", owner_id=owner_id,
                                       status="running", progress_percent=percent, detail=detail)
 
-            read_prosail_reflectance_aoi(
-                item=selected_item, geometry=workflow.aoi.geometry.model_dump(mode="json"),
-                output_path=reflectance, target_resolution_m=workflow.parameters["target_resolution_m"],
+            observation, _artifacts = tool_registry.invoke(
+                tool_name=IMAGERY_PREPARATION_TOOL_NAME,
+                tool_input={
+                    "item": selected_item,
+                    "run_id": workflow_id,
+                    "aoi_geometry": workflow.aoi.geometry.model_dump(mode="json"),
+                    "target_resolution_m": int(workflow.parameters["target_resolution_m"]),
+                    "parameters": dict(workflow.parameters),
+                    "provenance": _provenance(workflow),
+                    "output_dir": str(root),
+                },
                 progress_callback=image_progress,
-            )
-            artifact_id = artifacts.register(
-                workflow_id,
-                SimpleNamespace(pack_name="sentinel", artifact_type="reflectance_tif",
-                                title="共享 AOI Sentinel 反射率", uri=str(reflectance), content=None),
             )
             workflows.update_step(workflow_id, "imagery", owner_id=owner_id,
                                   status="completed", progress_percent=100,
                                   detail="AOI 五波段影像已准备，可供作物识别和 LAI 共用",
-                                  result={"artifact_id": artifact_id, "bands": ["B02", "B03", "B04", "B07", "B08"],
-                                          "resolution_m": workflow.parameters["target_resolution_m"],
-                                          "parameters": workflow.parameters, "imagery_provenance": _provenance(workflow)})
+                                  result=dict(observation.payload))
     except AoiBandReadError as exc:
         detail = str(exc)
         logger.warning("analysis_workflow_imagery_failed | workflow_id=%s", workflow_id)

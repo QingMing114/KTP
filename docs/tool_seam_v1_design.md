@@ -163,3 +163,15 @@ class ToolPresentation(BaseModel):
 | P5 | 可见性开关 `KTP_IMAGERY_SEARCH_TOOL_MODEL_VISIBLE`，默认 `debug`（搜索是交互确认点，先不交给模型） |
 
 验证：`backend/tests` 332 passed / 3 skipped；`backend/v2/tests` 96 passed。
+
+## 14. 影像准备接入记录（P1–P5，2026-11-03）
+
+| 阶段 | 内容 |
+|---|---|
+| P1 | `runtime/imagery_preparation.py`：`prepare_imagery(...)` 统一读五波段、重采样、登记 `reflectance_tif`、生成步骤结果 |
+| P2 | `v2/tools/imagery_preparation_tool.py`：输入模型、`produces_artifacts`/`permissions`/`presentation`，handler 接收宿主 `item` |
+| P3 | canonical 装配新增该工具；注入产物存储与根目录；可见性开关 `KTP_IMAGERY_PREPARATION_TOOL_MODEL_VISIBLE` |
+| P4 | 工作流 imagery 步骤改走 `registry.invoke`；`run_analysis_workflow` 新增必填 `tool_registry`（唯一调用点在 router，无双路径） |
+| P5 | 默认 `debug`；打开前需要下载预算、取消与用户确认策略 |
+
+验证：`backend/tests` 340 passed / 3 skipped；`backend/v2/tests` 96 passed。
