@@ -187,3 +187,15 @@ class ToolPresentation(BaseModel):
 | P5 | 默认 `debug`；打开前需要报告版本与覆盖策略 |
 
 验证：`backend/tests` 349 passed / 3 skipped；`backend/v2/tests` 96 passed。
+
+## 16. LAI 反演接入记录（P1–P5，2026-11-03）
+
+| 阶段 | 内容 |
+|---|---|
+| P1 | `runtime/lai_inversion.py`：合并 `/lai-analyses` 与 `_run_lai` 两套调用，统一反演 → 产物校验 → artifact 登记 |
+| P2 | `v2/tools/lai_inversion_tool.py`：输入模型、`produces_artifacts` 三类产物、`presentation`；像素级进度走宿主 `pixel_progress_callback` |
+| P3 | canonical 装配新增该工具；裸应用由 `_tool_registry()` 兜底；可见性开关 `KTP_LAI_TOOL_MODEL_VISIBLE` |
+| P4 | 独立分析 worker 与工作流 `_run_lai` 均改走 `registry.invoke`；场景参数、严格约束、质量评估仍留在工作流侧 |
+| P5 | 默认 `debug`；打开前需要“复用共享影像/重新准备”的策略 |
+
+验证：`backend/tests` 358 passed / 3 skipped；`backend/v2/tests` 96 passed。

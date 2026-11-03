@@ -97,7 +97,7 @@ def test_lai_only_retry_reuses_persisted_model_configuration(tmp_path, monkeypat
     import runtime.analysis_workflow_runner as runner
     provider = SceneProvider()
     app = setup_app(tmp_path, monkeypatch, provider)
-    real_report = runner.run_lai_html_report
+    real_report = __import__("v2.tools.lai_report_handler", fromlist=["run_lai_html_report"]).run_lai_html_report
     attempts = []
 
     def fail_once(**kwargs):
@@ -106,7 +106,7 @@ def test_lai_only_retry_reuses_persisted_model_configuration(tmp_path, monkeypat
             return SimpleNamespace(status="error", summary="test failure"), []
         return real_report(**kwargs)
 
-    monkeypatch.setattr(runner, "run_lai_html_report", fail_once)
+    monkeypatch.setattr("runtime.lai_inversion.run_lai_html_report", fail_once)
     with TestClient(app) as client:
         response = client.post("/api/product/v1/analysis-workflows", json={
             "aoi": AOI, "imagery_item_id": SNAPSHOT["item_id"], "imagery_snapshot": SNAPSHOT,

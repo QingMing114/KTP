@@ -35,7 +35,7 @@ from runtime.workflow_reports import (
 from schemas.analysis_workflow import AnalysisWorkflowSummary
 from schemas.workspace import WorkspaceIntent
 from schemas.spatial import CreateCropAnalysisRequest, CreateLaiAnalysisRequest
-from v2.tools.lai_report_handler import run_lai_html_report
+from runtime.lai_inversion import LAI_INVERSION_TOOL_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,8 @@ def run_analysis_workflow(
                 workflows.finish_review(review.review_id, owner_id=owner_id, step_version=step.updated_at)
                 workflows.update_status(workflow_id, owner_id=owner_id, status="blocked", detail="专业模式：请编辑并确认 LAI 参数后继续")
                 return
-        _run_lai(workflow, reflectance, root, workflows, lais, artifacts, make_lai_result, owner_id, llm_provider)
+        _run_lai(workflow, reflectance, root, workflows, lais, artifacts, make_lai_result, owner_id, llm_provider,
+                 tool_registry)
     _finish(workflows, workflow_id, owner_id, artifact_root=artifact_root, artifacts=artifacts,
             tool_registry=tool_registry)
 
@@ -256,7 +257,7 @@ def _run_lai(
     workflow: AnalysisWorkflowSummary, reflectance: Path, root: Path,
     workflows: AnalysisWorkflowStore, lais: LaiAnalysisStore,
     artifacts: ArtifactStore, make_lai_result: Callable[..., dict], owner_id: str,
-    llm_provider: Any = None,
+    llm_provider: Any = None, tool_registry: Any = None,
 ) -> None:
     workflow_id = workflow.workflow_id
     child = lais.create(CreateLaiAnalysisRequest(
@@ -292,24 +293,19 @@ def _run_lai(
             workflows.update_step(workflow_id, "lai", owner_id=owner_id,
                                   status="running", progress_percent=percent, detail=detail)
 
-        observation, report_artifacts = run_lai_html_report(
-            image_path=str(reflectance), artifact_output_dir=str(root / "lai"),
-            progress_callback=inversion_progress,
-            scene_constraints=constraints,
-            **({"strict_scene_constraints": True} if workflow.professional_mode else {}),
+        observation, _summary_artifacts = tool_registry.invoke(
+            tool_name=LAI_INVERSION_TOOL_NAME,
+            tool_input={
+                "run_id": child.analysis_id,
+                "reflectance_path": str(reflectance),
+                "output_dir": str(root / "lai"),
+                "scene_constraints": constraints,
+                "strict_scene_constraints": workflow.professional_mode,
+                "pixel_progress_callback": inversion_progress,
+            },
         )
-        if observation.status != "success":
-            raise RuntimeError(observation.summary)
-        payload = dict(observation.payload or {})
-        for key in ("report_path", "lai_raster_path", "lai_preview_path"):
-            if not isinstance(payload.get(key), str) or not Path(payload[key]).is_file():
-                raise RuntimeError(f"Missing LAI artifact: {key}")
-        artifact_ids: dict[str, str] = {}
-        for artifact in report_artifacts:
-            artifact_ids[artifact.artifact_type] = artifacts.register(child.analysis_id, artifact)
-        required = ("lai_html_report", "lai_raster", "lai_preview")
-        if any(kind not in artifact_ids for kind in required):
-            raise RuntimeError("Incomplete LAI artifact set")
+        payload = dict(observation.payload["result"])
+        artifact_ids = dict(observation.payload["artifact_ids"])
         result = make_lai_result(
             payload, report_artifact_id=artifact_ids["lai_html_report"],
             raster_artifact_id=artifact_ids["lai_raster"],

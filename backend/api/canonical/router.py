@@ -85,7 +85,7 @@ from schemas.analysis_workflow import (
     UpdateYieldInputsRequest,
 )
 from shared.config.paths import get_lai_report_dir
-from v2.tools.lai_report_handler import run_lai_html_report
+from runtime.lai_inversion import LAI_INVERSION_TOOL_NAME
 from infra.imagery.crop_spatial import CropInferenceError, verify_crop_model
 from v2.tools.apsim_report_handler import get_apsim_demo_db_path, run_apsim_yield_report
 from v2.runtime.engine import BoundedRuntimeEngine
@@ -118,6 +118,7 @@ def _ensure_tool_registry_with_professional_tools(app: FastAPI) -> None:
     from v2.tools.crop_tool import configure_crop_tool
     from v2.tools.imagery_preparation_tool import configure_imagery_preparation_tool
     from v2.tools.imagery_search_tool import configure_imagery_search_tool
+    from v2.tools.lai_inversion_tool import configure_lai_inversion_tool
     from v2.tools.registry import build_default_tool_registry
     from v2.tools.workflow_report_tool import configure_workflow_report_tool
 
@@ -155,6 +156,24 @@ def _ensure_tool_registry_with_professional_tools(app: FastAPI) -> None:
         artifact_root=artifact_root,
         model_visible=_tool_flag("KTP_WORKFLOW_REPORT_TOOL_MODEL_VISIBLE"),
     )
+    configure_lai_inversion_tool(
+        registry,
+        artifact_store=app.state.product_artifact_store,
+        model_visible=_tool_flag("KTP_LAI_TOOL_MODEL_VISIBLE"),
+    )
+
+
+def _tool_registry(request: Request):
+    """Return the host registry, provisioning it for bare apps.
+
+    Production installs the registry first. Tests and embedded apps that mount
+    only the router still get one registry, so every entry keeps a single path.
+    """
+    registry = getattr(request.app.state, "tool_registry", None)
+    if registry is None:
+        _ensure_tool_registry_with_professional_tools(request.app)
+        registry = request.app.state.tool_registry
+    return registry
 
 
 _CANONICAL_ALGORITHM_PERMISSIONS = frozenset({"dataset:read", "artifact:write"})
@@ -1374,7 +1393,7 @@ def build_canonical_router() -> APIRouter:
                                     stage="inference" if percent >= 90 else "preparing" if percent >= 85 else "imagery",
                                     progress_percent=min(95, 5 + round(percent * 0.9)), detail=detail)
 
-                observation, _artifacts = request.app.state.tool_registry.invoke(
+                observation, _artifacts = _tool_registry(request).invoke(
                     tool_name=CROP_TOOL_NAME,
                     tool_input={
                         "item": item,
@@ -1546,42 +1565,26 @@ def build_canonical_router() -> APIRouter:
                         progress_data,
                     )
 
-                observation, report_artifacts = run_lai_html_report(
-                    image_path=str(reflectance),
-                    artifact_output_dir=str(work_dir),
-                    progress_callback=inversion_progress,
+                observation, _summary_artifacts = _tool_registry(request).invoke(
+                    tool_name=LAI_INVERSION_TOOL_NAME,
+                    tool_input={
+                        "run_id": analysis.analysis_id,
+                        "reflectance_path": str(reflectance),
+                        "output_dir": str(work_dir),
+                        "pixel_progress_callback": inversion_progress,
+                    },
                 )
-                if observation.status != "success":
-                    raise RuntimeError(observation.summary)
                 event("progress", "report", "正在注册分析报告", 90)
-                payload = dict(observation.payload or {})
-                for path_key in ("report_path", "lai_raster_path", "lai_preview_path"):
-                    path_value = payload.get(path_key)
-                    if not isinstance(path_value, str) or not Path(path_value).is_file():
-                        raise RuntimeError(f"LAI 产物生成后未能通过文件校验: {path_key}")
-
-                registered: list[str] = []
-                report_artifact_id: str | None = None
-                raster_artifact_id: str | None = None
-                preview_artifact_id: str | None = None
-                for artifact in report_artifacts:
-                    artifact_id = artifacts.register(analysis.analysis_id, artifact)
-                    registered.append(artifact_id)
-                    if artifact.artifact_type == "lai_html_report":
-                        report_artifact_id = artifact_id
-                    elif artifact.artifact_type == "lai_raster":
-                        raster_artifact_id = artifact_id
-                    elif artifact.artifact_type == "lai_preview":
-                        preview_artifact_id = artifact_id
-                if report_artifact_id is None or raster_artifact_id is None or preview_artifact_id is None:
-                    raise RuntimeError("LAI 分析产物生成后未能完整注册")
+                payload = dict(observation.payload["result"])
+                artifact_ids = dict(observation.payload["artifact_ids"])
+                registered = list(artifact_ids.values())
 
                 reflectance_id = artifacts.register(analysis.analysis_id, SimpleNamespace(pack_name="sentinel", artifact_type="reflectance_tif", title="AOI Sentinel reflectance", uri=str(reflectance), content=None))
                 payload = _lai_product_result(
                     payload,
-                    report_artifact_id=report_artifact_id,
-                    raster_artifact_id=raster_artifact_id,
-                    preview_artifact_id=preview_artifact_id,
+                    report_artifact_id=artifact_ids["lai_html_report"],
+                    raster_artifact_id=artifact_ids["lai_raster"],
+                    preview_artifact_id=artifact_ids["lai_preview"],
                 )
                 payload["imagery_provenance"] = {
                     "item_id": verified_snapshot.item_id,

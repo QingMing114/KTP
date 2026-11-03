@@ -106,13 +106,13 @@ def test_real_lai_pauses_after_crop_and_uses_edited_confirmed_range(tmp_path, mo
     app = setup_app(tmp_path, monkeypatch, provider)
     app.state.runtime_store = InMemoryRuntimeStore()
     calls = []
-    real_report = runner.run_lai_html_report
+    real_report = __import__("v2.tools.lai_report_handler", fromlist=["run_lai_html_report"]).run_lai_html_report
 
     def report(**kwargs):
         calls.append(kwargs)
         return real_report(**kwargs)
 
-    monkeypatch.setattr(runner, "run_lai_html_report", report)
+    monkeypatch.setattr("runtime.lai_inversion.run_lai_html_report", report)
     with TestClient(app) as client:
         conv, ctx = setup(client, professional_mode=True, imagery_item_id=SNAPSHOT["item_id"], imagery_snapshot=SNAPSHOT)
         _, run = submit(client, conv, ctx, "按识别作物配置LAI")

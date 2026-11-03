@@ -296,7 +296,7 @@ def test_canonical_lai_create_worker_sse_and_artifacts_end_to_end(tmp_path, monk
         return ObservationV2(source="prosail", status="success", summary="complete", payload=payload), artifacts
 
     monkeypatch.setattr("api.canonical.router.read_prosail_reflectance_aoi", fake_read)
-    monkeypatch.setattr("api.canonical.router.run_lai_html_report", fake_report)
+    monkeypatch.setattr("runtime.lai_inversion.run_lai_html_report", fake_report)
     analysis_store = LaiAnalysisStore(db_path=tmp_path / "e2e.sqlite3")
     artifact_store = ArtifactStore(db_path=str(tmp_path / "e2e.sqlite3"))
     app = FastAPI()

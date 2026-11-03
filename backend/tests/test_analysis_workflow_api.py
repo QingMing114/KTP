@@ -164,7 +164,7 @@ def test_simple_yield_runs_without_apsim_or_manual_dates_and_persists_report(tmp
     monkeypatch.setattr('runtime.imagery_preparation.read_prosail_reflectance_aoi', image)
     monkeypatch.setattr("runtime.crop_classification.run_crop_spatial_analysis", lambda **kwargs: {'predicted_class': {'class_id': 0, 'name_zh': '玉米', 'score': 0.5}})
     monkeypatch.setattr(runner, 'run_simple_yield', simple)
-    monkeypatch.setattr(runner, 'run_lai_html_report', lambda **kwargs: pytest.fail('simple yield must not require LAI inversion'))
+    monkeypatch.setattr('runtime.lai_inversion.run_lai_html_report', lambda **kwargs: pytest.fail('simple yield must not require LAI inversion'))
     monkeypatch.setattr(runner, 'run_field_yield', lambda *args: pytest.fail('simple yield must not start APSIM'))
     app = _app(tmp_path / 'simple.sqlite3')
     app.state.product_artifact_root = tmp_path / 'artifacts'
@@ -253,7 +253,7 @@ def test_workflow_shares_one_image_and_preserves_successful_step_on_retry(tmp_pa
 
     monkeypatch.setattr("runtime.imagery_preparation.read_prosail_reflectance_aoi", fake_read)
     monkeypatch.setattr("runtime.crop_classification.run_crop_spatial_analysis", fake_crop)
-    monkeypatch.setattr(runner, "run_lai_html_report", fake_lai)
+    monkeypatch.setattr("runtime.lai_inversion.run_lai_html_report", fake_lai)
     app = _app(tmp_path / "execution.sqlite3")
     app.state.product_artifact_root = tmp_path / "artifacts"
     with TestClient(app) as client:
