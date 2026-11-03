@@ -189,6 +189,23 @@ class ToolRegistryV2:
 
     _EXECUTOR_TOOL_PREFIXES = ("prosail.", "apsim.", "workspace.")
 
+    def subset_by_prefixes(self, prefixes: list[str] | tuple[str, ...]) -> "ToolRegistryV2":
+        """Return a registry with only the tools whose names match the prefixes.
+
+        An empty prefix list means "no tools" (a role that must not act), which is
+        different from calling ``get_executor_subset`` for the legacy executor.
+        """
+        subset_defs = {
+            name: defn
+            for name, defn in self.definitions.items()
+            if any(name.startswith(prefix) for prefix in prefixes)
+        }
+        return ToolRegistryV2(
+            definitions=subset_defs,
+            ktp_knowledge_adapter=None,
+            ktp_service_bundle=self.ktp_service_bundle,
+        )
+
     def get_executor_subset(self) -> "ToolRegistryV2":
         """Return a restricted registry with only physical tool subset for executor_30b."""
         from copy import deepcopy

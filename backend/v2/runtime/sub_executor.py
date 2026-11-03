@@ -49,15 +49,18 @@ class SubExecutor:
         cancellation_event: Event | None = None,
         user_id: str | None = None,
         granted_permissions: set[str] | frozenset[str] | None = None,
+        system_prompt_suffix: str | None = None,
+        max_steps: int | None = None,
     ) -> None:
         self._tool_registry = tool_registry
         self._policy = policy
         self._cancellation_event = cancellation_event
         self._user_id = user_id
         self._granted_permissions = frozenset(granted_permissions or ())
+        self._max_steps = max_steps or _EXECUTOR_MAX_STEPS
         self._planner = ChatFirstPlanner(
             llm_provider=llm_provider,
-            system_prompt_suffix=_EXECUTOR_SYSTEM_PROMPT_SUFFIX,
+            system_prompt_suffix=system_prompt_suffix or _EXECUTOR_SYSTEM_PROMPT_SUFFIX,
         )
         from v2.policies.guard import PolicyGuard
         from v2.runtime.executor import ToolExecutor
@@ -84,7 +87,7 @@ class SubExecutor:
         tool_history: list = []
         artifacts: list = []
 
-        for step_index in range(_EXECUTOR_MAX_STEPS):
+        for step_index in range(self._max_steps):
             raise_if_cancelled(self._cancellation_event)
             try:
                 agent_step: AgentStepV2 = self._planner.plan(
@@ -151,5 +154,5 @@ class SubExecutor:
 
         return SubExecutionResult(
             success=False,
-            summary=f"执行达到步数上限（{_EXECUTOR_MAX_STEPS}步）",
+            summary=f"执行达到步数上限（{self._max_steps}步）",
         )

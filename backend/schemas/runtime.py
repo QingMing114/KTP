@@ -212,6 +212,13 @@ class AgentProfile(BaseModel):
     name: str
     role: str
     description: str
+    # M1 multi-agent fields (all optional so legacy profiles keep working)
+    system_prompt: str | None = None
+    tool_prefixes: list[str] = Field(default_factory=list)
+    max_steps: int = 10
+    allow_delegation: bool = False
+    max_children: int = 0
+    timeout_seconds: float | None = None
 
 
 class ToolPresentation(BaseModel):

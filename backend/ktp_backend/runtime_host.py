@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from fastapi import FastAPI
@@ -43,8 +44,18 @@ def build_backend_runtime_host(
     agent_registry = agent_registry_override or build_default_agent_registry()
     policy_registry = policy_registry_override or build_default_policy_registry()
     pack_registry = pack_registry_override or build_default_pack_registry()
+    agent_runtime = None
+    if os.getenv("KTP_MULTI_AGENT_ASYNC", "0").strip().lower() in {"1", "true", "yes", "on"}:
+        from v2.agents.runtime import SubAgentRuntime
+
+        agent_runtime = SubAgentRuntime(
+            tool_registry=tool_registry,
+            llm_provider=llm_provider_override,
+            profile_registry=agent_registry,
+        )
     runtime_engine = BoundedRuntimeEngine(
         store=runtime_store,
+        agent_runtime=agent_runtime,
         tool_registry=tool_registry,
         policy_registry=policy_registry,
         agent_registry=agent_registry,

@@ -82,6 +82,7 @@ class BoundedRuntimeEngine:
         policy_registry: PolicyRegistryV2,
         agent_registry: AgentProfileRegistry,
         pack_registry: DomainPackRegistry,
+        agent_runtime: Any | None = None,
         llm_provider: AgentLLMProvider | None = None,
         memory_dir: str | None = None,
         memory_top_k: int = 5,
@@ -93,6 +94,7 @@ class BoundedRuntimeEngine:
         self._policy_registry = policy_registry
         self._agent_registry = agent_registry
         self._pack_registry = pack_registry
+        self._agent_runtime = agent_runtime
         self._llm_provider = llm_provider
         self._planner = ChatFirstPlanner(llm_provider=llm_provider)
         self._guard = PolicyGuard()
@@ -548,6 +550,19 @@ class BoundedRuntimeEngine:
 
         for step_index in range(observer.max_steps):
             raise_if_cancelled(cancellation_event)
+            if self._agent_runtime is not None:
+                for settlement in self._agent_runtime.drain(run.run_id):
+                    tool_history.append(settlement.as_history_item())
+                    run.trace.append(TraceEventV2(
+                        node="subagent",
+                        event="agent_settled",
+                        detail=f"{settlement.role} settled success={settlement.success}",
+                    ))
+                    emitter.emit(
+                        event="run.progress",
+                        detail=f"子代理 {settlement.role} 已结算：{settlement.summary[:120]}",
+                        run_status="running",
+                    )
             try:
                 agent_step = self._planner.plan(
                     message=user_message,
@@ -679,6 +694,17 @@ class BoundedRuntimeEngine:
             )
 
             if agent_step.action in {"reply", "clarify"}:
+                while self._agent_runtime is not None and self._agent_runtime.pending(run.run_id) > 0:
+                    drained = self._agent_runtime.wait_for_settlements(run.run_id)
+                    if not drained:
+                        break
+                    for settlement in drained:
+                        tool_history.append(settlement.as_history_item())
+                        emitter.emit(
+                            event="run.progress",
+                            detail=f"子代理 {settlement.role} 已结算：{settlement.summary[:120]}",
+                            run_status="running",
+                        )
                 response_message = (agent_step.response_message or "").strip()
                 if not response_message:
                     response_message = "The assistant returned an empty reply."
@@ -765,6 +791,49 @@ class BoundedRuntimeEngine:
                     detail=f"委派任务给 {target}：{goal[:100]}",
                     run_status="running",
                 )
+
+                if self._agent_runtime is not None:
+                    try:
+                        handle = self._agent_runtime.spawn(
+                            parent_run=run,
+                            parent_emitter=emitter,
+                            request_context=request_context,
+                            role=target,
+                            goal=goal,
+                            policy=policy,
+                            user_id=user_id,
+                            granted_permissions=granted_permissions,
+                            cancellation_event=cancellation_event,
+                        )
+                    except Exception as exc:  # unknown role or limit reached
+                        tool_history.append({
+                            "role": "tool",
+                            "content": f"[委派失败] {target}: {exc}",
+                            "tool_call_id": f"delegation_failed_{step_index}",
+                        })
+                        emitter.emit(
+                            event="run.progress",
+                            detail=f"委派失败：{exc}",
+                            run_status="running",
+                        )
+                        continue
+                    run.delegation = DelegationResult(
+                        target_agent=handle.role,
+                        status="accepted",
+                        summary=f"已激活子代理 {handle.agent_run_id[:8]}：{goal[:80]}",
+                    )
+                    delegation_count += 1
+                    tool_history.append({
+                        "role": "tool",
+                        "content": f"[已委派 {handle.role}] {goal[:200]}（等待结算）",
+                        "tool_call_id": f"delegation_{handle.agent_run_id}",
+                    })
+                    emitter.emit(
+                        event="run.progress",
+                        detail=f"子代理 {handle.role} 已激活，父代理继续规划",
+                        run_status="running",
+                    )
+                    continue
 
                 # 创建受限工具集
                 executor_registry = self._tool_registry.get_executor_subset()
@@ -1467,6 +1536,8 @@ class BoundedRuntimeEngine:
         trace_event: str,
         trace_detail: str,
     ) -> None:
+        if self._agent_runtime is not None:
+            self._agent_runtime.cancel(run.run_id)
         assistant_entry = SessionMessage(role="assistant", content=message)
         if persist_messages:
             self._store.append_message(session_id, assistant_entry)
