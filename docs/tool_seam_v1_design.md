@@ -151,3 +151,15 @@ class ToolPresentation(BaseModel):
 已知边界（后续处理）：工具 handler 目前返回空 artifacts 列表，报告引用在 observation payload 里；若希望 `artifact.available` 事件与 run.artifacts 也覆盖报告，需要在 handler 里把报告引用转换成 `PackArtifactView`。
 
 流程沉淀：把 S1/S2 与 A 阶段的作业顺序整理成了 [工具接入手册.md](工具接入手册.md)（三种工具形态、五阶段交付、spec 清单、装配与打桩规则、检查清单）。
+
+## 13. 影像搜索接入记录（P1–P5，2026-11-03）
+
+| 阶段 | 内容 |
+|---|---|
+| P1 | `runtime/imagery_search.py`：`search_imagery(provider, request)` 统一 provider 调用与 `search_id` 生成 |
+| P2 | `v2/tools/imagery_search_tool.py`：`ImagerySearchToolInput`、只读 spec（无 permissions）、handler、`presentation` |
+| P3 | `_ensure_tool_registry_with_professional_tools` 同时装配 crop 与 search；provider 惰性解析，缺失时注册 `unavailable` |
+| P4 | `POST /imagery/search` 改走 `registry.invoke`；响应字段与 502 映射保持不变 |
+| P5 | 可见性开关 `KTP_IMAGERY_SEARCH_TOOL_MODEL_VISIBLE`，默认 `debug`（搜索是交互确认点，先不交给模型） |
+
+验证：`backend/tests` 332 passed / 3 skipped；`backend/v2/tests` 96 passed。

@@ -38,6 +38,7 @@ from runtime.submission_store import SubmissionStore
 from runtime.lai_analysis_store import LaiAnalysisStore
 from runtime.crop_analysis_store import CropAnalysisStore
 from v2.tools.crop_tool import CROP_TOOL_NAME
+from v2.tools.imagery_search_tool import IMAGERY_SEARCH_TOOL_NAME
 from runtime.analysis_workflow_store import AnalysisWorkflowStore
 from runtime.analysis_workflow_runner import ensure_workflow_reports, run_analysis_workflow
 from runtime.workspace_assistant import (plan_workspace, workspace_parts, can_rebase_preview, TASK_LABELS,
@@ -102,14 +103,20 @@ logger = logging.getLogger(__name__)
 _PRODUCT_ARTIFACT_ROOT = (Path(__file__).resolve().parents[2] / "var" / "artifacts").resolve()
 
 
-def _ensure_tool_registry_with_crop_tool(app: FastAPI) -> None:
-    """Install the crop tool on the host registry.
+def _tool_flag(name: str) -> bool:
+    """Read a boolean tool-visibility flag; anything but an explicit yes stays off."""
+    return os.getenv(name, "false").strip().lower() in {"1", "true", "yes", "on"}
 
-    Production installs the runtime host first, so this registers on the engine's
+
+def _ensure_tool_registry_with_professional_tools(app: FastAPI) -> None:
+    """Install the professional-chain tools on the host registry.
+
+    Production installs the runtime host first, so these register on the engine's
     registry. A bare app (tests, embedded use) gets one canonical registry so the
-    endpoint still has exactly one execution path.
+    endpoints still have exactly one execution path.
     """
     from v2.tools.crop_tool import configure_crop_tool
+    from v2.tools.imagery_search_tool import configure_imagery_search_tool
     from v2.tools.registry import build_default_tool_registry
 
     registry = getattr(app.state, "tool_registry", None)
@@ -126,9 +133,15 @@ def _ensure_tool_registry_with_crop_tool(app: FastAPI) -> None:
         llm_provider_resolver=lambda: getattr(
             getattr(app.state, "runtime_engine", None), "llm_provider", None
         ),
-        model_visible=os.getenv("KTP_CROP_TOOL_MODEL_VISIBLE", "false").strip().lower()
-        in {"1", "true", "yes", "on"},
+        model_visible=_tool_flag("KTP_CROP_TOOL_MODEL_VISIBLE"),
     )
+    configure_imagery_search_tool(
+        registry,
+        provider_resolver=lambda: getattr(app.state, "sentinel_stac_provider", None),
+        model_visible=_tool_flag("KTP_IMAGERY_SEARCH_TOOL_MODEL_VISIBLE"),
+    )
+
+
 _CANONICAL_ALGORITHM_PERMISSIONS = frozenset({"dataset:read", "artifact:write"})
 
 
@@ -803,8 +816,15 @@ def build_canonical_router() -> APIRouter:
         request: Request,
     ) -> ImagerySearchResponse:
         """Search Sentinel-2 L2A candidates without downloading imagery."""
+        from v2.tools.registry import ToolNotFoundError, ToolUnavailableError
+
         try:
-            candidates = await asyncio.to_thread(_imagery_provider(request).search, body)
+            observation, _artifacts = await asyncio.to_thread(
+                lambda: request.app.state.tool_registry.invoke(
+                    tool_name=IMAGERY_SEARCH_TOOL_NAME,
+                    tool_input=body.model_dump(mode="json"),
+                )
+            )
         except ImagerySearchError as exc:
             return canonical_error_response(
                 502,
@@ -813,7 +833,19 @@ def build_canonical_router() -> APIRouter:
                 detail={"reason": str(exc)},
                 request_id=_req_id(),
             )
-        return ImagerySearchResponse(items=candidates, search_id=str(uuid4()))
+        except (ToolNotFoundError, ToolUnavailableError) as exc:
+            return canonical_error_response(
+                502,
+                code=ErrorCode.IMAGERY_SEARCH_FAILED,
+                message="Sentinel imagery search is temporarily unavailable.",
+                detail={"reason": str(exc)},
+                request_id=_req_id(),
+            )
+        payload = observation.payload
+        return ImagerySearchResponse(
+            items=[ImageryCandidate.model_validate(item) for item in payload["items"]],
+            search_id=payload["search_id"],
+        )
 
     def _launch_analysis_workflow(
         request: Request, workflow: AnalysisWorkflowSummary, selected_item: dict,
@@ -2771,7 +2803,7 @@ def install_canonical_product_api(
     app.state.lai_analysis_store = LaiAnalysisStore(db_path=db_path)
     app.state.crop_analysis_store = CropAnalysisStore(db_path=db_path)
     app.state.analysis_workflow_store = AnalysisWorkflowStore(db_path=db_path)
-    _ensure_tool_registry_with_crop_tool(app)
+    _ensure_tool_registry_with_professional_tools(app)
     if auth_required is None:
         auth_required = os.getenv("APP_AUTH_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
     app.state.product_auth_required = auth_required
